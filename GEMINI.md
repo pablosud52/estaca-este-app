@@ -1,6 +1,6 @@
 
 
-# Sistema de Finanzas y Calendario de Estaca
+# Estaca Este App — Sistema de Finanzas y Calendario
 
 ## 📌 Documentación Canónica y Memoria del Proyecto
 Para cualquier asistente de IA en este proyecto, antes de proponer cambios o código:
@@ -9,6 +9,7 @@ Para cualquier asistente de IA en este proyecto, antes de proponer cambios o có
 3. **Estado de Avance y Tareas**: `02-DOCS/ROADMAP_PROGRESS.md`
 4. **Estatuto y Convenciones**: `02-DOCS/wiki/sdd/constitution.md`
 5. **Datos y Plantilla Excel Auditada**: `02-DOCS/data/Ejemplo_DB_Finanzas.xlsx`
+6. **URL de Producción Planificada**: `https://estacaeste.vercel.app`
 
 ---
 

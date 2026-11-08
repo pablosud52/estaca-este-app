@@ -1,6 +1,6 @@
 # Backup script: Syncs local development folder to Google Drive excluding node_modules, build output, etc.
-$source = "C:\Proyectos\Estaca_App"
-$destination = "G:\Mi unidad\GitHub\Estaca_App"
+$source = "C:\Proyectos\estaca-este-app"
+$destination = "G:\Mi unidad\GitHub\estaca-este-app"
 
 Write-Host "Iniciando respaldo hacia Google Drive..."
 Write-Host "Origen:  $source"

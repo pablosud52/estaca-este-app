@@ -1,6 +1,6 @@
 ---
 type: constitution
-title: Estaca_App — Constitution
+title: Estaca Este App — Constitution
 description: Ratified project constitution defining stack, security floor, business rules, and UI conventions.
 tags: [sdd, constitution]
 timestamp: 2026-11-08T19:30:00Z
@@ -9,9 +9,9 @@ status: ratified
 version: 1.0.0
 ---
 
-# Estaca_App — Constitution
+# Estaca Este App — Constitution
 
-> **Estatuto y Reglas Fundamentales del Proyecto Sistema de Finanzas y Calendario de Estaca**
+> **Estatuto y Reglas Fundamentales de Estaca Este App (Finanzas y Calendario)**
 
 ## 1. Stack Canon
 - **Frontend**: React 18/19 + TypeScript + Vite. Progressive Web App (PWA) instalable en Android e iOS.

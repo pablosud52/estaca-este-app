@@ -35,9 +35,11 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
     await page.reload();
   });
 
-  test('1. Tarjeta Maestra PRESUPUESTO DISPONIBLE ($ 114.168,09), Resumen por trimestre y Gráfica Nuevas Generaciones', async ({
+  test('1. Tarjeta Maestra PRESUPUESTO DISPONIBLE ($ 114.168,09), Gráfica en % por defecto, Resumen por trimestre y Modal de Gastos', async ({
     page,
   }, testInfo) => {
+    const isMobile = testInfo.project.name.includes('Mobile');
+
     // Cambiar a Primer Consejero (PRESIDENCIA)
     await page.getByTestId('dev-role-trigger').click();
     await page.getByTestId('switch-role-presidencia-consejero1-01').click();
@@ -61,28 +63,13 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
       'ℹ️ Este importe ya está contemplado en el presupuesto disponible mostrado arriba.'
     );
 
-    // 2. Verificar "Resumen por trimestre" (T1 a T4)
-    await expect(page.getByTestId('hub-quarter-available-T1')).toHaveText('$ 194.468,69');
-    await expect(page.getByTestId('hub-quarter-income-T1')).toHaveText('$ 71.440,80');
-    await expect(page.getByTestId('hub-quarter-carryover-T1')).toHaveText('$ 123.027,89');
-    await expect(page.getByTestId('hub-quarter-spent-T1')).toHaveText('$ 152.846,00');
-
-    await expect(page.getByTestId('hub-quarter-available-T2')).toHaveText('$ 117.514,09');
-    await expect(page.getByTestId('hub-quarter-available-T3')).toHaveText('$ 127.923,69');
-    await expect(page.getByTestId('hub-quarter-available-T4')).toHaveText('$ 154.338,09');
-
-    // 3. Verificar Gráfica "Asignación de fondos a cada organización" y Pastilla "Nuevas Generaciones"
+    // 2. Posición 1 debajo de KPI: Gráfica "Asignación de fondos a cada organización" iniciando en PORCENTAJES (%) por defecto
+    await expect(page.getByTestId('chart-canvas-container-PORCENTAJES')).toBeVisible();
     await expect(page.getByTestId('youth-focus-amount')).toHaveText('$ 146.000,00 (34,8%)');
-    await page.getByTestId('chart-period-T1').click();
-    await expect(page.getByTestId('youth-focus-amount')).toHaveText('$ 70.000,00 (36,0%)');
-    await page.getByTestId('chart-period-GLOBAL').click();
 
-    await expect(page.getByTestId('chart-canvas-container-MONTOS')).toBeVisible();
-
-    // Captura visual del Panel rediseñado (Escritorio y Móvil) con scroll en el tope
+    // Captura visual del Panel en su estado inicial limpio (Escritorio y Móvil con acordeones contraídos)
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(200);
-    const isMobile = testInfo.project.name.includes('Mobile');
     await page.screenshot({
       path: `C:/Users/Pablo/.gemini/antigravity/brain/62fbf75c-7edb-420d-8e4a-03d04293c255/panel_${
         isMobile ? 'mobile' : 'desktop'
@@ -90,24 +77,69 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
       fullPage: true,
     });
 
+    // Alternar opcionalmente a Montos ($) y volver a Porcentajes (%)
+    await page.getByTestId('chart-mode-montos').click();
+    await expect(page.getByTestId('chart-canvas-container-MONTOS')).toBeVisible();
     await page.getByTestId('chart-mode-porcentajes').click();
     await expect(page.getByTestId('chart-canvas-container-PORCENTAJES')).toBeVisible();
+
+    // 3. Posición 2: "Resumen por trimestre" (en móvil inicia contraído; lo abrimos para verificar e interactuar)
+    if (isMobile) {
+      await expect(page.getByTestId('toggle-quarter-summary-mobile')).toHaveAttribute(
+        'aria-expanded',
+        'false'
+      );
+      await page.getByTestId('toggle-quarter-summary-mobile').click();
+      await expect(page.getByTestId('toggle-quarter-summary-mobile')).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      );
+    }
+
+    // Verificar nueva jerarquía: Ingreso en grande, seguido de Saldo inicial/Remanente, Monto total y Gastos interactivos
+    await expect(page.getByTestId('hub-quarter-income-T1')).toHaveText('$ 71.440,80');
+    await expect(page.getByTestId('hub-quarter-carryover-T1')).toHaveText('$ 123.027,89');
+    await expect(page.getByTestId('hub-quarter-available-T1')).toHaveText('$ 194.468,69');
+    await expect(page.getByTestId('hub-quarter-spent-T1')).toHaveText('$ 152.846,00');
+
+    await expect(page.getByTestId('hub-quarter-income-T2')).toHaveText('$ 75.891,40');
+    await expect(page.getByTestId('hub-quarter-available-T2')).toHaveText('$ 117.514,09');
+    await expect(page.getByTestId('hub-quarter-available-T3')).toHaveText('$ 127.923,69');
+    await expect(page.getByTestId('hub-quarter-available-T4')).toHaveText('$ 154.338,09');
+
+    // Abrir Modal interactivo de Gastos del Trimestre T1
+    await page.getByTestId('hub-quarter-spent-T1').click();
+    await expect(page.getByTestId('quarter-expenses-modal')).toBeVisible();
+    await expect(page.getByTestId('quarter-expenses-modal-title')).toHaveText(
+      'Gastos de Trimestre T1 · Total: $ 152.846,00'
+    );
+    await page.getByTestId('close-quarter-expenses-modal').click();
+    await expect(page.getByTestId('quarter-expenses-modal')).toBeHidden();
   });
 
-  test('2. Sección Estado por Organización minimalista, Modo Espejo y Menú Hamburguesa Móvil (Drawer)', async ({
+  test('2. Sección Estado por Organización (Acordeones en Móvil, Grid en PC), Modo Espejo y Menú Hamburguesa Móvil (Drawer)', async ({
     page,
-  }) => {
+  }, testInfo) => {
+    const isMobile = testInfo.project.name.includes('Mobile');
+
     await page.getByTestId('dev-role-trigger').click();
     await page.getByTestId('switch-role-admin-pablo-01').click();
 
-    // Verificar saldos exactos por organización en las tarjetas minimalistas
+    // Todos los saldos disponibles son visibles de un vistazo tanto en PC como en la barra contraída móvil
     await expect(page.getByTestId('org-card-available-MJ')).toHaveText('$ 17.505,00');
     await expect(page.getByTestId('org-card-available-HJ')).toHaveText('$ 13.703,00');
     await expect(page.getByTestId('org-card-available-SEMINARIO')).toHaveText('$ 26.000,00');
     await expect(page.getByTestId('org-card-available-SS')).toHaveText('$ 27.375,00');
     await expect(page.getByTestId('org-card-available-PRIMARIA')).toHaveText('$ 15.491,00');
 
-    // Verificar botón plano sin íconos "ABRIR PRIMARIA" y navegación en Modo Espejo
+    // En móvil, expandir el acordeón de PRIMARIA antes de tocar "ABRIR PRIMARIA"
+    if (isMobile) {
+      const primariaToggle = page.getByTestId('org-accordion-toggle-PRIMARIA');
+      await expect(primariaToggle).toHaveAttribute('aria-expanded', 'false');
+      await primariaToggle.click();
+      await expect(primariaToggle).toHaveAttribute('aria-expanded', 'true');
+    }
+
     const openPrimariaBtn = page.getByTestId('inspect-org-PRIMARIA');
     await expect(openPrimariaBtn).toHaveText('ABRIR PRIMARIA');
     await openPrimariaBtn.click();

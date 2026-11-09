@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Users,
   Wallet,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -105,6 +106,22 @@ export const PresidencyHub: React.FC = () => {
 
   // Si el usuario entra a inspeccionar una organización en Modo Espejo
   const [inspectedOrg, setInspectedOrg] = useState<OrganizationCode | null>(null);
+
+  // Acordeón móvil para "Resumen por trimestre" (cerrado por defecto en móvil)
+  const [isQuarterSummaryOpen, setIsQuarterSummaryOpen] = useState<boolean>(false);
+
+  // Modal interactivo de gastos por trimestre (T1 | T2 | T3 | T4 | null)
+  const [selectedQuarterModal, setSelectedQuarterModal] = useState<QuarterCode | null>(null);
+
+  // Acordeones móviles individuales para "Estado por Organización" (contraídos por defecto en móvil)
+  const [expandedOrgs, setExpandedOrgs] = useState<Partial<Record<OrganizationCode, boolean>>>({});
+
+  const toggleOrgAccordion = (org: OrganizationCode) => {
+    setExpandedOrgs((prev) => ({
+      ...prev,
+      [org]: !prev[org],
+    }));
+  };
 
   const [budgets, setBudgets] = useState<BudgetAllocation[]>(SEED_BUDGET_ALLOCATIONS);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(SEED_EXPENSES);
@@ -389,8 +406,25 @@ export const PresidencyHub: React.FC = () => {
       pendingRenderTotal,
       quarters,
       orgStats,
+      nonReimbursableExpenses,
     };
   }, [budgets, expenses, selectedYear]);
+
+  // Gastos filtrados para el modal interactivo del trimestre seleccionado
+  const selectedQuarterExpenses = useMemo(() => {
+    if (!selectedQuarterModal) return [];
+    return executiveMetrics.nonReimbursableExpenses
+      .filter((e) => getQuarterFromDate(e.expense_date) === selectedQuarterModal)
+      .sort((a, b) => b.expense_date.localeCompare(a.expense_date));
+  }, [executiveMetrics.nonReimbursableExpenses, selectedQuarterModal]);
+
+  const selectedQuarterSummary = useMemo(
+    () =>
+      selectedQuarterModal
+        ? executiveMetrics.quarters.find((q) => q.quarter === selectedQuarterModal) ?? null
+        : null,
+    [executiveMetrics.quarters, selectedQuarterModal]
+  );
 
   // Regla sagrada de aprobación: solo propuestas de líderes locales (origin === 'propuesta_lider' y status === 'PROPUESTA')
   const pendingProposalsCount = useMemo(
@@ -1007,85 +1041,137 @@ export const PresidencyHub: React.FC = () => {
               </div>
             </section>
 
-            {/* 2. SECCIÓN "Resumen por trimestre" */}
+            {/* POSICIÓN 1 (debajo de PRESUPUESTO DISPONIBLE): GRÁFICA "Asignación de fondos a cada organización" */}
+            <OrgDistributionChart orgStats={executiveMetrics.orgStats} />
+
+            {/* POSICIÓN 2: SECCIÓN "Resumen por trimestre" (abierta en PC, acordeón contraído por defecto en móvil) */}
             <section
               aria-label="Resumen por trimestre"
               data-testid="quarterly-rollover-section"
               className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/90"
             >
-              <h2 className="text-base font-extrabold text-slate-900 mb-4">
-                Resumen por trimestre
-              </h2>
+              {/* En móvil: botón acordeón interactivo; en PC: título directo */}
+              <button
+                type="button"
+                data-testid="toggle-quarter-summary-mobile"
+                aria-expanded={isQuarterSummaryOpen}
+                onClick={() => setIsQuarterSummaryOpen((prev) => !prev)}
+                className="w-full flex items-center justify-between gap-3 text-left md:cursor-default focus:outline-none"
+              >
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-base font-extrabold text-slate-900">
+                    Resumen por trimestre
+                  </h2>
+                  <span className="md:hidden text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    T1–T4
+                  </span>
+                </div>
+                <span className="md:hidden inline-flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200/80">
+                  <span>{isQuarterSummaryOpen ? 'Ocultar' : 'Ver trimestres'}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-600 transition-transform duration-200 ease-out ${
+                      isQuarterSummaryOpen ? 'rotate-180' : 'rotate-0'
+                    }`}
+                  />
+                </span>
+              </button>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                {executiveMetrics.quarters.map((q) => (
-                  <div
-                    key={q.quarter}
-                    data-testid={`hub-quarter-card-${q.quarter}`}
-                    className="p-4 rounded-2xl bg-slate-50/90 border border-slate-200/90 flex flex-col justify-between"
-                  >
-                    <div>
-                      <span className="inline-block text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-slate-900 text-white">
-                        {q.quarter}
-                      </span>
-
-                      <p
-                        data-testid={`hub-quarter-available-${q.quarter}`}
-                        className="text-xl sm:text-2xl font-extrabold text-slate-900 tabular-nums mt-3"
+              {/* Contenedor animado en móvil y siempre abierto en PC (md:grid-rows-[1fr]) */}
+              <div
+                data-testid="quarterly-rollover-content"
+                className={`grid transition-[grid-template-rows,opacity,margin] duration-250 ease-out ${
+                  isQuarterSummaryOpen
+                    ? 'grid-rows-[1fr] opacity-100 mt-4'
+                    : 'grid-rows-[0fr] opacity-0 mt-0 md:grid-rows-[1fr] md:opacity-100 md:mt-4'
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                    {executiveMetrics.quarters.map((q) => (
+                      <div
+                        key={q.quarter}
+                        data-testid={`hub-quarter-card-${q.quarter}`}
+                        className="p-4 rounded-2xl bg-slate-50/90 border border-slate-200/90 flex flex-col justify-between"
                       >
-                        {formatCurrency(q.available)}
-                      </p>
-                    </div>
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="inline-block text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-slate-900 text-white">
+                              {q.quarter}
+                            </span>
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                              Ingreso del trimestre
+                            </span>
+                          </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-slate-200/80 space-y-1 text-xs">
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span>Ingreso del trimestre:</span>
-                        <span
-                          data-testid={`hub-quarter-income-${q.quarter}`}
-                          className="font-bold text-slate-800 tabular-nums"
-                        >
-                          {formatCurrency(q.assigned)}
-                        </span>
+                          {/* Número principal destacado en grande: Ingreso del trimestre */}
+                          <p
+                            data-testid={`hub-quarter-income-${q.quarter}`}
+                            className="text-xl sm:text-2xl font-extrabold text-slate-900 tabular-nums mt-2.5"
+                          >
+                            {formatCurrency(q.assigned)}
+                          </p>
+                        </div>
+
+                        {/* Líneas de detalle debajo en orden exacto:
+                            1. Remanente anterior (o Saldo inicial en T1)
+                            2. Monto total de fondos (Ingreso + Remanente)
+                            3. Gastos del período (con estilo interactivo/subrayado tipo enlace) */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-200/80 space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between text-slate-600">
+                            <span>
+                              {q.quarter === 'T1' ? 'Saldo inicial:' : 'Remanente anterior:'}
+                            </span>
+                            <span
+                              data-testid={`hub-quarter-carryover-${q.quarter}`}
+                              className="font-bold text-slate-800 tabular-nums"
+                            >
+                              {formatCurrency(q.carryOverIn)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-slate-600">
+                            <span>Monto total de fondos:</span>
+                            <span
+                              data-testid={`hub-quarter-available-${q.quarter}`}
+                              className="font-extrabold text-slate-900 tabular-nums"
+                            >
+                              {formatCurrency(q.available)}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-slate-600 pt-0.5">
+                            <span>Gastos del período:</span>
+                            <button
+                              type="button"
+                              data-testid={`hub-quarter-spent-${q.quarter}`}
+                              onClick={() => setSelectedQuarterModal(q.quarter)}
+                              title={`Ver desglose de gastos de ${q.quarter}`}
+                              className="pressable font-extrabold text-rose-700 hover:text-rose-900 underline decoration-rose-400/90 underline-offset-2 tabular-nums transition cursor-pointer"
+                            >
+                              {formatCurrency(q.spent)}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span>Remanente anterior:</span>
-                        <span
-                          data-testid={`hub-quarter-carryover-${q.quarter}`}
-                          className="font-bold text-slate-800 tabular-nums"
-                        >
-                          {formatCurrency(q.carryOverIn)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span>Gastos del período:</span>
-                        <span
-                          data-testid={`hub-quarter-spent-${q.quarter}`}
-                          className="font-bold text-rose-700 tabular-nums"
-                        >
-                          {formatCurrency(q.spent)}
-                        </span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
             </section>
 
-            {/* 3. GRÁFICA: "Asignación de fondos a cada organización" */}
-            <OrgDistributionChart orgStats={executiveMetrics.orgStats} />
-
-            {/* 4. SECCIÓN: "Estado por Organización" */}
+            {/* POSICIÓN 3: SECCIÓN "Estado por Organización" (Grid en PC, Acordeones compactos en móvil) */}
             <section
               aria-label="Estado por Organización"
               data-testid="organizations-grid-section"
-              className="space-y-4"
+              className="space-y-3 sm:space-y-4"
             >
               <h2 className="text-base font-extrabold text-slate-900">
                 Estado por Organización
               </h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-4">
                 {executiveMetrics.orgStats.map((stat) => {
+                  const isExpanded = Boolean(expandedOrgs[stat.organization]);
                   const nextAct = activities
                     .filter(
                       (a) =>
@@ -1099,61 +1185,160 @@ export const PresidencyHub: React.FC = () => {
                     <article
                       key={stat.organization}
                       data-testid={`org-card-${stat.organization}`}
-                      className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/90 hover:border-slate-300 transition flex flex-col justify-between gap-4"
+                      className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-5 shadow-sm border border-slate-200/90 hover:border-slate-300 transition flex flex-col justify-between"
                     >
-                      <div>
-                        {/* Nombre de la organización */}
-                        <h3 className="text-sm font-extrabold text-slate-900">
+                      {/* Cabecera: en móvil es una fila interactiva [Nombre] ····· [$ Saldo] [▾]; en PC muestra nombre y saldo apilados */}
+                      <button
+                        type="button"
+                        data-testid={`org-accordion-toggle-${stat.organization}`}
+                        aria-expanded={isExpanded}
+                        onClick={() => toggleOrgAccordion(stat.organization)}
+                        className="w-full text-left flex items-center justify-between gap-2 md:block md:cursor-default focus:outline-none"
+                      >
+                        <h3 className="text-sm font-extrabold text-slate-900 flex-shrink-0">
                           {ORGANIZATION_LABELS[stat.organization]}
                         </h3>
 
-                        {/* Saldo disponible en grande */}
-                        <p
-                          data-testid={`org-card-available-${stat.organization}`}
-                          className={`text-2xl font-extrabold tabular-nums mt-2 ${
-                            stat.available < 0 ? 'text-rose-600' : 'text-slate-900'
-                          }`}
-                        >
-                          {formatCurrency(stat.available)}
-                        </p>
+                        {/* Línea punteada conectora solo en móvil */}
+                        <span
+                          aria-hidden="true"
+                          className="md:hidden flex-1 border-b border-dotted border-slate-300 mx-1.5 translate-y-0.5"
+                        />
 
-                        {/* Próxima actividad (con ícono 💰 si tiene costo estimado) */}
-                        <div className="mt-3 pt-3 border-t border-slate-100 text-xs">
-                          {nextAct ? (
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="inline-flex items-center gap-1.5 truncate font-medium">
-                                <Calendar className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
-                                <span className="truncate">
-                                  {nextAct.estimated_cost > 0 ? '💰 ' : ''}
-                                  {nextAct.title}
+                        <div className="flex items-center gap-2 flex-shrink-0 md:mt-2">
+                          <p
+                            data-testid={`org-card-available-${stat.organization}`}
+                            className={`text-base md:text-2xl font-extrabold tabular-nums ${
+                              stat.available < 0 ? 'text-rose-600' : 'text-slate-900'
+                            }`}
+                          >
+                            {formatCurrency(stat.available)}
+                          </p>
+
+                          <ChevronDown
+                            className={`md:hidden w-4 h-4 text-slate-500 transition-transform duration-200 ease-out ${
+                              isExpanded ? 'rotate-180 text-slate-900' : 'rotate-0'
+                            }`}
+                          />
+                        </div>
+                      </button>
+
+                      {/* Cuerpo colapsable en móvil y siempre visible en PC */}
+                      <div
+                        data-testid={`org-card-body-${stat.organization}`}
+                        className={`grid transition-[grid-template-rows,opacity,margin] duration-200 ease-out ${
+                          isExpanded
+                            ? 'grid-rows-[1fr] opacity-100 mt-3'
+                            : 'grid-rows-[0fr] opacity-0 mt-0 md:grid-rows-[1fr] md:opacity-100 md:mt-3'
+                        }`}
+                      >
+                        <div className="overflow-hidden flex flex-col justify-between gap-3.5">
+                          {/* Próxima actividad (con ícono 💰 si tiene costo estimado) */}
+                          <div className="pt-3 border-t border-slate-100 text-xs">
+                            {nextAct ? (
+                              <div className="flex items-center justify-between gap-2 text-slate-600">
+                                <span className="inline-flex items-center gap-1.5 truncate font-medium">
+                                  <Calendar className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                                  <span className="truncate">
+                                    {nextAct.estimated_cost > 0 ? '💰 ' : ''}
+                                    {nextAct.title}
+                                  </span>
                                 </span>
+                                <span className="text-[11px] font-bold text-slate-700 tabular-nums flex-shrink-0">
+                                  {formatDate(nextAct.event_date)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">
+                                Sin próxima actividad agendada
                               </span>
-                              <span className="text-[11px] font-bold text-slate-700 tabular-nums flex-shrink-0">
-                                {formatDate(nextAct.event_date)}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-slate-400">
-                              Sin próxima actividad agendada
-                            </span>
-                          )}
+                            )}
+                          </div>
+
+                          {/* Botón plano y sobrio sin íconos: "ABRIR [ORGANIZACIÓN]" */}
+                          <button
+                            type="button"
+                            data-testid={`inspect-org-${stat.organization}`}
+                            onClick={() => setInspectedOrg(stat.organization)}
+                            className="pressable w-full py-2.5 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-900 text-slate-900 hover:text-white text-xs font-extrabold tracking-wide transition text-center"
+                          >
+                            {OPEN_ORG_BUTTON_LABELS[stat.organization]}
+                          </button>
                         </div>
                       </div>
-
-                      {/* Botón plano y sobrio sin íconos: "ABRIR [ORGANIZACIÓN]" */}
-                      <button
-                        type="button"
-                        data-testid={`inspect-org-${stat.organization}`}
-                        onClick={() => setInspectedOrg(stat.organization)}
-                        className="pressable w-full py-2.5 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-900 text-slate-900 hover:text-white text-xs font-extrabold tracking-wide transition text-center"
-                      >
-                        {OPEN_ORG_BUTTON_LABELS[stat.organization]}
-                      </button>
                     </article>
                   );
                 })}
               </div>
             </section>
+
+            {/* MODAL INTERACTIVO DE GASTOS DEL TRIMESTRE (Modal en PC / Bottom Sheet en Móvil con backdrop blur) */}
+            {selectedQuarterModal && selectedQuarterSummary && (
+              <div
+                data-testid="quarter-expenses-modal-backdrop"
+                onClick={() => setSelectedQuarterModal(null)}
+                className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity"
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="quarter-expenses-modal-title"
+                  data-testid="quarter-expenses-modal"
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full sm:max-w-2xl max-h-[85dvh] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+                >
+                  {/* Cabecera: "Gastos de Trimestre [X] · Total: $ [Monto]" y botón de cerrar (✕) */}
+                  <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+                    <h3
+                      id="quarter-expenses-modal-title"
+                      data-testid="quarter-expenses-modal-title"
+                      className="text-sm sm:text-base font-extrabold tracking-tight tabular-nums"
+                    >
+                      Gastos de Trimestre {selectedQuarterModal} · Total:{' '}
+                      {formatCurrency(selectedQuarterSummary.spent)}
+                    </h3>
+                    <button
+                      type="button"
+                      data-testid="close-quarter-expenses-modal"
+                      aria-label="Cerrar desglose de gastos"
+                      onClick={() => setSelectedQuarterModal(null)}
+                      className="pressable w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition flex-shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Lista compacta con solo 3 datos esenciales: Monto ($ #.##0,00) | Organización | Propósito o Detalle */}
+                  <div className="p-4 sm:p-5 overflow-y-auto divide-y divide-slate-100">
+                    {selectedQuarterExpenses.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-6 text-center font-medium">
+                        No hay gastos registrados en este trimestre.
+                      </p>
+                    ) : (
+                      selectedQuarterExpenses.map((exp) => (
+                        <div
+                          key={exp.id}
+                          data-testid={`quarter-expense-row-${exp.id}`}
+                          className="py-2.5 flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <span className="font-extrabold text-rose-700 tabular-nums flex-shrink-0 w-24 sm:w-28">
+                              {formatCurrency(exp.net_amount)}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 font-bold text-[11px] flex-shrink-0">
+                              {ORGANIZATION_LABELS[exp.organization]}
+                            </span>
+                            <span className="text-slate-600 font-medium truncate">
+                              {exp.concept}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

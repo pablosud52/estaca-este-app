@@ -55,7 +55,7 @@ const formatPercentEs = (value: number): string =>
   `${value.toFixed(1).replace('.', ',')}%`;
 
 export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgStats }) => {
-  const [chartMode, setChartMode] = useState<'MONTOS' | 'PORCENTAJES'>('MONTOS');
+  const [chartMode, setChartMode] = useState<'MONTOS' | 'PORCENTAJES'>('PORCENTAJES');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('GLOBAL');
 
   // Obtener el monto asignado de cada organización según el filtro [Global | T1 | T2 | T3 | T4]

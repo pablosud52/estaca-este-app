@@ -103,6 +103,18 @@ export const DEV_PROFILES: UserProfile[] = [
     is_active: true,
   },
   {
+    id: 'presidencia-secretario-01',
+    email: 'secretario.estaca@gmail.com',
+    full_name: 'Secretario de Estaca',
+    role: 'PRESIDENCIA',
+    organization: 'TODAS',
+    calling: 'Secretario de Estaca (Solo Lectura)',
+    phone: '+598 99 000 004',
+    can_approve_activities: false,
+    is_permanent_admin: false,
+    is_active: true,
+  },
+  {
     id: 'no-autorizado-01',
     email: 'visitante.externo@gmail.com',
     full_name: 'Usuario No Registrado',
@@ -176,4 +188,6 @@ export const SEED_ACTIVITIES: ActivityRecord[] = [
   { id: 8, title: 'Campeonato de Vóley HHJJ y MMJJ', event_date: '2026-12-12', start_time: '15:00', location: 'Capilla Montevideo 9', organization: 'HJ', estimated_cost: 10000.00, has_budget: true, status: 'APROBADA' },
   { id: 9, title: 'Graduación y Reconocimiento de Seminario', event_date: '2026-11-28', start_time: '19:30', location: 'Centro de Estaca (Salón Cultural)', organization: 'SEMINARIO', estimated_cost: 8500.00, has_budget: true, status: 'APROBADA' },
   { id: 10, title: 'Velada de Excelencia Mujeres Jóvenes', event_date: '2026-11-18', start_time: '19:00', location: 'Centro de Estaca (Dalmiro Costa 4635)', organization: 'MJ', estimated_cost: 12000.00, has_budget: true, status: 'APROBADA' },
+  { id: 11, title: 'Campamento Anual de Mujeres Jóvenes', event_date: '2026-12-18', start_time: '08:00', location: 'Parque de Vacaciones / Predio Estaca', description: 'Transporte y alimentación para 45 jóvenes de los barrios de la Estaca.', organization: 'MJ', estimated_cost: 28000.00, has_budget: true, status: 'PROPUESTA' },
+  { id: 12, title: 'Jornada de Puertas Abiertas FamilySearch', event_date: '2026-12-05', start_time: '16:00', location: 'Centro FamilySearch Estaca', description: 'Impresión de árboles genealógicos y refrigerio para visitantes.', organization: 'CFS', estimated_cost: 1500.00, has_budget: true, status: 'PROPUESTA' },
 ];

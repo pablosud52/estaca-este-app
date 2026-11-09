@@ -49,6 +49,12 @@
       "skillPath": "skills/choreograph/SKILL.md",
       "computedHash": "b61be86c966b0cd6f504d1234ae2d361ba5cbd5b883fd96c069a2580371f686e"
     },
+    "context7": {
+      "source": "netresearch/context7-skill",
+      "sourceType": "github",
+      "skillPath": "skills/context7/SKILL.md",
+      "computedHash": "36302d0d6a366bb00503f014a6f23ab710c627f211bc16329cbd3f8f4d9b13e1"
+    },
     "emil-design-eng": {
       "source": "emilkowalski/skills",
       "sourceType": "github",

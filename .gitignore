@@ -85,3 +85,5 @@ Thumbs.db
 .gemini/commands/specify.toml
 .gemini/commands/tasks.toml
 .gemini/commands/verify.toml
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

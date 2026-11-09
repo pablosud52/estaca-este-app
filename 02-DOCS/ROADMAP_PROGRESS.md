@@ -1,7 +1,7 @@
 # ROADMAP_PROGRESS.md - Estado y Plan de Avance del Proyecto
 
-> **Fase Actual**: Reestructuración Integral de Requerimientos y Flujos de Usuario (Paso 1: Quiénes Acceden)  
-> **Última Actualización**: 2026-11-05
+> **Fase Actual**: Fase 6 — Desarrollo e Implementación del Frontend (Pasos 6.1, 6.2, 6.3 y 6.4 Completados)  
+> **Última Actualización**: 2026-11-09
 
 ---
 
@@ -86,7 +86,7 @@ flowchart TD
 - [x] Módulo de Autenticación y Selector de Rol para desarrollo (simulación fluida y Google OAuth).
 - [x] Vista 1: Pantalla Móvil del Líder (saldo, próxima actividad, historial colapsable, proponer actividad).
 - [x] Vista 2: Hub Ejecutivo de Presidencia (KPIs globales, acumulación trimestral, distribución porcentual y alertas).
-- [ ] Vista 3: Centro de Edición y Carga para Administradores (conciliación LCR en vivo, carga ágil MMDD-MONTO, retiros y sincronización Excel).
+- [x] Vista 3: Centro de Edición y Carga para Administradores (gestión de usuarios con regla de auto-protección inmutable, conciliación LCR en vivo, carga ágil MMDD-MONTO, prorrateo de gasto general de Estaca Opción B, retiros a cero y sincronización bidireccional con Excel).
 - [ ] Vista 4: Calendario de Actividades sincronizado con feed LCR (distintivo de presupuesto confidencial).
 - [ ] Vista 5: Directorio de Proveedores y Directorio de Líderes.
   - Impacto en el indicador porcentual real asignado vs. ejecutado.

@@ -12,10 +12,15 @@ import {
   TrendingUp,
   Users,
   Wallet,
-  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
+import {
+  SEED_ACTIVITIES,
+  SEED_BUDGET_ALLOCATIONS,
+  SEED_CASH_WITHDRAWALS,
+  SEED_EXPENSES,
+  SEED_SUPPLIERS,
+} from '../data/seedData';
 import {
   formatCurrency,
   formatDate,
@@ -27,13 +32,17 @@ import { supabase } from '../lib/supabase';
 import {
   ActivityRecord,
   BudgetAllocation,
+  CashWithdrawalRecord,
   ExpenseRecord,
   OrganizationCode,
   QuarterCode,
   QuarterSummary,
+  SupplierRecord,
 } from '../types/database';
 import { OrgDistributionChart, OrgSummaryStat } from '../components/OrgDistributionChart';
 import { ActivityApprovalTray } from '../components/ActivityApprovalTray';
+import { UserManagementPanel } from '../components/UserManagementPanel';
+import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
 import { LeaderView } from './LeaderView';
 
 const ALL_HUB_ORGS: OrganizationCode[] = [
@@ -51,16 +60,18 @@ const ALL_HUB_ORGS: OrganizationCode[] = [
 export const PresidencyHub: React.FC = () => {
   const { user } = useAuth();
 
-  // Sub-vista activa: DASHBOARD | APPROVALS
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'APPROVALS'>('DASHBOARD');
+  // Sub-vista activa: DASHBOARD | APPROVALS | USERS | OPERATIONS
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'APPROVALS' | 'USERS' | 'OPERATIONS'>(
+    'DASHBOARD'
+  );
   // Si el usuario entra a inspeccionar una organización en Modo Espejo
   const [inspectedOrg, setInspectedOrg] = useState<OrganizationCode | null>(null);
-  // Aviso para módulos del Paso 6.4 (exclusivos de ADMIN)
-  const [adminModuleNotice, setAdminModuleNotice] = useState<string | null>(null);
 
   const [budgets, setBudgets] = useState<BudgetAllocation[]>(SEED_BUDGET_ALLOCATIONS);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(SEED_EXPENSES);
   const [activities, setActivities] = useState<ActivityRecord[]>(SEED_ACTIVITIES);
+  const [withdrawals, setWithdrawals] = useState<CashWithdrawalRecord[]>(SEED_CASH_WITHDRAWALS);
+  const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
 
   // Sincronización en tiempo real con Supabase con fallback a SEED_DATA
   useEffect(() => {
@@ -68,10 +79,12 @@ export const PresidencyHub: React.FC = () => {
 
     async function fetchExecutiveData() {
       try {
-        const [budgetRes, expenseRes, activityRes] = await Promise.all([
+        const [budgetRes, expenseRes, activityRes, withdrawalRes, supplierRes] = await Promise.all([
           supabase.from('budget_allocations').select('*').eq('year', 2026),
           supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
           supabase.from('activities').select('*').order('event_date', { ascending: true }),
+          supabase.from('cash_withdrawals').select('*').order('withdrawal_date', { ascending: false }),
+          supabase.from('suppliers').select('*').order('commercial_name', { ascending: true }),
         ]);
 
         if (!active) return;
@@ -90,14 +103,23 @@ export const PresidencyHub: React.FC = () => {
         }
 
         if (!expenseRes.error && expenseRes.data && expenseRes.data.length > 0) {
-          setExpenses(
-            expenseRes.data.map((e) => ({
-              ...e,
-              gross_amount: Number(e.gross_amount),
-              external_reimbursement: Number(e.external_reimbursement),
-              net_amount: Number(e.net_amount),
-            })) as ExpenseRecord[]
-          );
+          const remoteExpenses = expenseRes.data.map((e) => ({
+            ...e,
+            gross_amount: Number(e.gross_amount),
+            external_reimbursement: Number(e.external_reimbursement),
+            net_amount: Number(e.net_amount),
+          })) as ExpenseRecord[];
+
+          setExpenses((prev) => {
+            const prevById = new Map(prev.map((item) => [item.id, item]));
+            const localNewOnly = prev.filter(
+              (item) => !remoteExpenses.some((r) => r.id === item.id)
+            );
+            return [
+              ...localNewOnly,
+              ...remoteExpenses.map((item) => prevById.get(item.id) || item),
+            ];
+          });
         }
 
         if (!activityRes.error && activityRes.data && activityRes.data.length > 0) {
@@ -118,6 +140,33 @@ export const PresidencyHub: React.FC = () => {
             return mergedRemoteAndSeed
               .map((item) => prevById.get(item.id) || item)
               .sort((a, b) => a.event_date.localeCompare(b.event_date));
+          });
+        }
+
+        if (!withdrawalRes.error && withdrawalRes.data && withdrawalRes.data.length > 0) {
+          const remoteWithdrawals = withdrawalRes.data.map((w) => ({
+            ...w,
+            amount: Number(w.amount),
+            returned_amount: Number(w.returned_amount || 0),
+          })) as CashWithdrawalRecord[];
+
+          setWithdrawals((prev) => {
+            const prevById = new Map(prev.map((item) => [item.id, item]));
+            const localNewOnly = prev.filter(
+              (item) => !remoteWithdrawals.some((r) => r.id === item.id)
+            );
+            return [
+              ...localNewOnly,
+              ...remoteWithdrawals.map((item) => prevById.get(item.id) || item),
+            ];
+          });
+        }
+
+        if (!supplierRes.error && supplierRes.data && supplierRes.data.length > 0) {
+          setSuppliers((prev) => {
+            const remoteNames = new Set(supplierRes.data.map((s) => s.commercial_name));
+            const localNewOnly = prev.filter((item) => !remoteNames.has(item.commercial_name));
+            return [...(supplierRes.data as SupplierRecord[]), ...localNewOnly];
           });
         }
       } catch {
@@ -342,6 +391,100 @@ export const PresidencyHub: React.FC = () => {
     }
   };
 
+  // =========================================================================
+  // HANDLERS EXCLUSIVOS DEL PANEL DE ADMINISTRADOR (Paso 6.4)
+  // =========================================================================
+  const handleCreateExpense = async (newExpense: Omit<ExpenseRecord, 'id'>) => {
+    const tempId = Date.now();
+    const record: ExpenseRecord = { ...newExpense, id: tempId };
+    setExpenses((prev) => [record, ...prev]);
+
+    try {
+      await supabase.from('expenses').insert([newExpense]);
+    } catch {
+      // Estado local ya actualizado
+    }
+  };
+
+  const handleCreateMultipleExpenses = async (expensesList: Array<Omit<ExpenseRecord, 'id'>>) => {
+    const baseId = Date.now();
+    const records: ExpenseRecord[] = expensesList.map((item, idx) => ({
+      ...item,
+      id: baseId + idx,
+    }));
+    setExpenses((prev) => [...records, ...prev]);
+
+    try {
+      await supabase.from('expenses').insert(expensesList);
+    } catch {
+      // Estado local ya actualizado
+    }
+  };
+
+  const handleReconcileLcrExpense = async (id: number) => {
+    setExpenses((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, status: 'REGISTRADO_LCR' } : e))
+    );
+    try {
+      await supabase.from('expenses').update({ status: 'REGISTRADO_LCR' }).eq('id', id);
+    } catch {
+      // Estado local ya actualizado
+    }
+  };
+
+  const handleCreateWithdrawal = async (newWithdrawal: Omit<CashWithdrawalRecord, 'id'>) => {
+    const record: CashWithdrawalRecord = { ...newWithdrawal, id: Date.now() };
+    setWithdrawals((prev) => [record, ...prev]);
+
+    try {
+      await supabase.from('cash_withdrawals').insert([newWithdrawal]);
+    } catch {
+      // Estado local ya actualizado
+    }
+  };
+
+  const handleCloseWithdrawalInZero = async (
+    id: number,
+    returnAmount: number,
+    returnDate: string
+  ) => {
+    setWithdrawals((prev) =>
+      prev.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              returned_amount: Number(w.returned_amount || 0) + returnAmount,
+              return_date: returnAmount > 0 ? returnDate : w.return_date,
+              status: 'CERRADO_EN_CERO',
+            }
+          : w
+      )
+    );
+    try {
+      await supabase
+        .from('cash_withdrawals')
+        .update({
+          returned_amount: returnAmount,
+          return_date: returnAmount > 0 ? returnDate : null,
+          status: 'CERRADO_EN_CERO',
+        })
+        .eq('id', id);
+    } catch {
+      // Estado local ya actualizado
+    }
+  };
+
+  const handleCreateSupplier = async (newSupplier: Omit<SupplierRecord, 'id'>) => {
+    const record: SupplierRecord = { ...newSupplier, id: Date.now() };
+    setSuppliers((prev) => [...prev, record]);
+
+    try {
+      await supabase.from('suppliers').insert([newSupplier]);
+    } catch {
+      // Estado local ya actualizado
+    }
+  };
+
   // Si el usuario seleccionó una organización para verla en Modo Espejo (idéntica a la vista del líder)
   if (inspectedOrg) {
     return (
@@ -411,10 +554,7 @@ export const PresidencyHub: React.FC = () => {
               <button
                 type="button"
                 data-testid="hub-nav-dashboard"
-                onClick={() => {
-                  setActiveTab('DASHBOARD');
-                  setAdminModuleNotice(null);
-                }}
+                onClick={() => setActiveTab('DASHBOARD')}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
                   activeTab === 'DASHBOARD'
                     ? 'bg-slate-900 text-white shadow-sm'
@@ -429,10 +569,7 @@ export const PresidencyHub: React.FC = () => {
               <button
                 type="button"
                 data-testid="hub-nav-approvals"
-                onClick={() => {
-                  setActiveTab('APPROVALS');
-                  setAdminModuleNotice(null);
-                }}
+                onClick={() => setActiveTab('APPROVALS')}
                 className={`pressable relative inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
                   activeTab === 'APPROVALS'
                     ? 'bg-slate-900 text-white shadow-sm ring-2 ring-amber-400/70'
@@ -467,34 +604,42 @@ export const PresidencyHub: React.FC = () => {
               </button>
             </div>
 
-            {/* Botones Exclusivos de Administrador (PROJECT_CONTEXT.md §3.3) */}
+            {/* Botones Exclusivos de Administrador (PROJECT_CONTEXT.md §3.3 y §4.3) */}
             {user.role === 'ADMIN' && (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   data-testid="hub-admin-users-btn"
-                  onClick={() =>
-                    setAdminModuleNotice(
-                      'El panel de Gestión de Usuarios (con regla de auto-protección inmutable) se habilitará en el Paso 6.4.'
-                    )
-                  }
-                  className="pressable inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-bold whitespace-nowrap"
+                  onClick={() => setActiveTab('USERS')}
+                  className={`pressable inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
+                    activeTab === 'USERS'
+                      ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  }`}
                 >
-                  <Users className="w-3.5 h-3.5 text-emerald-700" />
+                  <Users
+                    className={`w-3.5 h-3.5 ${
+                      activeTab === 'USERS' ? 'text-emerald-300' : 'text-emerald-700'
+                    }`}
+                  />
                   <span>Gestión de Usuarios</span>
                 </button>
 
                 <button
                   type="button"
                   data-testid="hub-admin-operations-btn"
-                  onClick={() =>
-                    setAdminModuleNotice(
-                      'El Centro de Edición y Carga Operativa (LCR, retiros MMDD-MONTO y Excel) se habilitará en el Paso 6.4.'
-                    )
-                  }
-                  className="pressable inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-bold whitespace-nowrap"
+                  onClick={() => setActiveTab('OPERATIONS')}
+                  className={`pressable inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
+                    activeTab === 'OPERATIONS'
+                      ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  }`}
                 >
-                  <FileEdit className="w-3.5 h-3.5 text-emerald-700" />
+                  <FileEdit
+                    className={`w-3.5 h-3.5 ${
+                      activeTab === 'OPERATIONS' ? 'text-emerald-300' : 'text-emerald-700'
+                    }`}
+                  />
                   <span>Centro de Edición y Carga</span>
                 </button>
               </div>
@@ -505,23 +650,23 @@ export const PresidencyHub: React.FC = () => {
 
       {/* ==================== CONTENIDO PRINCIPAL DEL HUB ==================== */}
       <main className="max-w-6xl w-full mx-auto px-4 sm:px-6 pt-5 space-y-6 flex-1">
-        {adminModuleNotice && (
-          <div className="p-3.5 rounded-2xl bg-slate-900 text-white text-xs font-semibold flex items-center justify-between gap-3 shadow-md">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>{adminModuleNotice}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAdminModuleNotice(null)}
-              className="text-slate-400 hover:text-white text-xs font-bold px-2 py-0.5"
-            >
-              Cerrar
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'APPROVALS' ? (
+        {activeTab === 'USERS' && user.role === 'ADMIN' ? (
+          <UserManagementPanel />
+        ) : activeTab === 'OPERATIONS' && user.role === 'ADMIN' ? (
+          <AdminOperationsCenter
+            budgets={budgets}
+            expenses={expenses}
+            withdrawals={withdrawals}
+            activities={activities}
+            suppliers={suppliers}
+            onCreateExpense={handleCreateExpense}
+            onCreateMultipleExpenses={handleCreateMultipleExpenses}
+            onReconcileLcrExpense={handleReconcileLcrExpense}
+            onCreateWithdrawal={handleCreateWithdrawal}
+            onCloseWithdrawalInZero={handleCloseWithdrawalInZero}
+            onCreateSupplier={handleCreateSupplier}
+          />
+        ) : activeTab === 'APPROVALS' ? (
           <ActivityApprovalTray
             activities={activities}
             canApprove={user.can_approve_activities || user.role === 'ADMIN'}

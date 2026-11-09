@@ -7,6 +7,8 @@ interface AuthContextValue {
   user: UserProfile;
   profiles: UserProfile[];
   switchProfileById: (profileId: string) => void;
+  updateUserProfile: (id: string, updates: Partial<UserProfile>) => Promise<void>;
+  addUserProfile: (newProfile: Omit<UserProfile, 'id'>) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   isSimulating: boolean;
@@ -39,13 +41,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .order('full_name', { ascending: true });
 
         if (!error && data && data.length > 0 && mounted) {
-          // Merge remote profiles with dev simulation profiles without losing dev test personas
-          const remoteEmails = new Set(data.map((d) => d.email));
-          const merged: UserProfile[] = [
-            ...DEV_PROFILES.filter((p) => !remoteEmails.has(p.email)),
-            ...(data as UserProfile[]),
-          ];
-          setProfiles(merged);
+          // Merge remote profiles preserving deterministic DEV_PROFILES IDs when email matches
+          const devByEmail = new Map(
+            DEV_PROFILES.map((p) => [p.email.toLowerCase(), p])
+          );
+          const remoteEmails = new Set(
+            data.map((d) => String(d.email || '').toLowerCase())
+          );
+
+          const normalizedRemote: UserProfile[] = data.map((d) => {
+            const devMatch = devByEmail.get(String(d.email || '').toLowerCase());
+            return {
+              ...(d as UserProfile),
+              id: devMatch ? devMatch.id : String(d.id),
+            };
+          });
+
+          setProfiles((prev) => {
+            const prevById = new Map(prev.map((item) => [item.id, item]));
+            const merged: UserProfile[] = [
+              ...DEV_PROFILES.filter((p) => !remoteEmails.has(p.email.toLowerCase())),
+              ...normalizedRemote,
+            ];
+            return merged.map((item) => prevById.get(item.id) || item);
+          });
         }
       } catch {
         // Fallback silencioso a DEV_PROFILES en caso de desconexión local
@@ -66,6 +85,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, target.id);
       }
+    }
+  };
+
+  const updateUserProfile = async (id: string, updates: Partial<UserProfile>) => {
+    setProfiles((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        // Regla Sagrada #1: Ningún administrador puede quitarse permisos ni modificar un admin permanente
+        if (item.is_permanent_admin || item.email === user.email) {
+          return item;
+        }
+        return { ...item, ...updates };
+      })
+    );
+
+    try {
+      await supabase.from('users_profiles').update(updates).eq('id', id);
+    } catch {
+      // Estado local ya actualizado
+    }
+  };
+
+  const addUserProfile = async (newProfile: Omit<UserProfile, 'id'>) => {
+    const created: UserProfile = {
+      ...newProfile,
+      id: `user-${Date.now()}`,
+    };
+    setProfiles((prev) => [...prev, created]);
+
+    try {
+      await supabase.from('users_profiles').insert([newProfile]);
+    } catch {
+      // Estado local ya actualizado
     }
   };
 
@@ -106,6 +158,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         profiles,
         switchProfileById,
+        updateUserProfile,
+        addUserProfile,
         signInWithGoogle,
         signOut,
         isSimulating,

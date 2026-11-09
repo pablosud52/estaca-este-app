@@ -32,6 +32,9 @@ export default defineConfig({
       }
     })
   ],
+  optimizeDeps: {
+    include: ['xlsx', 'chart.js', 'react-chartjs-2', 'lucide-react', '@supabase/supabase-js'],
+  },
   build: {
     rollupOptions: {
       output: {

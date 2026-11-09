@@ -1,4 +1,11 @@
-import { ActivityRecord, BudgetAllocation, ExpenseRecord, UserProfile } from '../types/database';
+import {
+  ActivityRecord,
+  BudgetAllocation,
+  CashWithdrawalRecord,
+  ExpenseRecord,
+  SupplierRecord,
+  UserProfile,
+} from '../types/database';
 
 /**
  * Perfiles de desarrollo y simulación rápida (Paso 6.1)
@@ -190,4 +197,40 @@ export const SEED_ACTIVITIES: ActivityRecord[] = [
   { id: 10, title: 'Velada de Excelencia Mujeres Jóvenes', event_date: '2026-11-18', start_time: '19:00', location: 'Centro de Estaca (Dalmiro Costa 4635)', organization: 'MJ', estimated_cost: 12000.00, has_budget: true, status: 'APROBADA' },
   { id: 11, title: 'Campamento Anual de Mujeres Jóvenes', event_date: '2026-12-18', start_time: '08:00', location: 'Parque de Vacaciones / Predio Estaca', description: 'Transporte y alimentación para 45 jóvenes de los barrios de la Estaca.', organization: 'MJ', estimated_cost: 28000.00, has_budget: true, status: 'PROPUESTA' },
   { id: 12, title: 'Jornada de Puertas Abiertas FamilySearch', event_date: '2026-12-05', start_time: '16:00', location: 'Centro FamilySearch Estaca', description: 'Impresión de árboles genealógicos y refrigerio para visitantes.', organization: 'CFS', estimated_cost: 1500.00, has_budget: true, status: 'PROPUESTA' },
+];
+
+export const SEED_CASH_WITHDRAWALS: CashWithdrawalRecord[] = [
+  { id: 1, withdrawal_ref: '1205-55000', withdrawal_date: '2026-05-12', amount: 55000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividades de Estaca', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 2, withdrawal_ref: '1226-30000', withdrawal_date: '2026-12-26', amount: 30000.00, responsible_person: 'Pablo Lamela', purpose: 'Campamento y suministros', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 3, withdrawal_ref: '0131-48000', withdrawal_date: '2026-01-31', amount: 48000.00, responsible_person: 'Pablo Lamela', purpose: 'PFJ - Transporte', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 4, withdrawal_ref: '0221-60000', withdrawal_date: '2026-02-21', amount: 60000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividad Mujeres Jóvenes', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 5, withdrawal_ref: '0307-60000', withdrawal_date: '2026-03-07', amount: 60000.00, responsible_person: 'Pablo Lamela', purpose: 'Retiro General', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 6, withdrawal_ref: '0314-28000', withdrawal_date: '2026-03-14', amount: 28000.00, responsible_person: 'Pablo Lamela', purpose: 'Sociedad de Socorro', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 7, withdrawal_ref: '0506-43000', withdrawal_date: '2026-05-06', amount: 43000.00, responsible_person: 'Pablo Lamela', purpose: 'Retiro General Varias Orgs', status: 'CERRADO_EN_CERO', return_date: '2026-06-01', returned_amount: 1241.00 },
+  { id: 8, withdrawal_ref: '0709-20000', withdrawal_date: '2026-07-09', amount: 20000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividades Juventud', status: 'CERRADO_EN_CERO', return_date: '2026-08-02', returned_amount: 1506.00 },
+  { id: 9, withdrawal_ref: '0808-10000', withdrawal_date: '2026-08-08', amount: 10000.00, responsible_person: 'Pablo Lamela', purpose: 'Supermercado Devoto', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 10, withdrawal_ref: '0822-10000', withdrawal_date: '2026-08-22', amount: 10000.00, responsible_person: 'Pablo Lamela', purpose: 'Adultos Solteros / Misceláneo', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 11, withdrawal_ref: '0827-20000', withdrawal_date: '2026-08-27', amount: 20000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividad Meet-up', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 12, withdrawal_ref: '0902-30000', withdrawal_date: '2026-09-02', amount: 30000.00, responsible_person: 'Pablo Lamela', purpose: 'Equipo de Audio y Meetup', status: 'PENDIENTE_JUSTIFICAR', return_date: null, returned_amount: 0 },
+  { id: 13, withdrawal_ref: '1012-25000', withdrawal_date: '2026-10-12', amount: 25000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividades Octubre', status: 'PENDIENTE_JUSTIFICAR', return_date: null, returned_amount: 0 },
+];
+
+export const SEED_SUPPLIERS: SupplierRecord[] = [
+  { id: 1, commercial_name: 'PALTICOR SA (LOS TREINTA Y TRES)', legal_name: 'PALTICOR SA', rut: '214567890012', category: 'Ferretería y Pinturas', official_invoice: true, phone: '2900 1234', email: 'ventas@palticor.com.uy', address: 'Montevideo', rating: 5 },
+  { id: 2, commercial_name: 'ABITAB SA', legal_name: 'ABITAB SA', rut: '213456780019', category: 'Servicios de Cobranza y Pagos', official_invoice: true, phone: '17123', email: 'contacto@abitab.com.uy', address: 'Sucursales en todo el país', rating: 5 },
+  { id: 3, commercial_name: 'Oldfin SA (Ofimax)', legal_name: 'Oldfin SA', rut: '216543210015', category: 'Papelería e Insumos de Oficina', official_invoice: true, phone: '2401 5678', email: 'ventas@ofimax.com.uy', address: 'Montevideo', rating: 5 },
+  { id: 4, commercial_name: 'Gustapio Ltda', legal_name: 'Gustapio Ltda', rut: '217894560018', category: 'Transporte y Fletes', official_invoice: true, phone: '099 876 543', email: 'gustapio.transportes@gmail.com', address: 'Montevideo y Canelones', rating: 5 },
+  { id: 5, commercial_name: 'PAIZ CUILIGOTTI FATIMA GENELA - CINCO DEDOS GRAFICOS', legal_name: 'FATIMA GENELA PAIZ CUILIGOTTI', rut: '218965410013', category: 'Imprenta y Gráfica', official_invoice: true, phone: '098 765 432', email: 'cincodedosgraficos@gmail.com', address: 'Montevideo', rating: 5 },
+  { id: 6, commercial_name: 'Mosca', legal_name: 'MOSCA HNOS SA', rut: '210123450014', category: 'Librería, Papelería y Juguetería', official_invoice: true, phone: '2902 0000', email: 'atencion@mosca.com.uy', address: 'Montevideo Shopping / Portones', rating: 5 },
+  { id: 7, commercial_name: 'ELSOBERANO SAS - EL SOBERANO MAYORISTA', legal_name: 'ELSOBERANO SAS', rut: '219874560011', category: 'Comestibles Mayorista', official_invoice: true, phone: '2508 1234', email: 'ventas@elsoberano.com.uy', address: 'Montevideo', rating: 5 },
+  { id: 8, commercial_name: 'Disco Uruguay SA', legal_name: 'DISCO URUGUAY SA', rut: '210987650017', category: 'Supermercado y Alimentación', official_invoice: true, phone: '2711 0000', email: 'clientes@disco.com.uy', address: 'Sucursales Malvín / Punta Gorda', rating: 5 },
+  { id: 9, commercial_name: 'CAMOR LTDA - PANADERIA Y CONF SARATOGA', legal_name: 'CAMOR LTDA', rut: '215478960016', category: 'Panadería y Confitería', official_invoice: true, phone: '2613 4567', email: 'saratogapanaderia@gmail.com', address: 'Malvín Norte', rating: 5 },
+  { id: 10, commercial_name: 'MAXIMILIANO ALVAREZ', legal_name: 'MAXIMILIANO ALVAREZ', rut: '120345678901', category: 'Sonido, Iluminación y Eventos', official_invoice: true, phone: '094 123 789', email: 'maxi.audio.uy@gmail.com', address: 'Montevideo', rating: 5 },
+  { id: 11, commercial_name: 'Nueva Cooper SRL (Panadería)', legal_name: 'NUEVA COOPER SRL', rut: '213698520010', category: 'Panadería, Confitería y Catering', official_invoice: true, phone: '2600 9876', email: 'nuevacoopersrl@gmail.com', address: 'Carrasco / Malvín', rating: 5 },
+  { id: 12, commercial_name: 'DISER SAS (DISERSHOP)', legal_name: 'DISER SAS', rut: '216987450014', category: 'Serigrafía, Prendas e Impresiones', official_invoice: true, phone: '2200 4567', email: 'ventas@disershop.com.uy', address: 'Montevideo', rating: 5 },
+  { id: 13, commercial_name: 'DEVOTO SUPERMERCADO', legal_name: 'DEVOTO HNOS SA', rut: '210543210019', category: 'Supermercado y Alimentación', official_invoice: true, phone: '2708 0000', email: 'clientes@devoto.com.uy', address: 'Portones Shopping / Malvín', rating: 5 },
+  { id: 14, commercial_name: 'LA NUEVA BARCELONESA - VISAO SA', legal_name: 'VISAO SA', rut: '214785230018', category: 'Panadería y Confitería', official_invoice: true, phone: '2487 1122', email: 'lanuevabarcelonesa@gmail.com', address: 'La Blanqueada', rating: 5 },
+  { id: 15, commercial_name: 'TATA', legal_name: 'TATA SA', rut: '210001230012', category: 'Supermercado y Variedades', official_invoice: true, phone: '2900 8282', email: 'clientes@tata.com.uy', address: 'Sucursales en Montevideo', rating: 5 },
+  { id: 16, commercial_name: 'CONFITERIA PANINO (ALVANA SRL)', legal_name: 'ALVANA SRL', rut: '215896320015', category: 'Confitería, Lunch y Catering', official_invoice: true, phone: '2707 3344', email: 'pedidos@panino.com.uy', address: 'Pocitos / Malvín', rating: 5 },
+  { id: 17, commercial_name: 'SCANNIELLO GATTO MIGUEL ANGEL - MUSIC-PRO', legal_name: 'MIGUEL ANGEL SCANNIELLO GATTO', rut: '212589630011', category: 'Audio Profesional e Instrumentos', official_invoice: true, phone: '2901 7788', email: 'contacto@musicpro.com.uy', address: 'Centro Montevideo', rating: 5 },
 ];

@@ -62,7 +62,7 @@ Una batería de pruebas automatizadas de extremo a extremo en navegador móvil v
 - **Error paths**: Si un usuario no está registrado o se encuentra inactivo, el sistema bloquea toda información financiera y presenta únicamente el mensaje oficial: *"Acceso restringido. Ponte en contacto con el administrador o un miembro de la presidencia de Estaca."* Si el formulario de propuesta se envía sin título, fecha o lugar, informa el dato faltante sin cerrar la ventana.
 
 ## Acceptance criteria
-- Given una líder activa de Mujeres Jóvenes, When visualiza su tarjeta de saldo y activa la casilla de Seminario, Then el saldo disponible pasa de `$ 51.437,00` a `$ 61.437,00` respetando el formato `$ #.##0,00` (implementado en commit `4e4e805`).
+- Given una líder activa de Mujeres Jóvenes, When visualiza su tarjeta de saldo y activa la casilla de Seminario, Then el saldo disponible pasa de `$ 51.437,00` a `$ 61.437,00` respetando el formato `$ #.##0,00`.
 - Given un líder en la vista móvil inicial, When toca el encabezado de Historial Anual de Gastos, Then la sección se despliega mostrando los comprobantes con fecha `dd/mm/aaaa` y el gasto neto multiestaca de `$ 4.750,00`.
 - Given una líder activa de Primaria que abre el Calendario Anual en vista Agenda General Estaca, When observa actividades con presupuesto de Adultos Solteros u Hombres Jóvenes, Then ve el nombre, fecha y lugar del evento pero no ve el importe ni el distintivo `💰 Con Presupuesto`.
 - Given una líder de Mujeres Jóvenes en el formulario de Proponer Actividad, When registra una actividad marcando la casilla de Seminario y cambia al perfil de Hombres Jóvenes, Then la actividad propuesta y su presupuesto estimado aparecen automáticamente en la agenda de Hombres Jóvenes.

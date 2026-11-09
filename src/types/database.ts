@@ -77,3 +77,28 @@ export interface QuarterSummary {
   spent: number;
   remaining: number;
 }
+
+export interface CashWithdrawalRecord {
+  id: number;
+  withdrawal_ref: string;
+  withdrawal_date: string; // YYYY-MM-DD
+  amount: number;
+  responsible_person: string;
+  purpose: string;
+  status: 'CERRADO_EN_CERO' | 'PENDIENTE_JUSTIFICAR';
+  return_date: string | null;
+  returned_amount: number;
+}
+
+export interface SupplierRecord {
+  id: number;
+  commercial_name: string;
+  legal_name?: string;
+  rut?: string;
+  category: string;
+  official_invoice: boolean;
+  phone?: string;
+  email?: string;
+  address?: string;
+  rating: number;
+}

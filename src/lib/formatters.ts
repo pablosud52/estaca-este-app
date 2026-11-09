@@ -107,3 +107,48 @@ export function canViewActivityBudget(
   }
   return false;
 }
+
+/**
+ * Parser inteligente para el atajo rápido "MMDD-MONTO" (ADR-008 / Paso 6.4)
+ * Ejemplo: "0315-1250" -> { isValid: true, date: '2026-03-15', amount: 1250, ref: '0315-1250' }
+ */
+export function parseMmddMontoShortcut(
+  rawInput: string,
+  year = 2026
+): { isValid: boolean; date?: string; amount?: number; ref?: string } {
+  const clean = rawInput.trim();
+  const match = /^(\d{2})(\d{2})-(\d+(?:[.,]\d{1,2})?)$/.exec(clean);
+  if (!match) {
+    return { isValid: false };
+  }
+
+  const month = parseInt(match[1], 10);
+  const day = parseInt(match[2], 10);
+  const amount = parseFloat(match[3].replace(',', '.'));
+
+  if (month < 1 || month > 12 || day < 1 || day > 31 || !Number.isFinite(amount) || amount <= 0) {
+    return { isValid: false };
+  }
+
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  const isoDate = `${year}-${mm}-${dd}`;
+  return {
+    isValid: true,
+    date: isoDate,
+    amount,
+    ref: `${mm}${dd}-${Math.round(amount)}`,
+  };
+}
+
+/**
+ * Genera el código MMDD-MONTO a partir de una fecha YYYY-MM-DD y un importe
+ */
+export function buildMmddMontoRef(isoDate: string, amount: number): string {
+  const parts = isoDate.trim().slice(0, 10).split('-');
+  if (parts.length !== 3) return '';
+  const [, month, day] = parts;
+  const rounded = Math.round(Number(amount) || 0);
+  if (rounded <= 0) return '';
+  return `${month.padStart(2, '0')}${day.padStart(2, '0')}-${rounded}`;
+}

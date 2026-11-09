@@ -3,5 +3,125 @@
 @tailwind utilities;
 
 :root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  min-height: 100dvh;
+  overscroll-behavior: none;
+}
+
+/* Prevent iOS Safari zoom on input focus without disabling pinch-to-zoom */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Native touch responsiveness & prevent accidental label selection */
+button,
+a,
+[role="button"],
+summary {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Subtle physical press feedback (Emil Kowalski standard) */
+.pressable {
+  transition: transform 150ms var(--ease-out), background-color 150ms var(--ease-out), border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Smooth collapsible accordion using CSS Grid rows */
+.accordion-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms var(--ease-out), opacity 180ms var(--ease-out);
+}
+
+.accordion-content[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-inner {
+  overflow: hidden;
+}
+
+/* Native <dialog> modal styling & entry animation */
+dialog:modal {
+  overscroll-behavior: contain;
+  animation: modal-enter 200ms var(--ease-out) forwards;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  animation: backdrop-enter 200ms var(--ease-out) forwards;
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Tabular figures for all financial values */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hide scrollbars on horizontal chip strips while preserving touch scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+  .accordion-content {
+    transition: opacity 150ms ease;
+  }
+  dialog:modal {
+    animation: backdrop-enter 150ms ease forwards;
+  }
 }

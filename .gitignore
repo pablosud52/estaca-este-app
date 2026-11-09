@@ -87,3 +87,6 @@ Thumbs.db
 .gemini/commands/verify.toml
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+test-results/
+playwright-report/
+tsconfig.tsbuildinfo

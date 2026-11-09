@@ -83,8 +83,8 @@ flowchart TD
 ---
 
 ## 🚀 Fase 6: Desarrollo e Implementación del Frontend (En Curso)
-- [ ] Módulo de Autenticación y Selector de Rol para desarrollo (simulación fluida y Google OAuth).
-- [ ] Vista 1: Pantalla Móvil del Líder (saldo, próxima actividad, historial colapsable, proponer actividad).
+- [x] Módulo de Autenticación y Selector de Rol para desarrollo (simulación fluida y Google OAuth).
+- [x] Vista 1: Pantalla Móvil del Líder (saldo, próxima actividad, historial colapsable, proponer actividad).
 - [ ] Vista 2: Hub Ejecutivo de Presidencia (KPIs globales, acumulación trimestral, distribución porcentual y alertas).
 - [ ] Vista 3: Centro de Edición y Carga para Administradores (conciliación LCR en vivo, carga ágil MMDD-MONTO, retiros y sincronización Excel).
 - [ ] Vista 4: Calendario de Actividades sincronizado con feed LCR (distintivo de presupuesto confidencial).

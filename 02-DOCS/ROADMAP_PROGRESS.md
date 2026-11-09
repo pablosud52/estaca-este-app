@@ -60,27 +60,31 @@ flowchart TD
 - [x] Formulario administrativo `Distribuir Gasto de Actividad de Estaca` para prorratear importes entre las organizaciones involucradas.
 - [x] Asiento como gasto transparente en cada organización con la etiqueta `Actividad General de Estaca: [Nombre Evento]`, cuadrando con LCR y la barra visual.
 
-### ⏳ Paso 5: Arquitectura Técnica y Sincronización Excel (Completado y Auditado)
-- [x] Selección del stack moderno: **Vercel** (Frontend PWA) + **Supabase** (PostgreSQL gratuito con Google Auth nativo).
-- [x] Modelo de sincronización Excel aprobado: Opción 1 (Botones `📥 Exportar Excel` y `📤 Importar Excel` en Web App; Excel como respaldo/backup local).
-- [x] Documentación y modelado del circuito de retiros, excedentes de efectivo, reutilización entre actividades y redepósitos.
-- [x] Carga de gastos con autocompletado inteligente `MMDD-MONTO` y casilla para liberar referencia numérica en gastos directos con tarjeta/banco.
-- [x] Gestión de gastos compartidos con otras Estacas/unidades aprobada (Solución 1: Monto Bruto LCR vs. Reintegro Externo = Gasto Neto Organización).
-- [x] Depuración y verificación final de [`Ejemplo_DB_Finanzas.xlsx`](file:///g:/Mi%20unidad/Estaca/Finanzas/APP_DB/Ejemplo_DB_Finanzas.xlsx):
-  - **0 vínculos externos**: libro 100% autónomo.
-  - Hoja `00_Directorio_Lideres` activa con miembros de Presidencia, Sumo Consejo y líderes de organizaciones.
-  - Hoja `06_Directorio_Proveedores` incorporada y poblada con 17 proveedores reales con RUT, rubro, contacto y requisito de boleta fiscal.
-  - Tabla de Conciliación en vivo en primera posición con métricas exactas de LCR: Retiros sin Justificar ($21.500,00), Total sin Justificar ($23.558,00), Gastos sin Rendir ($15.506,00) y Diferencia ($8.052,00).
-  - Tarjetas KPI: Presupuesto Total Recibido ($419.773,09), Gastos No Reembolsables ($305.605,00), Gastos Reembolsables ($195.559,71), Saldo LCR ($129.674,09) y Saldo Real Disponible ($114.168,09).
-  - Verificación 100% cruzada con el reporte completo de 84 movimientos de LCR (transferencias trimestrales desglosadas por unidad, gastos, ajustes y reintegros OAI).
-- [x] Tarea de Integración de Calendario LCR completada:
-  - Feed verificado y funcional vía endpoint oficial de grupo: `https://churchofjesuschrist.org/church-calendar/services/ext/v3.0/export/ical/group/cd92d6817fa64d25bc2f55aec4fea180`.
-  - Detección automática de reprogramaciones y cancelaciones mediante `UID` estándar iCal.
-  - Insignia visual destacada para actividades que conllevan presupuesto.
-  - Guardado en hoja `00_Configuracion` del libro Excel maestro.
-- [x] Arquitectura de Frontend aprobada: **Opción A (PWA Unificada con Enrutamiento RBAC)**. Un solo despliegue con vistas dinámicas según perfil (Líder / Presidencia / Admin).
-- [ ] Tarea en curso: Evaluación e instalación de skills / repositorios de diseño UI/UX.
-- [ ] Tarea siguiente: Verificación de cuentas (Vercel y GitHub) e inicio del desarrollo del Frontend + Supabase.
+### ✅ Paso 5: Arquitectura Técnica y Configuración de Entorno (100% Completado y Verificado)
+- [x] Repositorio oficial en GitHub: `pablosud52/estaca-este-app` activo y sincronizado.
+- [x] Despliegue en Vercel activo y funcionando en vivo: **`https://estacaeste.vercel.app`**.
+- [x] Variables de entorno `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` configuradas en Vercel.
+- [x] Base de datos en Supabase (São Paulo) inicializada, auditada y comunicada en tiempo real:
+  - 2 parámetros de configuración oficial del feed de calendario.
+  - 6 usuarios iniciales con administradores permanentes inmutables (Pablo Lamela y Presidente).
+  - 9 organizaciones con presupuestos 2026 cargados.
+  - 35 comprobantes de gastos auditados en LCR.
+  - 13 retiros de fondos con conciliaciones a cero y pendientes.
+  - 17 proveedores reales con RUT y calificación.
+  - 8 actividades en agenda oficial.
+- [x] Harness `rsc-harness` inicializado con target `gemini` y perfil incremental.
+- [x] Skills de diseño UI/UX instaladas: `impeccable` (Paul Bakaus) y `emilkowalski/skills` (18 skills de motion y craft).
+- [x] Respaldo automático con `robocopy` hacia Google Drive (`G:\Mi unidad\GitHub\estaca-este-app`) validado en 1 segundo sin `node_modules`.
+
+---
+
+## 🚀 Fase 6: Desarrollo e Implementación del Frontend (En Curso)
+- [ ] Módulo de Autenticación y Selector de Rol para desarrollo (simulación fluida y Google OAuth).
+- [ ] Vista 1: Pantalla Móvil del Líder (saldo, próxima actividad, historial colapsable, proponer actividad).
+- [ ] Vista 2: Hub Ejecutivo de Presidencia (KPIs globales, acumulación trimestral, distribución porcentual y alertas).
+- [ ] Vista 3: Centro de Edición y Carga para Administradores (conciliación LCR en vivo, carga ágil MMDD-MONTO, retiros y sincronización Excel).
+- [ ] Vista 4: Calendario de Actividades sincronizado con feed LCR (distintivo de presupuesto confidencial).
+- [ ] Vista 5: Directorio de Proveedores y Directorio de Líderes.
   - Impacto en el indicador porcentual real asignado vs. ejecutado.
   - Visualización del movimiento para el líder de la organización afectada.
 - [ ] Aprobación formal del usuario para avanzar al Paso 5.

@@ -73,7 +73,11 @@ flowchart TD
   - 17 proveedores reales con RUT y calificación.
   - 8 actividades en agenda oficial.
 - [x] Harness `rsc-harness` inicializado con target `gemini` y perfil incremental.
-- [x] Skills de diseño UI/UX instaladas: `impeccable` (Paul Bakaus) y `emilkowalski/skills` (18 skills de motion y craft).
+- [x] Skills instaladas y configuradas:
+  - `pbakaus/impeccable`: Diseño visual, layouts y prevención de anti-patrones.
+  - `emilkowalski/skills`: 18 skills de motion y microinteracciones fluidas.
+  - `netresearch/context7-skill`: Consulta de documentación actualizada y dependencias en tiempo real.
+  - `@playwright/cli` (Microsoft v0.1.23) + `@playwright/test`: Herramienta CLI de automatización de navegador y paquete de skills en `.agents/skills/playwright-cli`, `.gemini/skills/playwright-cli` y `.claude/skills/playwright-cli`.
 - [x] Respaldo automático con `robocopy` hacia Google Drive (`G:\Mi unidad\GitHub\estaca-este-app`) validado en 1 segundo sin `node_modules`.
 
 ---

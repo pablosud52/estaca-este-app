@@ -3,29 +3,44 @@ import { test, expect } from '@playwright/test';
 test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del Líder', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await page.evaluate(() => localStorage.clear());
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     await page.reload();
   });
 
-  test('1. Carga por defecto en Líder de Mujeres Jóvenes con formato $ #.##0,00 y regla de Seminario', async ({ page }) => {
+  test('1. Carga por defecto en Líder de Mujeres Jóvenes con formato $ #.##0,00, regla de Seminario y Selector de Año (2026/2027)', async ({
+    page,
+  }) => {
     // Verificar usuario inicial (Carolina Méndez - MJ)
     await expect(page.getByTestId('header-user-name')).toHaveText('Carolina Méndez');
     await expect(page.getByTestId('balance-card-title')).toContainText('SALDO ACTUAL • MMJJ');
 
-    // Presupuesto asignado MJ = $ 124.000,00 | Gastos MJ = $ 63.976,00 + $ 3.837,00 + $ 4.750,00 (neto MeetUp) = $ 72.563,00
-    // Saldo disponible MJ = $ 51.437,00
-    await expect(page.getByTestId('total-assigned-amount')).toHaveText('$ 124.000,00');
-    await expect(page.getByTestId('total-spent-amount')).toHaveText('$ 72.563,00');
-    await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 51.437,00');
+    // Presupuesto asignado MJ (Ejemplo_DB_Finanzas.xlsx) = $ 60.000,00 | Gastos MJ = $ 42.495,00 | Saldo disponible MJ = $ 17.505,00
+    await expect(page.getByTestId('total-assigned-amount')).toHaveText('$ 60.000,00');
+    await expect(page.getByTestId('total-spent-amount')).toHaveText('$ 42.495,00');
+    await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 17.505,00');
 
-    // Activar checkbox de Seminario ($ 10.000,00 adicionales)
+    // Activar checkbox de Seminario ($ 26.000,00 adicionales en 2026)
     await page.getByTestId('header-seminario-toggle-label').click();
     await expect(page.getByTestId('balance-card-title')).toContainText('MMJJ + SEM');
-    await expect(page.getByTestId('total-assigned-amount')).toHaveText('$ 134.000,00');
-    await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 61.437,00');
+    await expect(page.getByTestId('total-assigned-amount')).toHaveText('$ 86.000,00');
+    await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 43.505,00');
+
+    // Verificar Selector de Año para Líder (solo 2026 y 2027) y leyenda en 2027
+    const yearSelect = page.getByTestId('year-selector-dropdown');
+    await expect(yearSelect.locator('option')).toHaveCount(2);
+    await yearSelect.selectOption('2027');
+    await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 0,00');
+    await expect(page.getByTestId('leader-pending-budget-2027')).toHaveText(
+      'Presupuesto 2027 pendiente de asignación'
+    );
   });
 
-  test('2. Acordeón de Historial Anual de Gastos colapsable y gasto neto multiestaca', async ({ page }) => {
+  test('2. Acordeón de Historial Anual de Gastos colapsable y gasto neto multiestaca', async ({
+    page,
+  }) => {
     const expensesAccordion = page.getByTestId('accordion-expenses-content');
     await expect(expensesAccordion).toHaveAttribute('data-open', 'false');
 
@@ -39,7 +54,9 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await expect(page.getByText('Factura: $ 10.750,00')).toBeVisible();
   });
 
-  test('3. Regla Sagrada #9: Confidencialidad de presupuestos en Calendario entre organizaciones', async ({ page }) => {
+  test('3. Regla Sagrada #9: Confidencialidad de presupuestos en Calendario entre organizaciones', async ({
+    page,
+  }) => {
     // Cambiar al perfil de Líder de Primaria (Lucía Fernández)
     await page.getByTestId('dev-role-trigger').click();
     await page.getByTestId('switch-role-lider-primaria-01').click();
@@ -61,7 +78,9 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await expect(page.getByTestId('confidential-budget-amount')).toHaveCount(0);
   });
 
-  test('4. Formulario de Propuesta de Actividad con checkbox de Seminario para MJ/HJ', async ({ page }) => {
+  test('4. Formulario de Propuesta de Actividad con checkbox de Seminario para MJ/HJ', async ({
+    page,
+  }) => {
     const uniqueTitle = `Devocional Seminario ${Date.now().toString().slice(-4)}`;
     await page.getByTestId('open-propose-modal-btn').click();
     await expect(page.getByTestId('propose-activity-modal')).toBeVisible();
@@ -87,11 +106,13 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await expect(page.getByRole('heading', { name: uniqueTitle }).first()).toBeVisible();
   });
 
-  test('5. Usuario No Autorizado ve el mensaje oficial exacto y Administradores Permanentes están marcados como Inmutables', async ({ page }) => {
-    // Verificar badge de Administrador Permanente en Pablo Lamela
+  test('5. Usuario No Autorizado ve el mensaje oficial exacto y la regla de Administrador Inmutable solo aparece en Gestión de Usuarios', async ({
+    page,
+  }) => {
+    // Verificar que la cabecera de Admin está limpia sin el texto de Administrador Permanente Inmutable
     await page.getByTestId('dev-role-trigger').click();
     await page.getByTestId('switch-role-admin-pablo-01').click();
-    await expect(page.getByTestId('permanent-admin-badge')).toContainText('Administrador Permanente Inmutable');
+    await expect(page.getByTestId('permanent-admin-badge')).toHaveCount(0);
 
     // Cambiar a Usuario No Autorizado
     await page.getByTestId('dev-role-trigger').click();

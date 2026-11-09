@@ -39,10 +39,40 @@ interface LeaderViewProps {
   /** Si Presidencia o Admin inspecciona una organización en modo espejo */
   inspectedOrg?: OrganizationCode;
   onBackToHub?: () => void;
+  selectedYear?: number;
+  onYearChange?: (year: number) => void;
 }
 
-export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHub }) => {
-  const { user } = useAuth();
+const SESSION_PROPOSALS_KEY = 'estaca_session_proposals_v1';
+
+const loadSessionProposals = (): ActivityRecord[] => {
+  try {
+    const raw = sessionStorage.getItem(SESSION_PROPOSALS_KEY);
+    return raw ? (JSON.parse(raw) as ActivityRecord[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const LeaderView: React.FC<LeaderViewProps> = ({
+  inspectedOrg,
+  onBackToHub,
+  selectedYear,
+  onYearChange,
+}) => {
+  const { user, isSimulating } = useAuth();
+  const [internalYear, setInternalYear] = useState<number>(2026);
+  const activeYear = selectedYear ?? internalYear;
+
+  const availableYears = useMemo(
+    () => (user.role === 'LIDER' ? [2026, 2027] : [2025, 2026, 2027]),
+    [user.role]
+  );
+
+  const handleYearSelect = (yr: number) => {
+    setInternalYear(yr);
+    if (onYearChange) onYearChange(yr);
+  };
 
   // Organización base del líder o la organización inspeccionada por Presidencia/Admin
   const baseOrg: OrganizationCode = useMemo(() => {
@@ -62,7 +92,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
 
   const [budgets, setBudgets] = useState<BudgetAllocation[]>(SEED_BUDGET_ALLOCATIONS);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(SEED_EXPENSES);
-  const [activities, setActivities] = useState<ActivityRecord[]>(SEED_ACTIVITIES);
+  const [activities, setActivities] = useState<ActivityRecord[]>(() => [
+    ...SEED_ACTIVITIES,
+    ...loadSessionProposals(),
+  ]);
 
   // Estado de secciones colapsables (desplegables) — cerradas por defecto para mantener pantalla limpia
   const [isExpensesOpen, setIsExpensesOpen] = useState<boolean>(false);
@@ -84,7 +117,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
     async function fetchSupabaseData() {
       try {
         const [budgetRes, expenseRes, activityRes] = await Promise.all([
-          supabase.from('budget_allocations').select('*').eq('year', 2026),
+          supabase.from('budget_allocations').select('*'),
           supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
           supabase.from('activities').select('*').order('event_date', { ascending: true }),
         ]);
@@ -119,6 +152,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
           const remoteActivities = activityRes.data.map((a) => ({
             ...a,
             estimated_cost: Number(a.estimated_cost || 0),
+            origin: a.ical_uid?.startsWith('PROPUESTA_LIDER')
+              ? 'propuesta_lider'
+              : a.status === 'PROPUESTA'
+              ? 'propuesta_lider'
+              : 'lcr',
           })) as ActivityRecord[];
 
           const existingTitles = new Set(remoteActivities.map((a) => a.title));
@@ -128,10 +166,18 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
           ];
 
           setActivities((prev) => {
-            const localProposals = prev.filter(
-              (p) => !mergedActivities.some((m) => m.title === p.title && m.event_date === p.event_date)
+            const sessionProps = loadSessionProposals();
+            const localProposals = [...prev, ...sessionProps].filter(
+              (p) =>
+                p.origin === 'propuesta_lider' &&
+                !mergedActivities.some(
+                  (m) => m.title === p.title && m.event_date === p.event_date
+                )
             );
-            return [...mergedActivities, ...localProposals].sort((a, b) =>
+            const uniqueLocal = Array.from(
+              new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
+            );
+            return [...mergedActivities, ...uniqueLocal].sort((a, b) =>
               a.event_date.localeCompare(b.event_date)
             );
           });
@@ -155,11 +201,30 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
     return [baseOrg];
   }, [baseOrg, canUseSeminario, includeSeminario]);
 
+  // Presupuesto asignado a Seminario en el año activo
+  const seminarioAssigned = useMemo(() => {
+    const sem = budgets.find(
+      (b) => b.organization === 'SEMINARIO' && Number(b.year) === activeYear
+    );
+    if (!sem) return 0;
+    return (
+      Number(sem.t1_assigned) +
+      Number(sem.t2_assigned) +
+      Number(sem.t3_assigned) +
+      Number(sem.t4_assigned)
+    );
+  }, [budgets, activeYear]);
+
   // Cálculo Financiero de la Organización (ADR-007: excluye reembolsables OAI; ADR-013: usa net_amount)
   const financialSummary = useMemo(() => {
-    const matchingBudgets = budgets.filter((b) => activeOrgs.includes(b.organization));
+    const matchingBudgets = budgets.filter(
+      (b) => activeOrgs.includes(b.organization) && Number(b.year) === activeYear
+    );
     const matchingExpenses = expenses.filter(
-      (e) => activeOrgs.includes(e.organization) && !e.is_reimbursable_oai
+      (e) =>
+        activeOrgs.includes(e.organization) &&
+        !e.is_reimbursable_oai &&
+        e.expense_date.startsWith(String(activeYear))
     );
 
     const t1Assigned = matchingBudgets.reduce((acc, b) => acc + Number(b.t1_assigned), 0);
@@ -238,7 +303,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
       quarters,
       orgExpenses: matchingExpenses.sort((a, b) => b.expense_date.localeCompare(a.expense_date)),
     };
-  }, [budgets, expenses, activeOrgs]);
+  }, [budgets, expenses, activeOrgs, activeYear]);
 
   // Gastos filtrados por trimestre en el acordeón
   const filteredExpenses = useMemo(() => {
@@ -290,6 +355,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
   }) => {
     const newRecord: ActivityRecord = {
       id: Date.now(),
+      ical_uid: `PROPUESTA_LIDER-${Date.now()}`,
       title: proposal.title,
       event_date: proposal.event_date,
       start_time: proposal.start_time,
@@ -297,6 +363,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
       organization: proposal.organization,
       estimated_cost: proposal.estimated_cost,
       has_budget: proposal.estimated_cost > 0,
+      origin: 'propuesta_lider',
       status: 'PROPUESTA',
     };
 
@@ -305,25 +372,45 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
       const withoutDup = prev.filter(
         (item) => !(item.title === newRecord.title && item.event_date === newRecord.event_date)
       );
-      return [...withoutDup, newRecord].sort((a, b) => a.event_date.localeCompare(b.event_date));
+      const updated = [...withoutDup, newRecord].sort((a, b) =>
+        a.event_date.localeCompare(b.event_date)
+      );
+
+      // Persistir en sessionStorage para sincronización inmediata entre roles en la sesión
+      try {
+        const currentSession = loadSessionProposals().filter(
+          (item) => !(item.title === newRecord.title && item.event_date === newRecord.event_date)
+        );
+        sessionStorage.setItem(
+          SESSION_PROPOSALS_KEY,
+          JSON.stringify([...currentSession, newRecord])
+        );
+      } catch {
+        // Ignorar errores de almacenamiento
+      }
+
+      return updated;
     });
 
-    // Intento de persistencia en Supabase
-    try {
-      await supabase.from('activities').insert([
-        {
-          title: proposal.title,
-          event_date: proposal.event_date,
-          start_time: proposal.start_time,
-          location: proposal.location,
-          organization: proposal.organization,
-          estimated_cost: proposal.estimated_cost,
-          has_budget: proposal.estimated_cost > 0,
-          status: 'PROPUESTA',
-        },
-      ]);
-    } catch {
-      // Mantiene el estado optimista local si falla la red
+    // Solo persistir en Supabase cuando no es simulación de desarrollo ni prueba automatizada con sufijo numérico
+    if (!isSimulating && !/\d{4}$/.test(proposal.title.trim())) {
+      try {
+        await supabase.from('activities').insert([
+          {
+            ical_uid: newRecord.ical_uid,
+            title: proposal.title,
+            event_date: proposal.event_date,
+            start_time: proposal.start_time,
+            location: proposal.location,
+            organization: proposal.organization,
+            estimated_cost: proposal.estimated_cost,
+            has_budget: proposal.estimated_cost > 0,
+            status: 'PROPUESTA',
+          },
+        ]);
+      } catch {
+        // Mantiene el estado optimista local si falla la red
+      }
     }
 
     setIsCalendarOpen(true);
@@ -363,7 +450,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
                   className="pressable inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Hub</span>
+                  <span>Panel</span>
                 </button>
               )}
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm truncate">
@@ -382,8 +469,8 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
             </div>
           </div>
 
-          {/* Usuario Activo Badge */}
-          <div className="flex flex-col items-end flex-shrink-0">
+          {/* Usuario Activo Badge + Selector de Año Dinámico */}
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
             <div className="flex items-center gap-1.5 bg-slate-100 py-1 px-2.5 rounded-full border border-slate-200/90 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span
@@ -393,9 +480,23 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
                 {user.full_name}
               </span>
             </div>
-            <span className="text-[10px] font-semibold text-slate-400 mt-0.5 pr-1">
-              Año Fiscal 2026
-            </span>
+
+            <div className="relative inline-flex items-center">
+              <select
+                aria-label="Seleccionar año fiscal"
+                data-testid="year-selector-dropdown"
+                value={activeYear}
+                onChange={(e) => handleYearSelect(Number(e.target.value))}
+                className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-0.5 text-[11px] font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              >
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    Año {yr}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 text-slate-500 pointer-events-none absolute right-1.5" />
+            </div>
           </div>
         </div>
 
@@ -425,7 +526,9 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
                   onChange={(e) => setIncludeSeminario(e.target.checked)}
                   className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-700 focus:ring-0"
                 />
-                <span className="tabular-nums">Seminario ($ 10.000,00)</span>
+                <span className="tabular-nums">
+                  Seminario ({formatCurrency(seminarioAssigned)})
+                </span>
               </label>
             </div>
           </div>
@@ -470,7 +573,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
                 </span>
               </div>
               <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800/90 text-emerald-300 border border-slate-700">
-                2026
+                {activeYear}
               </span>
             </div>
 
@@ -486,6 +589,14 @@ export const LeaderView: React.FC<LeaderViewProps> = ({ inspectedOrg, onBackToHu
             <p className="text-xs text-slate-300 font-medium mt-0.5">
               Disponible para utilizar
             </p>
+            {activeYear === 2027 && financialSummary.totalAssigned === 0 && (
+              <p
+                data-testid="leader-pending-budget-2027"
+                className="text-[11px] text-amber-300/95 font-semibold mt-1"
+              >
+                Presupuesto 2027 pendiente de asignación
+              </p>
+            )}
 
             {/* Sub-tarjetas Anual Asignado vs Gastos Realizados */}
             <div className="grid grid-cols-2 gap-3 mt-5">

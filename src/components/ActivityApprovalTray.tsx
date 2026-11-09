@@ -57,7 +57,12 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
   const [rejectReason, setRejectReason] = useState('');
   const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
 
-  const pendingProposals = activities.filter((a) => a.status === 'PROPUESTA');
+  // Regla sagrada de aprobación:
+  // Eventos de LCR (origin === 'lcr') ya vienen aprobados institucionalmente y NUNCA van a la bandeja.
+  // Solo van a la bandeja los eventos propuestos por líderes locales (origin === 'propuesta_lider' y status === 'PROPUESTA').
+  const pendingProposals = activities.filter(
+    (a) => a.origin === 'propuesta_lider' && a.status === 'PROPUESTA'
+  );
   const resolvedActivities = activities.filter(
     (a) => a.status === 'APROBADA' || a.status === 'RECHAZADA'
   );

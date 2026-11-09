@@ -58,18 +58,23 @@ CREATE TABLE IF NOT EXISTS public.budget_allocations (
     UNIQUE(year, organization)
 );
 
--- Seed de Presupuestos Auditados 2026
+-- Seed de Presupuestos Auditados 2026 (Ejemplo_DB_Finanzas.xlsx)
 INSERT INTO public.budget_allocations (year, organization, t1_assigned, t2_assigned, t3_assigned, t4_assigned, notes) VALUES
-(2026, 'PRIMARIA', 3500.00, 15000.00, 5000.00, 15000.00, 'Presupuesto Primaria'),
-(2026, 'MJ', 16000.00, 48000.00, 20000.00, 40000.00, 'Mujeres Jóvenes'),
-(2026, 'HJ', 16000.00, 48000.00, 20000.00, 40000.00, 'Hombres Jóvenes'),
-(2026, 'SS', 18000.00, 45000.00, 20000.00, 25000.00, 'Sociedad de Socorro'),
-(2026, 'AS', 1500.00, 20000.00, 10000.00, 25000.00, 'Adultos Solteros'),
-(2026, 'JAS', 0.00, 15000.00, 5000.00, 0.00, 'Jóvenes Adultos Solteros'),
-(2026, 'CFS', 0.00, 1000.00, 1000.00, 1000.00, 'Centro de Historia Familiar'),
-(2026, 'SEMINARIO', 10000.00, 0.00, 0.00, 0.00, 'Fondo Común Juventud'),
-(2026, 'ESTACA', 129468.69, -116108.60, -2854.40, -49732.60, 'Fondo Central de Estaca')
-ON CONFLICT (year, organization) DO NOTHING;
+(2026, 'MJ', 30000.00, 10000.00, 10000.00, 10000.00, 'Mujeres Jóvenes'),
+(2026, 'HJ', 30000.00, 10000.00, 10000.00, 10000.00, 'Hombres Jóvenes'),
+(2026, 'SEMINARIO', 10000.00, 5000.00, 6000.00, 5000.00, 'Fondo Común Juventud (Seminario)'),
+(2026, 'SS', 30000.00, 15000.00, 15000.00, 15000.00, 'Sociedad de Socorro'),
+(2026, 'PRIMARIA', 10000.00, 7500.00, 7500.00, 7500.00, 'Presupuesto Primaria'),
+(2026, 'JAS', 10000.00, 5000.00, 5000.00, 5000.00, 'Jóvenes Adultos Solteros'),
+(2026, 'AS', 4000.00, 2000.00, 2000.00, 2000.00, 'Adultos Solteros'),
+(2026, 'CFS', 8000.00, 4500.00, 4500.00, 5000.00, 'Centro FamilySearch'),
+(2026, 'ESTACA', 62468.69, 16891.40, 18145.60, 11767.40, 'Estaca (Remanente Disponible)')
+ON CONFLICT (year, organization) DO UPDATE SET
+  t1_assigned = EXCLUDED.t1_assigned,
+  t2_assigned = EXCLUDED.t2_assigned,
+  t3_assigned = EXCLUDED.t3_assigned,
+  t4_assigned = EXCLUDED.t4_assigned,
+  notes = EXCLUDED.notes;
 
 -- 5. RETIROS DE FONDOS
 CREATE TABLE IF NOT EXISTS public.cash_withdrawals (

@@ -1,4 +1,20 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
+
+async function openAdminSection(page: Page, section: 'USERS' | 'OPERATIONS') {
+  const mobileToggle = page.getByTestId('mobile-menu-toggle');
+  if (await mobileToggle.isVisible()) {
+    await mobileToggle.click();
+    await page
+      .getByTestId(
+        section === 'USERS' ? 'drawer-admin-users-btn' : 'drawer-admin-operations-btn'
+      )
+      .click();
+  } else {
+    await page
+      .getByTestId(section === 'USERS' ? 'hub-admin-users-btn' : 'hub-admin-operations-btn')
+      .click();
+  }
+}
 
 test.describe('Paso 6.4 — Panel de Administrador (AdminPanel)', () => {
   test.beforeEach(async ({ page }) => {
@@ -15,7 +31,7 @@ test.describe('Paso 6.4 — Panel de Administrador (AdminPanel)', () => {
     page,
   }) => {
     // Ir a Gestión de Usuarios
-    await page.getByTestId('hub-admin-users-btn').click();
+    await openAdminSection(page, 'USERS');
     await expect(page.getByTestId('user-management-panel')).toBeVisible();
 
     // 1. Verificar texto oficial innegociable del banner de seguridad (PROJECT_CONTEXT.md §4.3)
@@ -47,7 +63,7 @@ test.describe('Paso 6.4 — Panel de Administrador (AdminPanel)', () => {
     page,
   }) => {
     // Abrir Centro de Edición y Carga
-    await page.getByTestId('hub-admin-operations-btn').click();
+    await openAdminSection(page, 'OPERATIONS');
     await expect(page.getByTestId('admin-operations-center')).toBeVisible();
     await expect(page.getByTestId('lcr-reconciliation-monitor')).toBeVisible();
 
@@ -83,7 +99,7 @@ test.describe('Paso 6.4 — Panel de Administrador (AdminPanel)', () => {
   test('3. Herramienta "Distribuir Gasto de Actividad de Estaca" (Opción B) y Sincronización Bidireccional con Excel', async ({
     page,
   }) => {
-    await page.getByTestId('hub-admin-operations-btn').click();
+    await openAdminSection(page, 'OPERATIONS');
 
     // 1. Abrir herramienta de distribución de gasto de actividad general (Opción B)
     await page.getByTestId('ops-subtab-distribute').click();

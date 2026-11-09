@@ -52,6 +52,8 @@ export interface ExpenseRecord {
   withdrawal_ref: string | null;
 }
 
+export type ActivityOrigin = 'lcr' | 'propuesta_lider';
+
 export interface ActivityRecord {
   id: number;
   ical_uid?: string | null;
@@ -64,6 +66,7 @@ export interface ActivityRecord {
   organization: OrganizationCode;
   estimated_cost: number;
   has_budget: boolean;
+  origin?: ActivityOrigin;
   status: 'PROPUESTA' | 'APROBADA' | 'RECHAZADA' | 'REPROGRAMADA' | 'CANCELADA';
 }
 

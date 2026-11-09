@@ -84,8 +84,14 @@ flowchart TD
 
 ## 🚀 Fase 6: Desarrollo e Implementación del Frontend (En Curso)
 - [x] Módulo de Autenticación y Selector de Rol para desarrollo (simulación fluida y Google OAuth).
-- [x] Vista 1: Pantalla Móvil del Líder (saldo, próxima actividad, historial colapsable, proponer actividad).
-- [x] Vista 2: Hub Ejecutivo de Presidencia (KPIs globales, acumulación trimestral, distribución porcentual y alertas).
+- [x] Vista 1: Pantalla Móvil del Líder (saldo, próxima actividad, historial colapsable, proponer actividad, selector de año dinámico `2026` / `2027`).
+- [x] Vista 2: Hub Ejecutivo de Presidencia (`Panel`) y Rediseño "Menos es Más":
+  - Cabecera minimalista con botón `"Panel"`, selector dinámico de año (`2025/2026/2027` para Presidencia/Admin; `2026/2027` para Líderes; leyenda `"Presupuesto 2027 pendiente de asignación"`) y menú hamburguesa móvil (`☰` → `✕`) con Drawer vertical y `backdrop-blur`.
+  - Tarjeta Maestra `"PRESUPUESTO DISPONIBLE"` (`$ 114.168,09` / `Asignado 2026: $ 419.773,09`) con alerta `"⚠️ $ 15.506,00 pendientes de rendir"` y enlace directo a la sección de rendiciones.
+  - Sección `"Resumen por trimestre"` (`T1: $ 194.468,69`, `T2: $ 117.514,09`, `T3: $ 127.923,69`, `T4: $ 154.338,09`) con desglose de ingreso del trimestre, remanente anterior y gastos del período.
+  - Gráfica `"Asignación de fondos a cada organización"` (etiquetas X a 45º, montos/porcentajes impresos en cada barra, filtros `[ Global ] [ T1 ] [ T2 ] [ T3 ] [ T4 ]`, barras cálidas para Hombres Jóvenes, Mujeres Jóvenes y Seminario, y pastilla `"Total Destinado a Jóvenes (HJ + MJ + Seminario): $ 146.000,00 (34,8%)"`).
+  - Tarjetas minimalistas en `"Estado por Organización"` con botón plano `"ABRIR [ORGANIZACIÓN]"` (Modo Espejo).
+  - Regla sagrada de Bandeja de Aprobación: eventos de LCR (`origin = 'lcr'`) nunca van a la bandeja; solo van propuestas de líderes locales (`origin = 'propuesta_lider'`).
 - [x] Vista 3: Centro de Edición y Carga para Administradores (gestión de usuarios con regla de auto-protección inmutable, conciliación LCR en vivo, carga ágil MMDD-MONTO, prorrateo de gasto general de Estaca Opción B, retiros a cero y sincronización bidireccional con Excel).
 - [ ] Vista 4: Calendario de Actividades sincronizado con feed LCR (distintivo de presupuesto confidencial).
 - [ ] Vista 5: Directorio de Proveedores y Directorio de Líderes.

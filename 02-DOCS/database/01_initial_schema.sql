@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS public.app_config (
 
 INSERT INTO public.app_config (key, value, description) VALUES
 ('URL_CALENDARIO_LCR', 'https://churchofjesuschrist.org/church-calendar/services/ext/v3.0/export/ical/group/cd92d6817fa64d25bc2f55aec4fea180', 'Feed iCal oficial de Estaca Montevideo Este (solo eventos de Estaca)'),
-('ANIO_FISCAL_ACTIVO', '2026', 'Año presupuestario y operativo en curso')
+('ANIO_FISCAL_ACTIVO', '2026', 'Año presupuestario y operativo en curso'),
+('LAST_SYNCED_AT', '2026-11-09T00:00:00.000Z', 'Última sincronización global del calendario iCal de LCR (Escudo de Base de Datos de 10 minutos)')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 -- 3. PERFILES DE USUARIO Y ROLES (RBAC)
@@ -267,3 +268,4 @@ CREATE POLICY "Admin full access gastos" ON public.expenses FOR ALL TO authentic
 CREATE POLICY "Admin full access retiros" ON public.cash_withdrawals FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 CREATE POLICY "Admin full access actividades" ON public.activities FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
 CREATE POLICY "Admin full access proveedores" ON public.suppliers FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);
+CREATE POLICY "Admin full access config" ON public.app_config FOR ALL TO authenticated, anon USING (true) WITH CHECK (true);

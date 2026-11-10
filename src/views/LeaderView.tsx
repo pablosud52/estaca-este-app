@@ -33,6 +33,9 @@ import {
   QuarterSummary,
 } from '../types/database';
 import { ProposeActivityModal } from '../components/ProposeActivityModal';
+import { LcrSyncButton } from '../components/LcrSyncButton';
+import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
+import { CalendarView } from './CalendarView';
 
 interface LeaderViewProps {
   /** Si Presidencia o Admin inspecciona una organización en modo espejo */
@@ -103,9 +106,18 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   const [quarterFilter, setQuarterFilter] = useState<'TODOS' | QuarterCode>('TODOS');
   const [calendarScope, setCalendarScope] = useState<'ORG' | 'ESTACA_ALL'>('ORG');
 
-  // Modal de propuesta de actividad y banner de confirmación
+  // Modal de propuesta de actividad, Vista 4 (Calendario General de Estaca) y banner de confirmación
   const [isProposeOpen, setIsProposeOpen] = useState<boolean>(false);
+  const [isFullCalendarViewOpen, setIsFullCalendarViewOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const handleManualCalendarSync = async () => {
+    const syncRes = await syncLcrCalendarWithShield({
+      currentActivities: activities,
+      attemptLiveFetch: true,
+    });
+    setActivities(syncRes.activities);
+  };
 
   // Sincronización con Supabase en tiempo real con fallback resiliente a SEED
   useEffect(() => {
@@ -156,28 +168,61 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               : 'lcr',
           })) as ActivityRecord[];
 
-          const existingTitles = new Set(remoteActivities.map((a) => a.title));
+          // Preferir los registros auditados de SEED_ACTIVITIES como base canónica y sumar cualquier actividad nueva de Supabase
+          const seedTitles = new Set(SEED_ACTIVITIES.map((s) => s.title.trim().toLowerCase()));
           const mergedActivities = [
-            ...remoteActivities,
-            ...SEED_ACTIVITIES.filter((s) => !existingTitles.has(s.title)),
+            ...SEED_ACTIVITIES,
+            ...remoteActivities.filter(
+              (r) => !seedTitles.has(r.title.trim().toLowerCase())
+            ),
           ];
+
+          // Sincronización silenciosa con el Doble Escudo LCR al montar la app
+          const syncResult = await syncLcrCalendarWithShield({
+            currentActivities: mergedActivities,
+          });
+
+          if (!active) return;
 
           setActivities((prev) => {
             const sessionProps = loadSessionProposals();
             const localProposals = [...prev, ...sessionProps].filter(
               (p) =>
                 p.origin === 'propuesta_lider' &&
-                !mergedActivities.some(
+                !syncResult.activities.some(
                   (m) => m.title === p.title && m.event_date === p.event_date
                 )
             );
             const uniqueLocal = Array.from(
               new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
             );
-            return [...mergedActivities, ...uniqueLocal].sort((a, b) =>
+            return [...syncResult.activities, ...uniqueLocal].sort((a, b) =>
               a.event_date.localeCompare(b.event_date)
             );
           });
+        } else {
+          // Sincronización silenciosa con el Doble Escudo LCR al montar la app (sobre SEED_ACTIVITIES)
+          const syncResult = await syncLcrCalendarWithShield({
+            currentActivities: SEED_ACTIVITIES,
+          });
+          if (active) {
+            setActivities((prev) => {
+              const sessionProps = loadSessionProposals();
+              const localProposals = [...prev, ...sessionProps].filter(
+                (p) =>
+                  p.origin === 'propuesta_lider' &&
+                  !syncResult.activities.some(
+                    (m) => m.title === p.title && m.event_date === p.event_date
+                  )
+              );
+              const uniqueLocal = Array.from(
+                new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
+              );
+              return [...syncResult.activities, ...uniqueLocal].sort((a, b) =>
+                a.event_date.localeCompare(b.event_date)
+              );
+            });
+          }
         }
       } catch {
         // Mantiene datos semilla auditados en caso de estar offline
@@ -550,6 +595,17 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       </header>
 
       {/* ==================== CONTENIDO MÓVIL DEL LÍDER ==================== */}
+      {isFullCalendarViewOpen ? (
+        <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
+          <CalendarView
+            selectedYear={activeYear}
+            activitiesProp={activities}
+            onActivitiesUpdate={setActivities}
+            onBack={() => setIsFullCalendarViewOpen(false)}
+            embedded
+          />
+        </main>
+      ) : (
       <main className="max-w-lg w-full mx-auto px-4 pt-4 space-y-4 flex-1">
         {/* Toast / Confirmación de Propuesta */}
         {toastMessage && (
@@ -953,6 +1009,21 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           >
             <div className="accordion-inner">
               <div className="px-5 pb-5 pt-1 border-t border-slate-100 space-y-3">
+                {/* Barra de Sincronización con LCR + Botón a Vista General Completa */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                  <button
+                    type="button"
+                    data-testid="open-full-calendar-view-btn"
+                    onClick={() => setIsFullCalendarViewOpen(true)}
+                    className="pressable inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-xs font-extrabold transition"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Ver Calendario General y Filtros</span>
+                  </button>
+
+                  <LcrSyncButton onSync={handleManualCalendarSync} />
+                </div>
+
                 {/* Selector Mi Organización vs Toda la Estaca (para verificar Regla Sagrada #9) */}
                 <div className="flex items-center justify-between gap-2 pt-2">
                   <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80 w-full">
@@ -1113,6 +1184,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           </div>
         </section>
       </main>
+      )}
 
       {/* Modal Nativo <dialog> para Proponer Actividad */}
       <ProposeActivityModal

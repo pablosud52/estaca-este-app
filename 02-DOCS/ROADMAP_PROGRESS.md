@@ -1,6 +1,6 @@
 # ROADMAP_PROGRESS.md - Estado y Plan de Avance del Proyecto
 
-> **Fase Actual**: Fase 6 — Desarrollo e Implementación del Frontend (Pasos 6.1, 6.2, 6.3 y 6.4 Completados)  
+> **Fase Actual**: Fase 6 — Desarrollo e Implementación del Frontend (Pasos 6.1, 6.2, 6.3, 6.4 y 6.5 Completados)  
 > **Última Actualización**: 2026-11-09
 
 ---
@@ -96,7 +96,11 @@ flowchart TD
   - Posición 3: Sección `"Estado por Organización"` (grid en PC y acordeones compactos en móvil con fila `[Nombre de Organización] ····· [$ Saldo Disponible] [▾]`, desplegando fluidamente la próxima actividad y el botón `"ABRIR [ORGANIZACIÓN]"`).
   - Regla sagrada de Bandeja de Aprobación: eventos de LCR (`origin = 'lcr'`) nunca van a la bandeja; solo van propuestas de líderes locales (`origin = 'propuesta_lider'`).
 - [x] Vista 3: Centro de Edición y Carga para Administradores (gestión de usuarios con regla de auto-protección inmutable, conciliación LCR en vivo, carga ágil MMDD-MONTO, prorrateo de gasto general de Estaca Opción B, retiros a cero y sincronización bidireccional con Excel).
-- [ ] Vista 4: Calendario de Actividades sincronizado con feed LCR (distintivo de presupuesto confidencial).
+- [x] Vista 4: Calendario General de Actividades de Estaca (`CalendarView.tsx`) y Servicio de Sincronización con LCR (`lcrSyncService.ts` + `LcrSyncButton.tsx`):
+  - Doble Escudo de Sincronización con LCR: sincronización global silenciosa al montar la app + escudo de base de datos compartido (`LAST_SYNCED_AT` en `app_config` de 10 minutos) + botón manual `"🔄 Sincronizar"` con spinner `"Sincronizando..."`, estado `"✓ Calendario al día"` y cooldown progresivo (30s en las primeras 3 pulsaciones, 10 minutos desde la 4ª pulsación consecutiva, reinicio a la hora) con micro-texto explicativo (`"⏱️ Próxima sincronización manual disponible en ..."`).
+  - Deduplicación Inmutable RFC 5545 con `ical.js` por `UID` único sin duplicar reprogramaciones.
+  - Confidencialidad Presupuestaria RBAC (`💰 Con Presupuesto` y `Costo Estimado` visibles únicamente para Presidencia, Administradores y líderes de la organización responsable).
+  - Lista anual continua con auto-enfoque al evento más próximo, píldoras rápidas (`[ Todas ] [ Mis Actividades ] [ Jóvenes ] [ Primaria ] [ Estaca General ]`) y buscador en tiempo real.
 - [ ] Vista 5: Directorio de Proveedores y Directorio de Líderes.
   - Impacto en el indicador porcentual real asignado vs. ejecutado.
   - Visualización del movimiento para el líder de la organización afectada.

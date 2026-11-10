@@ -40,6 +40,8 @@ import { OrgDistributionChart, OrgSummaryStat } from '../components/OrgDistribut
 import { ActivityApprovalTray } from '../components/ActivityApprovalTray';
 import { UserManagementPanel } from '../components/UserManagementPanel';
 import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
+import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
+import { CalendarView } from './CalendarView';
 import { LeaderView } from './LeaderView';
 
 const ALL_HUB_ORGS: OrganizationCode[] = [
@@ -90,10 +92,10 @@ const saveSessionProposals = (list: ActivityRecord[]) => {
 export const PresidencyHub: React.FC = () => {
   const { user, isSimulating } = useAuth();
 
-  // Sub-vista activa: DASHBOARD | APPROVALS | USERS | OPERATIONS
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'APPROVALS' | 'USERS' | 'OPERATIONS'>(
-    'DASHBOARD'
-  );
+  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | USERS | OPERATIONS
+  const [activeTab, setActiveTab] = useState<
+    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'USERS' | 'OPERATIONS'
+  >('DASHBOARD');
   // Menú Drawer móvil (hamburguesa ☰ -> cruz ✕)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
 
@@ -192,18 +194,28 @@ export const PresidencyHub: React.FC = () => {
               : 'lcr',
           })) as ActivityRecord[];
 
-          const existingTitles = new Set(remoteActivities.map((a) => a.title));
+          // Preferir los registros auditados de SEED_ACTIVITIES como base canónica y sumar cualquier actividad nueva de Supabase
+          const seedTitles = new Set(SEED_ACTIVITIES.map((s) => s.title.trim().toLowerCase()));
           const mergedRemoteAndSeed = [
-            ...remoteActivities,
-            ...SEED_ACTIVITIES.filter((s) => !existingTitles.has(s.title)),
+            ...SEED_ACTIVITIES,
+            ...remoteActivities.filter(
+              (r) => !seedTitles.has(r.title.trim().toLowerCase())
+            ),
           ];
+
+          // Sincronización silenciosa con el Doble Escudo LCR al montar la app
+          const syncResult = await syncLcrCalendarWithShield({
+            currentActivities: mergedRemoteAndSeed,
+          });
+
+          if (!active) return;
 
           setActivities((prev) => {
             const sessionProps = loadSessionProposals();
             const localProposals = [...prev, ...sessionProps].filter(
               (p) =>
                 p.origin === 'propuesta_lider' &&
-                !mergedRemoteAndSeed.some(
+                !syncResult.activities.some(
                   (m) => m.title === p.title && m.event_date === p.event_date
                 )
             );
@@ -213,10 +225,36 @@ export const PresidencyHub: React.FC = () => {
             const prevById = new Map(prev.map((item) => [item.id, item]));
 
             return [
-              ...mergedRemoteAndSeed.map((item) => prevById.get(item.id) || item),
+              ...syncResult.activities.map((item) => prevById.get(item.id) || item),
               ...uniqueLocal,
             ].sort((a, b) => a.event_date.localeCompare(b.event_date));
           });
+        } else {
+          // Sincronización silenciosa sobre SEED_ACTIVITIES si no hay tabla remota
+          const syncResult = await syncLcrCalendarWithShield({
+            currentActivities: SEED_ACTIVITIES,
+          });
+          if (active) {
+            setActivities((prev) => {
+              const sessionProps = loadSessionProposals();
+              const localProposals = [...prev, ...sessionProps].filter(
+                (p) =>
+                  p.origin === 'propuesta_lider' &&
+                  !syncResult.activities.some(
+                    (m) => m.title === p.title && m.event_date === p.event_date
+                  )
+              );
+              const uniqueLocal = Array.from(
+                new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
+              );
+              const prevById = new Map(prev.map((item) => [item.id, item]));
+
+              return [
+                ...syncResult.activities.map((item) => prevById.get(item.id) || item),
+                ...uniqueLocal,
+              ].sort((a, b) => a.event_date.localeCompare(b.event_date));
+            });
+          }
         }
 
         if (!withdrawalRes.error && withdrawalRes.data && withdrawalRes.data.length > 0) {
@@ -635,7 +673,7 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const selectTabAndCloseDrawer = (
-    tab: 'DASHBOARD' | 'APPROVALS' | 'USERS' | 'OPERATIONS'
+    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'USERS' | 'OPERATIONS'
   ) => {
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
@@ -795,6 +833,21 @@ export const PresidencyHub: React.FC = () => {
                   {pendingProposalsCount}
                 </span>
               </button>
+
+              {/* Botón 3: Calendario General de Estaca (Vista 4) */}
+              <button
+                type="button"
+                data-testid="hub-nav-calendar"
+                onClick={() => setActiveTab('CALENDAR')}
+                className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                  activeTab === 'CALENDAR'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                }`}
+              >
+                <Calendar className="w-4 h-4 text-emerald-500" />
+                <span>Calendario</span>
+              </button>
             </div>
 
             {/* Botones Exclusivos de Administrador */}
@@ -915,6 +968,20 @@ export const PresidencyHub: React.FC = () => {
                   </span>
                 </button>
 
+                <button
+                  type="button"
+                  data-testid="drawer-nav-calendar"
+                  onClick={() => selectTabAndCloseDrawer('CALENDAR')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'CALENDAR'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  <span>Calendario</span>
+                </button>
+
                 {user.role === 'ADMIN' && (
                   <>
                     <button
@@ -985,6 +1052,13 @@ export const PresidencyHub: React.FC = () => {
             onApproveActivity={handleApproveActivity}
             onRejectActivity={handleRejectActivity}
             onEditAndApproveActivity={handleEditAndApproveActivity}
+          />
+        ) : activeTab === 'CALENDAR' ? (
+          <CalendarView
+            selectedYear={selectedYear}
+            activitiesProp={activities}
+            onActivitiesUpdate={setActivities}
+            embedded
           />
         ) : (
           <>

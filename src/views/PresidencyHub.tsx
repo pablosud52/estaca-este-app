@@ -1011,22 +1011,14 @@ export const PresidencyHub: React.FC = () => {
                 </p>
 
                 {selectedYear === 2027 &&
-                executiveMetrics.totalConsolidatedAssigned === 0 ? (
-                  <p
-                    data-testid="pending-budget-2027-legend"
-                    className="text-xs sm:text-sm text-amber-300/95 font-semibold mt-2"
-                  >
-                    Presupuesto 2027 pendiente de asignación
-                  </p>
-                ) : (
-                  <p
-                    data-testid="kpi-consolidated-assigned-amount"
-                    className="text-xs sm:text-sm text-slate-300 font-semibold mt-2 tabular-nums"
-                  >
-                    Asignado {selectedYear}:{' '}
-                    {formatCurrency(executiveMetrics.totalConsolidatedAssigned)}
-                  </p>
-                )}
+                  executiveMetrics.totalConsolidatedAssigned === 0 && (
+                    <p
+                      data-testid="pending-budget-2027-legend"
+                      className="text-xs sm:text-sm text-amber-300/95 font-semibold mt-2"
+                    >
+                      Presupuesto 2027 pendiente de asignación
+                    </p>
+                  )}
 
                 {/* Alerta de pendientes de rendir (sin mencionar siglas técnicas) */}
                 {executiveMetrics.pendingRenderTotal > 0 && (

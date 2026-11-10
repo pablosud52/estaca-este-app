@@ -53,11 +53,9 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
     const yearSelect = page.getByTestId('year-selector-dropdown');
     await expect(yearSelect.locator('option')).toHaveCount(3);
 
-    // 1. Verificar Tarjeta Maestra PRESUPUESTO DISPONIBLE ($ 114.168,09) y Asignado 2026 ($ 419.773,09)
+    // 1. Verificar Tarjeta Maestra PRESUPUESTO DISPONIBLE ($ 114.168,09) sin la línea Asignado 2026
     await expect(page.getByTestId('kpi-consolidated-available-amount')).toHaveText('$ 114.168,09');
-    await expect(page.getByTestId('kpi-consolidated-assigned-amount')).toHaveText(
-      'Asignado 2026: $ 419.773,09'
-    );
+    await expect(page.getByTestId('kpi-consolidated-assigned-amount')).toHaveCount(0);
     await expect(page.getByTestId('kpi-pending-render-alert')).toContainText(
       '⚠️ $ 15.506,00 pendientes de rendir'
     );

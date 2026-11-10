@@ -8,6 +8,19 @@ import {
 } from '../types/database';
 
 /**
+ * Correo oficial del Super-Administrador / Propietario Vitalicio del Sistema.
+ * Conserva el rol ADMIN e inmutabilidad independientemente de cambios futuros de llamamiento
+ * u organización, y es el único correo con acceso al selector de cambio de rol en producción.
+ */
+export const SUPER_ADMIN_EMAIL = 'pablosud52@gmail.com';
+
+export const isSuperAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  return normalized === SUPER_ADMIN_EMAIL || normalized === 'pablo.lamela@gmail.com';
+};
+
+/**
  * Perfiles de desarrollo y simulación rápida (Paso 6.1)
  * Incluye los 6 perfiles oficiales de Presidencia/Admin de `01_initial_schema.sql`,
  * líderes representativos de organizaciones (con y sin Seminario) y un perfil No Autorizado.
@@ -75,7 +88,7 @@ export const DEV_PROFILES: UserProfile[] = [
   },
   {
     id: 'admin-pablo-01',
-    email: 'pablo.lamela@gmail.com',
+    email: 'pablosud52@gmail.com',
     full_name: 'Pablo Lamela',
     role: 'ADMIN',
     organization: 'TODAS',

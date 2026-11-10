@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../data/seedData';
 import { ORGANIZATION_LABELS, ORGANIZATION_SHORT_LABELS } from '../lib/formatters';
 import { OrganizationCode, UserRole } from '../types/database';
 
@@ -40,6 +41,9 @@ export const UserManagementPanel: React.FC = () => {
   const [newCanApprove, setNewCanApprove] = useState(false);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [editingSuperCalling, setEditingSuperCalling] = useState<boolean>(false);
+  const [superCallingDraft, setSuperCallingDraft] = useState<string>('');
+  const [superOrgDraft, setSuperOrgDraft] = useState<OrganizationCode>('TODAS');
 
   const triggerToast = (msg: string) => {
     setToastMsg(msg);
@@ -329,9 +333,10 @@ export const UserManagementPanel: React.FC = () => {
         <div className="divide-y divide-slate-100">
           {profiles.map((row) => {
             const isSelf = row.email.toLowerCase() === currentUser.email.toLowerCase();
+            const isSuperOwner = isSuperAdminEmail(row.email);
             const isPermanent =
               row.is_permanent_admin ||
-              row.email.toLowerCase() === 'pablo.lamela@gmail.com' ||
+              isSuperOwner ||
               row.email.toLowerCase() === 'presidente.estaca@gmail.com';
             const isProtected = isSelf || isPermanent;
 
@@ -364,7 +369,11 @@ export const UserManagementPanel: React.FC = () => {
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300"
                       >
                         <Lock className="w-3 h-3 text-amber-700" />
-                        <span>Admin Permanente Inmutable</span>
+                        <span>
+                          {isSuperOwner
+                            ? 'Admin Vitalicio (Propietario del Sistema)'
+                            : 'Admin Permanente Inmutable'}
+                        </span>
                       </span>
                     )}
 
@@ -375,12 +384,82 @@ export const UserManagementPanel: React.FC = () => {
                     )}
                   </div>
 
-                  <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                    {row.calling} •{' '}
-                    <span className="text-emerald-800 font-bold">
-                      {ORGANIZATION_LABELS[row.organization]}
-                    </span>
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                    <p className="text-xs font-semibold text-slate-600">
+                      {row.calling} •{' '}
+                      <span className="text-emerald-800 font-bold">
+                        {ORGANIZATION_LABELS[row.organization]}
+                      </span>
+                    </p>
+
+                    {/* Permite a pablosud52@gmail.com actualizar su llamamiento u organización si deja la Presidencia, conservando ADMIN vitalicio */}
+                    {isSuperOwner && isSelf && !editingSuperCalling && (
+                      <button
+                        type="button"
+                        data-testid="edit-superadmin-calling-btn"
+                        onClick={() => {
+                          setSuperCallingDraft(row.calling);
+                          setSuperOrgDraft(row.organization);
+                          setEditingSuperCalling(true);
+                        }}
+                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline decoration-emerald-400 underline-offset-2"
+                      >
+                        Cambiar mi llamamiento
+                      </button>
+                    )}
+                  </div>
+
+                  {isSuperOwner && isSelf && editingSuperCalling && (
+                    <div
+                      data-testid="superadmin-calling-editor"
+                      className="mt-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center gap-2"
+                    >
+                      <input
+                        type="text"
+                        data-testid="superadmin-calling-input"
+                        value={superCallingDraft}
+                        onChange={(e) => setSuperCallingDraft(e.target.value)}
+                        placeholder="Nuevo llamamiento o rol técnico"
+                        className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                      />
+                      <select
+                        data-testid="superadmin-org-select"
+                        value={superOrgDraft}
+                        onChange={(e) => setSuperOrgDraft(e.target.value as OrganizationCode)}
+                        className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                      >
+                        {SELECTABLE_ORGS.map((org) => (
+                          <option key={org} value={org}>
+                            {ORGANIZATION_LABELS[org]}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        data-testid="save-superadmin-calling-btn"
+                        onClick={async () => {
+                          await updateUserProfile(row.id, {
+                            calling: superCallingDraft.trim() || 'Administrador del Sistema',
+                            organization: superOrgDraft,
+                          });
+                          setEditingSuperCalling(false);
+                          triggerToast(
+                            `Llamamiento actualizado. Tu cuenta (${SUPER_ADMIN_EMAIL}) conserva el rol ADMIN vitalicio.`
+                          );
+                        }}
+                        className="pressable px-3 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold"
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingSuperCalling(false)}
+                        className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200/70"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 mt-1">
                     <span className="inline-flex items-center gap-1">
@@ -413,7 +492,9 @@ export const UserManagementPanel: React.FC = () => {
                     >
                       <option value="LIDER">LÍDER</option>
                       <option value="PRESIDENCIA">PRESIDENCIA</option>
-                      {row.organization === 'TODAS' && <option value="ADMIN">ADMIN</option>}
+                      {(row.organization === 'TODAS' || isSuperOwner) && (
+                        <option value="ADMIN">ADMIN</option>
+                      )}
                     </select>
                   </div>
 

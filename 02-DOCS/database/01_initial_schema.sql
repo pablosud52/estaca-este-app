@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.users_profiles (
 
 -- Seed de Usuarios y Presidencia (Administradores Permanentes Inmutables)
 INSERT INTO public.users_profiles (email, full_name, role, organization, calling, phone, can_approve_activities, is_permanent_admin, is_active) VALUES
-('pablo.lamela@gmail.com', 'Pablo Lamela', 'ADMIN', 'TODAS', 'Secretario Financiero de Estaca', '+598 99 123 456', true, true, true),
+('pablosud52@gmail.com', 'Pablo Lamela', 'ADMIN', 'TODAS', 'Secretario Financiero de Estaca', '+598 99 123 456', true, true, true),
 ('presidente.estaca@gmail.com', 'Presidente de Estaca', 'ADMIN', 'TODAS', 'Presidente de Estaca', '+598 99 000 001', true, true, true),
 ('consejero1.estaca@gmail.com', 'Primer Consejero', 'PRESIDENCIA', 'TODAS', '1° Consejero Presidencia de Estaca', '+598 99 000 002', true, false, true),
 ('consejero2.estaca@gmail.com', 'Segundo Consejero', 'PRESIDENCIA', 'TODAS', '2° Consejero Presidencia de Estaca', '+598 99 000 003', true, false, true),

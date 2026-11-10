@@ -40,11 +40,15 @@ test.describe('Paso 6.4 — Panel de Administrador (AdminPanel)', () => {
       'Por seguridad del sistema, ningún administrador puede revocar sus propios permisos ni eliminarse a sí mismo. Las modificaciones de administradores deben ser realizadas por otro administrador activo.'
     );
 
-    // 2. Verificar que la propia fila de Pablo Lamela (admin-pablo-01) está protegida y deshabilitada
+    // 2. Verificar que la propia fila de Pablo Lamela (admin-pablo-01, pablosud52@gmail.com) está protegida y deshabilitada
     await expect(page.getByTestId('self-session-badge-admin-pablo-01')).toBeVisible();
-    await expect(page.getByTestId('immutable-admin-pill-admin-pablo-01')).toBeVisible();
+    await expect(page.getByTestId('immutable-admin-pill-admin-pablo-01')).toContainText(
+      'Admin Vitalicio (Propietario del Sistema)'
+    );
+    await expect(page.getByTestId('user-row-admin-pablo-01')).toContainText('pablosud52@gmail.com');
     await expect(page.getByTestId('role-select-admin-pablo-01')).toBeDisabled();
     await expect(page.getByTestId('toggle-active-btn-admin-pablo-01')).toBeDisabled();
+    await expect(page.getByTestId('edit-superadmin-calling-btn')).toBeVisible();
 
     // 3. Verificar que el Presidente de Estaca (admin-presidente-01) también está permanentemente protegido
     await expect(page.getByTestId('immutable-admin-pill-admin-presidente-01')).toBeVisible();

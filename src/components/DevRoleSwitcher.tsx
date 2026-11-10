@@ -5,8 +5,13 @@ import { DEV_PROFILES } from '../data/seedData';
 import { ORGANIZATION_SHORT_LABELS } from '../lib/formatters';
 
 export const DevRoleSwitcher: React.FC = () => {
-  const { user, switchProfileById } = useAuth();
+  const { user, switchProfileById, canUseRoleSwitcher, isRoleSwitcherVisible } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+
+  // En producción, solo pablosud52@gmail.com tiene acceso al cambio rápido de rol
+  if (!canUseRoleSwitcher || !isRoleSwitcherVisible) {
+    return null;
+  }
 
   const getRoleBadgeStyle = (role: string) => {
     switch (role) {

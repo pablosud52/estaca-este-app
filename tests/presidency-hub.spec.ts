@@ -45,7 +45,9 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
     await page.getByTestId('switch-role-presidencia-consejero1-01').click();
 
     await expect(page.getByTestId('presidency-hub-view')).toBeVisible();
-    await expect(page.getByTestId('hub-user-name')).toHaveText('Primer Consejero');
+    if (!isMobile) {
+      await expect(page.getByTestId('hub-user-name')).toHaveText('Primer Consejero');
+    }
 
     // Selector de año para Presidencia/Admin tiene 2025, 2026 y 2027
     const yearSelect = page.getByTestId('year-selector-dropdown');
@@ -113,6 +115,14 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
     await expect(page.getByTestId('quarter-expenses-modal-title')).toHaveText(
       'Gastos de Trimestre T1 · Total: $ 152.846,00'
     );
+
+    if (isMobile) {
+      await page.waitForTimeout(200);
+      await page.screenshot({
+        path: 'C:/Users/Pablo/.gemini/antigravity/brain/62fbf75c-7edb-420d-8e4a-03d04293c255/modal_gastos_mobile.png',
+      });
+    }
+
     await page.getByTestId('close-quarter-expenses-modal').click();
     await expect(page.getByTestId('quarter-expenses-modal')).toBeHidden();
   });

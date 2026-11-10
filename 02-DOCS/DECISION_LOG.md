@@ -176,3 +176,16 @@ Este registro documenta las decisiones clave tomadas a lo largo del diseño del 
      - **Presidencia**: Acceso al Hub Ejecutivo (Dashboard de Presidencia, alertas de actividades por aprobar y selector de organizaciones).
      - **Administrador (Secretario Financiero y Presidente)**: Acceso total al Hub Ejecutivo más el panel de Gestión de Usuarios y el Centro de Edición y Carga Operativa (conciliación, gastos, retiros, sincronización Excel y LCR).
 - **Consecuencias**: Mantenimiento centralizado, una sola base de código frontend, despliegues continuos simplificados y máxima coherencia visual y de diseño.
+
+---
+
+### [ADR-017] Super-Administrador Vitalicio por Correo (`pablosud52@gmail.com`) y Acceso Exclusivo al Simulador de Roles
+- **Fecha**: 2026-11-09
+- **Estado**: Aprobado por el Usuario
+- **Contexto**: Se requería garantizar que Pablo Lamela (`pablosud52@gmail.com`), actual Secretario Financiero de Estaca, conserve sus permisos totales de `ADMIN` de forma permanente incluso si en el futuro es relevado de su llamamiento o deja de integrar la Presidencia de Estaca, y que ningún otro usuario tenga acceso al selector de cambio de rol (Simulador RBAC) cuando la aplicación opere en producción.
+- **Decisión**:
+  1. Se declara `SUPER_ADMIN_EMAIL = 'pablosud52@gmail.com'` como identidad propietaria vitalicia del sistema.
+  2. Su rol `ADMIN`, estado activo e inmutabilidad (`is_permanent_admin = true`) quedan vinculados directamente a su correo `pablosud52@gmail.com`, desacoplados del llamamiento de Secretario Financiero o de la pertenencia a `organization = 'TODAS'`.
+  3. El usuario `pablosud52@gmail.com` puede actualizar su propio llamamiento u organización en el futuro (y dar de alta a un nuevo Secretario Financiero con rol `ADMIN`) sin perder jamás su propio rol `ADMIN`.
+  4. El componente de cambio rápido de rol (`DevRoleSwitcher`) valida el correo autenticado real (`realUserEmail`) y solo está disponible para `pablosud52@gmail.com` (con opción de mostrarlo u ocultarlo desde su menú), permaneciendo invisible e inaccesible para el resto de los usuarios en producción.
+- **Consecuencias**: Continuidad técnica garantizada ante relevos eclesiásticos futuros y máxima seguridad en el control de simulación de vistas.

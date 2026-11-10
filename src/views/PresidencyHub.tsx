@@ -665,9 +665,9 @@ export const PresidencyHub: React.FC = () => {
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-2">
-            {/* Izquierda: Estaca + Selector de Año Dinámico [ Año 2026 ▾ ] */}
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
-              <span className="inline-flex items-center px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm truncate">
+            {/* Izquierda: Estaca Montevideo Uruguay Este (completo en móvil gracias a Opción B) + Selector de Año [ Año 2026 ▾ ] */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm whitespace-nowrap">
                 Estaca Montevideo Uruguay Este
               </span>
 
@@ -689,17 +689,17 @@ export const PresidencyHub: React.FC = () => {
               </div>
             </div>
 
-            {/* Derecha: Usuario Activo + Botón Menú Hamburguesa (☰ -> ✕) en móvil */}
+            {/* Derecha: Usuario Activo (visible en PC; en móvil pasa al Drawer ☰ según Opción B) + Botón Menú Hamburguesa */}
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-              <div className="inline-flex items-center gap-1.5 sm:gap-2 bg-slate-100 py-1 px-2.5 sm:px-3 rounded-full border border-slate-200/90 text-xs">
-                <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-700 flex-shrink-0" />
+              <div className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
                 <span
                   data-testid="hub-user-name"
-                  className="font-extrabold text-slate-800 max-w-[85px] sm:max-w-none truncate"
+                  className="font-extrabold text-slate-800"
                 >
                   {user.full_name}
                 </span>
-                <span className="hidden sm:inline-block text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white">
+                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white">
                   {user.role}
                 </span>
               </div>
@@ -854,7 +854,28 @@ export const PresidencyHub: React.FC = () => {
             className="w-72 max-w-[82vw] h-full bg-white shadow-2xl border-r border-slate-200 p-5 flex flex-col justify-between"
           >
             <div className="space-y-4">
-              <div className="pb-3 border-b border-slate-100">
+              {/* Identidad del usuario conectado en el Drawer móvil (Opción B) */}
+              <div className="p-3.5 rounded-2xl bg-slate-100/90 border border-slate-200/90 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 min-w-0">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <span
+                      data-testid="drawer-user-name"
+                      className="text-xs font-extrabold text-slate-900 truncate"
+                    >
+                      {user.full_name}
+                    </span>
+                  </span>
+                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white flex-shrink-0">
+                    {user.role}
+                  </span>
+                </div>
+                <p className="text-[11px] font-medium text-slate-500 truncate pl-5">
+                  {user.calling}
+                </p>
+              </div>
+
+              <div className="pb-2 border-b border-slate-100">
                 <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
                   Secciones
                 </p>
@@ -1050,7 +1071,7 @@ export const PresidencyHub: React.FC = () => {
               data-testid="quarterly-rollover-section"
               className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/90"
             >
-              {/* En móvil: botón acordeón interactivo; en PC: título directo */}
+              {/* En móvil: botón acordeón limpio solo con título y flecha ▾; en PC: título directo */}
               <button
                 type="button"
                 data-testid="toggle-quarter-summary-mobile"
@@ -1058,22 +1079,14 @@ export const PresidencyHub: React.FC = () => {
                 onClick={() => setIsQuarterSummaryOpen((prev) => !prev)}
                 className="w-full flex items-center justify-between gap-3 text-left md:cursor-default focus:outline-none"
               >
-                <div className="flex items-center gap-2.5">
-                  <h2 className="text-base font-extrabold text-slate-900">
-                    Resumen por trimestre
-                  </h2>
-                  <span className="md:hidden text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    T1–T4
-                  </span>
-                </div>
-                <span className="md:hidden inline-flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200/80">
-                  <span>{isQuarterSummaryOpen ? 'Ocultar' : 'Ver trimestres'}</span>
-                  <ChevronDown
-                    className={`w-4 h-4 text-slate-600 transition-transform duration-200 ease-out ${
-                      isQuarterSummaryOpen ? 'rotate-180' : 'rotate-0'
-                    }`}
-                  />
-                </span>
+                <h2 className="text-base font-extrabold text-slate-900">
+                  Resumen por trimestre
+                </h2>
+                <ChevronDown
+                  className={`md:hidden w-4 h-4 text-slate-500 transition-transform duration-200 ease-out flex-shrink-0 ${
+                    isQuarterSummaryOpen ? 'rotate-180 text-slate-900' : 'rotate-0'
+                  }`}
+                />
               </button>
 
               {/* Contenedor animado en móvil y siempre abierto en PC (md:grid-rows-[1fr]) */}
@@ -1277,7 +1290,7 @@ export const PresidencyHub: React.FC = () => {
               <div
                 data-testid="quarter-expenses-modal-backdrop"
                 onClick={() => setSelectedQuarterModal(null)}
-                className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity"
+                className="fixed inset-0 z-[60] bg-slate-950/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity"
               >
                 <div
                   role="dialog"
@@ -1309,7 +1322,7 @@ export const PresidencyHub: React.FC = () => {
                   </div>
 
                   {/* Lista compacta con solo 3 datos esenciales: Monto ($ #.##0,00) | Organización | Propósito o Detalle */}
-                  <div className="p-4 sm:p-5 overflow-y-auto divide-y divide-slate-100">
+                  <div className="p-4 pb-16 sm:p-5 overflow-y-auto divide-y divide-slate-100">
                     {selectedQuarterExpenses.length === 0 ? (
                       <p className="text-xs text-slate-500 py-6 text-center font-medium">
                         No hay gastos registrados en este trimestre.

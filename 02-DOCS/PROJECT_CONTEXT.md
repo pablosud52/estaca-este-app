@@ -17,6 +17,8 @@ El **Sistema de Finanzas y Calendario de la Estaca** es una solución web modern
 ## 2. Definición de Usuarios y Perfiles de Acceso
 
 ### Universo de Usuarios (Estimado: ~35 a 45 personas):
+- **Propietario / Super-Administrador Vitalicio del Sistema**:
+  - **Pablo Lamela (`pablosud52@gmail.com`)**: Administrador permanente inmutable vinculado directamente a su identidad de correo (`pablosud52@gmail.com`), **independientemente de su llamamiento u organización actual o futura** (incluso si en el futuro deja de ser Secretario Financiero o miembro de la Presidencia). Es además el **único usuario con acceso exclusivo al Selector Rápido de Cambio de Rol (Simulador RBAC)** en producción.
 - **Presidencia de Estaca (6 integrantes)**:
   - Presidente *(Administrador permanente no revocable)*
   - Secretario Financiero - Usuario principal *(Administrador permanente no revocable)*
@@ -24,7 +26,7 @@ El **Sistema de Finanzas y Calendario de la Estaca** es una solución web modern
   - Primer Consejero *(Lectura ejecutiva / Dashboard / Aprobación de actividades)*
   - Segundo Consejero *(Lectura ejecutiva / Dashboard / Aprobación de actividades)*
   - Secretario Ejecutivo *(Lectura ejecutiva / Dashboard)*
-  *Regla estricta*: El rol de Administrador solo puede asignarse a miembros de la Presidencia de Estaca; queda bloqueado para líderes de organizaciones.
+  *Regla estricta*: El rol de Administrador solo puede asignarse a miembros de la Presidencia de Estaca (con la única excepción vitalicia del propietario del sistema `pablosud52@gmail.com`); queda bloqueado para líderes de organizaciones.
   *Permiso granular en Presidencia*: Permiso específico de "Aprobar Actividades Propuestas" (los secretarios no pueden aprobarlas por defecto, a menos que la Presidencia les habilite explícitamente este permiso).
 - **Líderes de Organizaciones**:
   - Cada organización cuenta habitualmente con 4 integrantes (Presidente/a, 1° y 2° Consejeros/as, Secretario/a), pudiendo sumar asesores o secretarios adicionales.

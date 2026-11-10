@@ -84,10 +84,13 @@ flowchart TD
 
 ## 🚀 Fase 6: Desarrollo e Implementación del Frontend (En Curso)
 - [x] Módulo de Autenticación y Selector de Rol para desarrollo (simulación fluida y Google OAuth).
-- [x] Vista 1: Pantalla Móvil del Líder (saldo, próxima actividad, historial colapsable, proponer actividad, selector de año dinámico `2026` / `2027`).
+- [x] Vista 1: Pantalla Móvil del Líder (`LeaderView`):
+  - Tarjeta Maestra `"PRESUPUESTO DISPONIBLE"` con saldo destacado, línea sobria `"Gastos realizados: $ ..."`, desglose trimestral limpio (`"Asignado: $ ... | Gastos: $ ..."`) y línea discreta al pie exclusiva para Hombres Jóvenes y Mujeres Jóvenes: `"🏛️ Fondo Seminario: $ 26.000,00 (Fondo conjunto, no incluido en este presupuesto)"`.
+  - Calendario Anual completo (26 actividades 2026: de la organización + generales de Estaca, pasadas atenuadas con estado `"Realizada"` y futuras) con auto-enfoque suave (`scrollTo`) hacia la próxima actividad programada.
+  - Selector de año dinámico (`2026` / `2027`) y confidencialidad estricta de presupuestos entre organizaciones.
 - [x] Vista 2: Hub Ejecutivo de Presidencia (`Panel`) y Rediseño "Menos es Más":
   - Cabecera minimalista con botón `"Panel"`, selector dinámico de año (`2025/2026/2027` para Presidencia/Admin; `2026/2027` para Líderes; leyenda `"Presupuesto 2027 pendiente de asignación"`) y menú hamburguesa móvil (`☰` → `✕`) con Drawer vertical y `backdrop-blur`.
-  - Tarjeta Maestra `"PRESUPUESTO DISPONIBLE"` (`$ 114.168,09` / `Asignado 2026: $ 419.773,09`) con alerta `"⚠️ $ 15.506,00 pendientes de rendir"` y enlace directo a la sección de rendiciones.
+  - Tarjeta Maestra `"PRESUPUESTO DISPONIBLE"` (`$ 114.168,09`) con alerta `"⚠️ $ 15.506,00 pendientes de rendir"` y enlace directo a la sección de rendiciones.
   - Posición 1 debajo de KPI: Gráfica `"Asignación de fondos a cada organización"` iniciando por defecto en Porcentaje (`%`), con etiquetas X a 45º, montos/porcentajes impresos en cada barra, filtros `[ Global ] [ T1 ] [ T2 ] [ T3 ] [ T4 ]`, barras cálidas para Hombres Jóvenes, Mujeres Jóvenes y Seminario, y pastilla `"Total Destinado a Jóvenes (HJ + MJ + Seminario): $ 146.000,00 (34,8%)"`.
   - Posición 2: Sección `"Resumen por trimestre"` (abierta en grid en PC y colapsable tipo acordeón cerrada por defecto en móvil), mostrando el **Ingreso del trimestre** en grande y debajo: `Saldo inicial / Remanente anterior`, `Monto total de fondos` y `Gastos del período` con modal interactivo (`"Gastos de Trimestre [X] · Total: $ [Monto]"`).
   - Posición 3: Sección `"Estado por Organización"` (grid en PC y acordeones compactos en móvil con fila `[Nombre de Organización] ····· [$ Saldo Disponible] [▾]`, desplegando fluidamente la próxima actividad y el botón `"ABRIR [ORGANIZACIÓN]"`).

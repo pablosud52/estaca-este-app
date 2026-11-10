@@ -214,8 +214,26 @@ CREATE TABLE IF NOT EXISTS public.activities (
     created_at timestamptz DEFAULT now()
 );
 
--- Seed de Actividades 2026 Auditadas
+-- Seed de Actividades 2026 Auditadas (Historial anual completo + agenda LCR)
 INSERT INTO public.activities (title, event_date, location, organization, estimated_cost, has_budget, status) VALUES
+('Campamento HJ y MJ', '2026-01-17', 'Campamento Juvenil', 'HJ', 63976.00, true, 'APROBADA'),
+('Baile para matrimonios de estaca', '2026-02-14', 'Centro de Estaca', 'ESTACA', 57098.00, true, 'APROBADA'),
+('Reunión AS', '2026-02-23', 'Centro de Estaca', 'AS', 949.00, true, 'APROBADA'),
+('Act. HJ MJ', '2026-03-07', 'Centro de Estaca', 'MJ', 3840.00, true, 'APROBADA'),
+('Act. Soc Soc Capacitación de barrios', '2026-03-21', 'Centro de Estaca', 'SS', 18545.00, true, 'APROBADA'),
+('Feria de Autosuficiencia', '2026-03-26', 'Centro de Estaca', 'ESTACA', 276.00, true, 'APROBADA'),
+('Act. HJ Día de servicio', '2026-03-28', 'Montevideo', 'HJ', 3802.00, true, 'APROBADA'),
+('Compra pizarra blanca', '2026-04-12', 'Centro de Estaca', 'ESTACA', 5400.00, true, 'APROBADA'),
+('Conferencia General Abril (Refrigerio)', '2026-04-12', 'Centro de Estaca', 'ESTACA', 23847.00, true, 'APROBADA'),
+('Actividad de Hombres Jóvenes', '2026-05-05', 'Centro de Estaca', 'HJ', 1425.00, true, 'APROBADA'),
+('Materiales para Primaria Estaca', '2026-05-24', 'Centro de Estaca', 'PRIMARIA', 3097.00, true, 'APROBADA'),
+('Reunión de consejo de coordinación', '2026-06-27', 'Centro de Estaca', 'ESTACA', 3972.00, true, 'APROBADA'),
+('Baile Día del Amigo - Hombres y Mujeres Jóvenes', '2026-07-18', 'Centro de Estaca', 'MJ', 11879.00, true, 'APROBADA'),
+('Charla fogón de estaca con élder Gifford Nielsen', '2026-07-31', 'Centro de Estaca', 'ESTACA', 3403.00, true, 'APROBADA'),
+('Seminario Matrimonios y Familia (Comida y materiales)', '2026-08-29', 'Centro de Estaca', 'SS', 31135.00, true, 'APROBADA'),
+('MeetUp JAS', '2026-09-10', 'Montevideo', 'JAS', 4750.00, true, 'APROBADA'),
+('Viaje al Templo niños que avanzan a HJ/MJ', '2026-10-17', 'Templo de Montevideo', 'PRIMARIA', 12394.00, true, 'APROBADA'),
+('Conferencia de Estaca Octubre', '2026-10-19', 'Centro de Estaca', 'ESTACA', 39185.00, true, 'APROBADA'),
 ('Presentación Primaria Colonia Nicolich', '2026-11-08', 'Capilla Colonia Nicolich', 'PRIMARIA', 0, false, 'APROBADA'),
 ('Presentación Primaria Camino Carrasco', '2026-11-15', 'Capilla Camino Carrasco', 'PRIMARIA', 0, false, 'APROBADA'),
 ('Actividad AS de Fin de Año', '2026-11-21', 'Centro de Estaca (Dalmiro Costa 4635)', 'AS', 15000.00, true, 'APROBADA'),

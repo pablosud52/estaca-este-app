@@ -10,23 +10,47 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await page.reload();
   });
 
-  test('1. Carga por defecto en Líder de Mujeres Jóvenes con formato $ #.##0,00, regla de Seminario y Selector de Año (2026/2027)', async ({
+  test('1. Carga por defecto en Líder de Mujeres Jóvenes con PRESUPUESTO DISPONIBLE, Gastos realizados, línea de Seminario, Desglose Trimestral y Selector de Año', async ({
     page,
-  }) => {
+  }, testInfo) => {
     // Verificar usuario inicial (Carolina Méndez - MJ)
     await expect(page.getByTestId('header-user-name')).toHaveText('Carolina Méndez');
-    await expect(page.getByTestId('balance-card-title')).toContainText('SALDO ACTUAL • MMJJ');
+    await expect(page.getByTestId('balance-card-title')).toHaveText('PRESUPUESTO DISPONIBLE');
 
-    // Presupuesto asignado MJ (Ejemplo_DB_Finanzas.xlsx) = $ 60.000,00 | Gastos MJ = $ 42.495,00 | Saldo disponible MJ = $ 17.505,00
-    await expect(page.getByTestId('total-assigned-amount')).toHaveText('$ 60.000,00');
-    await expect(page.getByTestId('total-spent-amount')).toHaveText('$ 42.495,00');
+    // Saldo disponible MJ = $ 17.505,00 | Gastos realizados: $ 42.495,00
     await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 17.505,00');
+    await expect(page.getByTestId('leader-spent-line')).toContainText('Gastos realizados:');
+    await expect(page.getByTestId('total-spent-amount')).toHaveText('$ 42.495,00');
 
-    // Activar checkbox de Seminario ($ 26.000,00 adicionales en 2026)
-    await page.getByTestId('header-seminario-toggle-label').click();
-    await expect(page.getByTestId('balance-card-title')).toContainText('MMJJ + SEM');
-    await expect(page.getByTestId('total-assigned-amount')).toHaveText('$ 86.000,00');
-    await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 43.505,00');
+    // Verificar línea discreta de Fondo Seminario al pie de la tarjeta para MJ/HJ (sin checkbox)
+    await expect(page.getByTestId('seminario-joint-fund-line')).toHaveText(
+      '🏛️ Fondo Seminario: $ 26.000,00 (Fondo conjunto, no incluido en este presupuesto)'
+    );
+
+    // Verificar Desglose Trimestral (solo "Asignado: $ ... | Gastos: $ ...", sin "Disp:")
+    await page.getByTestId('toggle-quarters-btn').click();
+    await expect(page.getByTestId('leader-quarter-summary-T1')).toHaveText(
+      'Asignado: $ 30.000,00 | Gastos: $ 33.908,00'
+    );
+    await expect(page.getByTestId('leader-quarter-summary-T1')).not.toContainText('Disp:');
+
+    // Abrir también el calendario en MJ para capturar la vista completa (Tarjeta + Trimestres + Calendario con auto-enfoque)
+    await page.getByTestId('accordion-calendar-trigger').click();
+    const mjScrollContainer = page.getByTestId('calendar-scroll-container');
+    await expect
+      .poll(async () => {
+        return await mjScrollContainer.evaluate((el) => el.scrollTop);
+      })
+      .toBeGreaterThan(0);
+
+    const artifactDir =
+      'C:/Users/Pablo/.gemini/antigravity/brain/62fbf75c-7edb-420d-8e4a-03d04293c255';
+    await page.evaluate(() => window.scrollTo(0, 0));
+    if (testInfo.project.name === 'Desktop Chrome') {
+      await page.screenshot({ path: `${artifactDir}/leader_mj_desktop.png`, fullPage: true });
+    } else if (testInfo.project.name === 'Mobile Chrome') {
+      await page.screenshot({ path: `${artifactDir}/leader_mj_mobile.png`, fullPage: true });
+    }
 
     // Verificar Selector de Año para Líder (solo 2026 y 2027) y leyenda en 2027
     const yearSelect = page.getByTestId('year-selector-dropdown');
@@ -54,28 +78,58 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await expect(page.getByText('Factura: $ 10.750,00')).toBeVisible();
   });
 
-  test('3. Regla Sagrada #9: Confidencialidad de presupuestos en Calendario entre organizaciones', async ({
+  test('3. Calendario Anual: Carga completa (Org + Estaca, pasadas y futuras), auto-enfoque y Regla Sagrada #9 de Confidencialidad', async ({
     page,
-  }) => {
+  }, testInfo) => {
     // Cambiar al perfil de Líder de Primaria (Lucía Fernández)
     await page.getByTestId('dev-role-trigger').click();
     await page.getByTestId('switch-role-lider-primaria-01').click();
 
     await expect(page.getByTestId('header-user-name')).toHaveText('Lucía Fernández');
-    // Primaria no debe ver el toggle de Seminario
-    await expect(page.getByTestId('header-seminario-toggle-label')).toHaveCount(0);
+    await expect(page.getByTestId('balance-card-title')).toHaveText('PRESUPUESTO DISPONIBLE');
+    await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 15.491,00');
+    // Primaria NO debe ver la línea de Seminario
+    await expect(page.getByTestId('seminario-joint-fund-line')).toHaveCount(0);
 
-    // Abrir acordeón de Calendario y cambiar a "Agenda General Estaca"
+    // Abrir acordeón de Calendario: debe cargar tanto eventos de Primaria como generales de Estaca, pasados y futuros
     await page.getByTestId('accordion-calendar-trigger').click();
-    await page.getByTestId('calendar-scope-all').click();
+    const scrollContainer = page.getByTestId('calendar-scroll-container');
+    await expect(
+      scrollContainer.getByText('Viaje al Templo niños que avanzan a HJ/MJ')
+    ).toBeVisible();
+    await expect(scrollContainer.getByText('Conferencia de Estaca Octubre')).toBeVisible();
+    await expect(
+      scrollContainer.getByText('Presentación Primaria Colonia Nicolich')
+    ).toBeVisible();
+    await expect(scrollContainer.getByText('Consejo de Estaca')).toBeVisible();
 
+    // Verificar auto-scroll hacia la próxima actividad futura (data-upcoming-anchor="true")
+    await expect
+      .poll(async () => {
+        return await scrollContainer.evaluate((el) => el.scrollTop);
+      })
+      .toBeGreaterThan(0);
+
+    const artifactDir =
+      'C:/Users/Pablo/.gemini/antigravity/brain/62fbf75c-7edb-420d-8e4a-03d04293c255';
+    await page.evaluate(() => window.scrollTo(0, 0));
+    if (testInfo.project.name === 'Desktop Chrome') {
+      await page.screenshot({ path: `${artifactDir}/leader_primaria_desktop.png`, fullPage: true });
+    } else if (testInfo.project.name === 'Mobile Chrome') {
+      await page.screenshot({ path: `${artifactDir}/leader_primaria_mobile.png`, fullPage: true });
+    }
+
+    // Cambiar a "Agenda General Estaca" y verificar confidencialidad de presupuestos de otras organizaciones
+    await page.getByTestId('calendar-scope-all').click();
     await expect(page.getByTestId('confidentiality-notice')).toBeVisible();
 
-    // Eventos de AS ($ 15.000,00) y HJ ($ 10.000,00) deben verse como eventos informativos pero SIN monto ni badge 💰 Con Presupuesto
-    await expect(page.getByText('Actividad AS de Fin de Año')).toBeVisible();
-    await expect(page.getByText('Campeonato de Vóley HHJJ y MMJJ')).toBeVisible();
-    await expect(page.getByTestId('confidential-budget-badge')).toHaveCount(0);
-    await expect(page.getByTestId('confidential-budget-amount')).toHaveCount(0);
+    // Eventos de AS ($ 15.000,00) y HJ ($ 10.000,00) se ven informativos pero SIN monto visible para Primaria
+    await expect(scrollContainer.getByText('Actividad AS de Fin de Año')).toBeVisible();
+    await expect(scrollContainer.getByText('Campeonato de Vóley HHJJ y MMJJ')).toBeVisible();
+    await expect(scrollContainer.getByText('$ 15.000,00')).toHaveCount(0);
+    await expect(scrollContainer.getByText('$ 10.000,00')).toHaveCount(0);
+    // Pero Primaria sí ve el presupuesto de sus propias actividades pasadas ($ 12.394,00 del Viaje al Templo)
+    await expect(scrollContainer.getByText('$ 12.394,00')).toBeVisible();
   });
 
   test('4. Formulario de Propuesta de Actividad con checkbox de Seminario para MJ/HJ', async ({

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   ChevronDown,
@@ -6,7 +6,6 @@ import {
   MapPin,
   Plus,
   Receipt,
-  Sparkles,
   TrendingUp,
   Wallet,
   CheckCircle2,
@@ -81,14 +80,8 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     return user.organization;
   }, [inspectedOrg, user.organization]);
 
-  // Regla Especial de Seminario (ADR-003): Líderes de MJ y HJ disponen del checkbox "Seminario"
+  // Regla Especial de Seminario (ADR-003): Exclusivo para Hombres Jóvenes (HJ) y Mujeres Jóvenes (MJ)
   const canUseSeminario = baseOrg === 'MJ' || baseOrg === 'HJ';
-  const [includeSeminario, setIncludeSeminario] = useState<boolean>(false);
-
-  // Resetear toggle de Seminario cuando cambia la organización base
-  useEffect(() => {
-    setIncludeSeminario(false);
-  }, [baseOrg]);
 
   const [budgets, setBudgets] = useState<BudgetAllocation[]>(SEED_BUDGET_ALLOCATIONS);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(SEED_EXPENSES);
@@ -101,6 +94,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   const [isExpensesOpen, setIsExpensesOpen] = useState<boolean>(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
   const [isQuartersOpen, setIsQuartersOpen] = useState<boolean>(false);
+
+  // Referencias para auto-enfoque suave del Calendario Anual en la próxima actividad futura
+  const calendarScrollRef = useRef<HTMLDivElement | null>(null);
+  const nextUpcomingActivityRef = useRef<HTMLDivElement | null>(null);
 
   // Filtros internos de acordeones
   const [quarterFilter, setQuarterFilter] = useState<'TODOS' | QuarterCode>('TODOS');
@@ -193,36 +190,36 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     };
   }, []);
 
-  // Organizaciones activas según el checkbox de Seminario
-  const activeOrgs: OrganizationCode[] = useMemo(() => {
-    if (canUseSeminario && includeSeminario) {
-      return [baseOrg, 'SEMINARIO'];
-    }
-    return [baseOrg];
-  }, [baseOrg, canUseSeminario, includeSeminario]);
-
-  // Presupuesto asignado a Seminario en el año activo
-  const seminarioAssigned = useMemo(() => {
+  // Saldo disponible de Seminario (Fondo conjunto para HJ y MJ, no incluido en el presupuesto individual)
+  const seminarioAvailable = useMemo(() => {
     const sem = budgets.find(
       (b) => b.organization === 'SEMINARIO' && Number(b.year) === activeYear
     );
-    if (!sem) return 0;
-    return (
-      Number(sem.t1_assigned) +
-      Number(sem.t2_assigned) +
-      Number(sem.t3_assigned) +
-      Number(sem.t4_assigned)
-    );
-  }, [budgets, activeYear]);
+    const assigned = sem
+      ? Number(sem.t1_assigned) +
+        Number(sem.t2_assigned) +
+        Number(sem.t3_assigned) +
+        Number(sem.t4_assigned)
+      : 0;
+    const spent = expenses
+      .filter(
+        (e) =>
+          e.organization === 'SEMINARIO' &&
+          !e.is_reimbursable_oai &&
+          e.expense_date.startsWith(String(activeYear))
+      )
+      .reduce((acc, e) => acc + Number(e.net_amount), 0);
+    return Number((assigned - spent).toFixed(2));
+  }, [budgets, expenses, activeYear]);
 
-  // Cálculo Financiero de la Organización (ADR-007: excluye reembolsables OAI; ADR-013: usa net_amount)
+  // Cálculo Financiero exclusivo de la Organización base (ADR-007: excluye reembolsables OAI; ADR-013: usa net_amount)
   const financialSummary = useMemo(() => {
     const matchingBudgets = budgets.filter(
-      (b) => activeOrgs.includes(b.organization) && Number(b.year) === activeYear
+      (b) => b.organization === baseOrg && Number(b.year) === activeYear
     );
     const matchingExpenses = expenses.filter(
       (e) =>
-        activeOrgs.includes(e.organization) &&
+        e.organization === baseOrg &&
         !e.is_reimbursable_oai &&
         e.expense_date.startsWith(String(activeYear))
     );
@@ -303,7 +300,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       quarters,
       orgExpenses: matchingExpenses.sort((a, b) => b.expense_date.localeCompare(a.expense_date)),
     };
-  }, [budgets, expenses, activeOrgs, activeYear]);
+  }, [budgets, expenses, baseOrg, activeYear]);
 
   // Gastos filtrados por trimestre en el acordeón
   const filteredExpenses = useMemo(() => {
@@ -313,37 +310,93 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     );
   }, [financialSummary.orgExpenses, quarterFilter]);
 
-  // Actividades visibles para la organización (incluye Seminario automáticamente si es MJ o HJ según PROJECT_CONTEXT §4.1)
-  const orgRelevantOrgs: OrganizationCode[] = useMemo(() => {
-    if (canUseSeminario) {
-      return [baseOrg, 'SEMINARIO'];
-    }
-    return [baseOrg];
-  }, [baseOrg, canUseSeminario]);
+  // Fecha de referencia actual para separar actividades pasadas (realizadas) de las próximas futuras
+  const referenceToday = '2026-11-08';
 
-  // Próxima Actividad Programada de la Organización
+  // Determina si una actividad corresponde a la agenda propia de la organización (incluyendo Seminario y actividades conjuntas HJ/MJ)
+  const isOwnOrgOrYouthJointActivity = (act: ActivityRecord): boolean => {
+    if (act.organization === baseOrg) return true;
+    if (canUseSeminario) {
+      if (act.organization === 'SEMINARIO') return true;
+      const upperTitle = act.title.toUpperCase();
+      if (
+        (act.organization === 'HJ' || act.organization === 'MJ') &&
+        (upperTitle.includes('HJ Y MJ') ||
+          upperTitle.includes('HHJJ Y MMJJ') ||
+          upperTitle.includes('CONECTADOS CON PROPOSITO') ||
+          upperTitle.includes('CONECTADOS CON PROPÓSITO'))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Próxima Actividad Programada (de la organización o general de Estaca)
   const nextUpcomingActivity = useMemo(() => {
     const orgActs = activities
       .filter(
         (a) =>
-          orgRelevantOrgs.includes(a.organization) &&
+          (isOwnOrgOrYouthJointActivity(a) || a.organization === 'ESTACA') &&
           a.status !== 'RECHAZADA' &&
-          a.status !== 'CANCELADA'
+          a.status !== 'CANCELADA' &&
+          a.event_date.startsWith(String(activeYear))
       )
       .sort((a, b) => a.event_date.localeCompare(b.event_date));
 
-    // Buscar desde noviembre 2026 en adelante o la primera disponible
-    return orgActs.find((a) => a.event_date >= '2026-11-01') || orgActs[0] || null;
-  }, [activities, orgRelevantOrgs]);
+    // Prioriza la próxima actividad propia de la organización desde hoy; si no hay, la próxima de Estaca
+    const nextOwn = orgActs.find(
+      (a) => isOwnOrgOrYouthJointActivity(a) && a.event_date >= referenceToday
+    );
+    const nextAny = orgActs.find((a) => a.event_date >= referenceToday);
+    return nextOwn || nextAny || orgActs[orgActs.length - 1] || null;
+  }, [activities, baseOrg, canUseSeminario, activeYear]);
 
-  // Lista de actividades en el acordeón de Calendario Anual
+  // Lista completa de actividades del año en el acordeón de Calendario Anual:
+  // En vista 'ORG' incluye TODAS las actividades del año de la organización + las generales de Estaca a las que asisten.
+  // En vista 'ESTACA_ALL' incluye todas las organizaciones de la Estaca (con confidencialidad de presupuestos).
   const displayedCalendarActivities = useMemo(() => {
-    const baseList = activities.filter((a) => a.status !== 'CANCELADA');
+    const baseList = activities
+      .filter(
+        (a) =>
+          a.status !== 'CANCELADA' &&
+          a.status !== 'RECHAZADA' &&
+          a.event_date.startsWith(String(activeYear))
+      )
+      .sort((a, b) => a.event_date.localeCompare(b.event_date));
+
     if (calendarScope === 'ORG') {
-      return baseList.filter((a) => orgRelevantOrgs.includes(a.organization));
+      return baseList.filter(
+        (a) => isOwnOrgOrYouthJointActivity(a) || a.organization === 'ESTACA'
+      );
     }
     return baseList;
-  }, [activities, calendarScope, orgRelevantOrgs]);
+  }, [activities, calendarScope, baseOrg, canUseSeminario, activeYear]);
+
+  // ID de la primera actividad futura (o del día actual) para el auto-enfoque suave en el calendario
+  const firstUpcomingActivityId = useMemo(() => {
+    const found = displayedCalendarActivities.find((a) => a.event_date >= referenceToday);
+    return found ? found.id : null;
+  }, [displayedCalendarActivities]);
+
+  // Auto-scroll suave al abrir el calendario o cambiar filtro para posicionar la vista en la próxima actividad futura
+  useEffect(() => {
+    if (!isCalendarOpen) return;
+    const timer = setTimeout(() => {
+      const container = calendarScrollRef.current;
+      const target = nextUpcomingActivityRef.current;
+      if (container && target) {
+        // Posiciona dejando ~85px hacia arriba para que se vea la actividad pasada inmediatamente anterior con su estado "Realizada"
+        const targetOffset = Math.max(0, target.offsetTop - 85);
+        container.scrollTo({
+          top: targetOffset,
+          behavior: 'smooth',
+        });
+      }
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [isCalendarOpen, calendarScope, baseOrg, activeYear, firstUpcomingActivityId]);
 
   const handleCreateProposal = async (proposal: {
     title: string;
@@ -461,11 +514,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               <h1 className="text-sm font-extrabold text-slate-900 tracking-tight truncate">
                 {ORGANIZATION_LABELS[baseOrg]}
               </h1>
-              {includeSeminario && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  + Seminario
-                </span>
-              )}
             </div>
           </div>
 
@@ -499,40 +547,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             </div>
           </div>
         </div>
-
-        {/* Regla Especial de Seminario: Checkbox en barra superior para MJ y HJ (PROJECT_CONTEXT.md §4.1) */}
-        {canUseSeminario && (
-          <div className="bg-emerald-950/5 border-t border-emerald-900/10 px-4 py-2">
-            <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-xs text-slate-700 whitespace-nowrap">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
-                <span className="font-semibold">Fondo común juventud:</span>
-              </div>
-
-              <label
-                htmlFor="header-seminario-toggle"
-                data-testid="header-seminario-toggle-label"
-                className={`pressable inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold cursor-pointer border whitespace-nowrap transition ${
-                  includeSeminario
-                    ? 'bg-emerald-800 text-white border-emerald-900 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                <input
-                  id="header-seminario-toggle"
-                  data-testid="header-seminario-checkbox"
-                  type="checkbox"
-                  checked={includeSeminario}
-                  onChange={(e) => setIncludeSeminario(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-700 focus:ring-0"
-                />
-                <span className="tabular-nums">
-                  Seminario ({formatCurrency(seminarioAssigned)})
-                </span>
-              </label>
-            </div>
-          </div>
-        )}
       </header>
 
       {/* ==================== CONTENIDO MÓVIL DEL LÍDER ==================== */}
@@ -549,9 +563,9 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           </div>
         )}
 
-        {/* 1. TARJETA DE SALDO ACTUAL (Estilo Billetera Digital) */}
+        {/* 1. TARJETA MAESTRA "PRESUPUESTO DISPONIBLE" (Unificada con Presidencia) */}
         <section
-          aria-label="Saldo Disponible Actual"
+          aria-label="Presupuesto Disponible"
           data-testid="balance-card"
           className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 p-5 sm:p-6 text-white shadow-xl border border-slate-800"
         >
@@ -560,65 +574,44 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
           <div className="relative z-10">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300">
-                  <Wallet className="w-4 h-4" />
-                </div>
-                <span
-                  data-testid="balance-card-title"
-                  className="text-xs font-extrabold uppercase tracking-wider text-slate-300"
-                >
-                  SALDO ACTUAL • {ORGANIZATION_SHORT_LABELS[baseOrg]}
-                  {includeSeminario ? ' + SEM' : ''}
-                </span>
-              </div>
-              <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800/90 text-emerald-300 border border-slate-700">
-                {activeYear}
+              <span
+                data-testid="balance-card-title"
+                className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-emerald-300"
+              >
+                PRESUPUESTO DISPONIBLE
               </span>
+              <div className="w-8 h-8 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300">
+                <Wallet className="w-4 h-4" />
+              </div>
             </div>
 
             {/* Monto Principal en formato oficial $ #.##0,00 */}
-            <div className="mt-3 flex items-baseline gap-2">
-              <p
-                data-testid="available-balance-amount"
-                className="text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums text-white"
-              >
-                {formatCurrency(financialSummary.availableBalance)}
-              </p>
-            </div>
-            <p className="text-xs text-slate-300 font-medium mt-0.5">
-              Disponible para utilizar
+            <p
+              data-testid="available-balance-amount"
+              className="text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums text-white mt-3"
+            >
+              {formatCurrency(financialSummary.availableBalance)}
             </p>
+
+            {/* Línea sobria y legible debajo del saldo: "Gastos realizados: $ ..." */}
+            <p
+              data-testid="leader-spent-line"
+              className="text-xs sm:text-sm text-slate-300 font-semibold mt-1.5 tabular-nums"
+            >
+              Gastos realizados:{' '}
+              <span data-testid="total-spent-amount" className="text-white font-bold">
+                {formatCurrency(financialSummary.totalSpent)}
+              </span>
+            </p>
+
             {activeYear === 2027 && financialSummary.totalAssigned === 0 && (
               <p
                 data-testid="leader-pending-budget-2027"
-                className="text-[11px] text-amber-300/95 font-semibold mt-1"
+                className="text-[11px] text-amber-300/95 font-semibold mt-1.5"
               >
                 Presupuesto 2027 pendiente de asignación
               </p>
             )}
-
-            {/* Sub-tarjetas Anual Asignado vs Gastos Realizados */}
-            <div className="grid grid-cols-2 gap-3 mt-5">
-              <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-3">
-                <p className="text-[11px] text-slate-300 font-medium">Anual Asignado</p>
-                <p
-                  data-testid="total-assigned-amount"
-                  className="text-sm sm:text-base font-extrabold text-white tabular-nums mt-0.5"
-                >
-                  {formatCurrency(financialSummary.totalAssigned)}
-                </p>
-              </div>
-              <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-3">
-                <p className="text-[11px] text-slate-300 font-medium">Gastos Realizados</p>
-                <p
-                  data-testid="total-spent-amount"
-                  className="text-sm sm:text-base font-extrabold text-amber-300 tabular-nums mt-0.5"
-                >
-                  {formatCurrency(financialSummary.totalSpent)}
-                </p>
-              </div>
-            </div>
 
             {/* Barra de Progreso Visual */}
             <div className="mt-4 pt-3 border-t border-slate-800/90">
@@ -646,7 +639,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               >
                 <span className="flex items-center gap-1.5">
                   <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Desglose Trimestral Acumulativo (T1–T4)</span>
+                  <span>Desglose Trimestral (T1–T4)</span>
                 </span>
                 <ChevronDown
                   className={`w-3.5 h-3.5 transition-transform duration-200 ease-out-expo ${
@@ -657,30 +650,38 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
               <div className="accordion-content" data-open={isQuartersOpen}>
                 <div className="accordion-inner">
-                  <div className="grid grid-cols-2 gap-2 pt-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2.5">
                     {financialSummary.quarters.map((q) => (
                       <div
                         key={q.quarter}
-                        className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-xs"
+                        data-testid={`leader-quarter-card-${q.quarter}`}
+                        className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-xs flex items-center justify-between gap-2"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-emerald-400">{q.quarter}</span>
-                          <span className="text-[10px] text-slate-400 tabular-nums">
-                            Asig: {formatCurrency(q.assigned)}
-                          </span>
-                        </div>
-                        <p className="text-xs font-bold text-white tabular-nums mt-1">
-                          Disp: {formatCurrency(q.remaining)}
-                        </p>
-                        <p className="text-[10px] text-slate-400 tabular-nums mt-0.5">
-                          Gastado: {formatCurrency(q.spent)}
-                        </p>
+                        <span className="font-extrabold text-emerald-400">{q.quarter}</span>
+                        <span
+                          data-testid={`leader-quarter-summary-${q.quarter}`}
+                          className="text-[11px] text-slate-200 font-semibold tabular-nums"
+                        >
+                          Asignado: {formatCurrency(q.assigned)} | Gastos:{' '}
+                          {formatCurrency(q.spent)}
+                        </span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Línea discreta al pie de la tarjeta exclusiva para Hombres Jóvenes y Mujeres Jóvenes */}
+            {canUseSeminario && (
+              <div
+                data-testid="seminario-joint-fund-line"
+                className="mt-3.5 pt-3 border-t border-slate-800/90 text-[11px] sm:text-xs text-emerald-200/95 font-medium tabular-nums"
+              >
+                🏛️ Fondo Seminario: {formatCurrency(seminarioAvailable)} (Fondo conjunto, no
+                incluido en este presupuesto)
+              </div>
+            )}
           </div>
         </section>
 
@@ -1000,8 +1001,14 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                     No hay actividades registradas en esta vista.
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
+                  <div
+                    ref={calendarScrollRef}
+                    data-testid="calendar-scroll-container"
+                    className="relative max-h-96 overflow-y-auto scroll-smooth pr-1 space-y-2.5"
+                  >
                     {displayedCalendarActivities.map((act) => {
+                      const isPast = act.event_date < referenceToday;
+                      const isFirstUpcoming = act.id === firstUpcomingActivityId;
                       const canSeeCost = canViewActivityBudget(
                         user.role,
                         baseOrg,
@@ -1011,8 +1018,17 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                       return (
                         <div
                           key={act.id}
+                          ref={isFirstUpcoming ? nextUpcomingActivityRef : null}
                           data-testid={`calendar-activity-${act.organization}`}
-                          className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/60 hover:bg-slate-50 transition"
+                          data-past={isPast ? 'true' : 'false'}
+                          data-upcoming-anchor={isFirstUpcoming ? 'true' : 'false'}
+                          className={`p-3.5 rounded-2xl border transition ${
+                            isPast
+                              ? 'border-slate-200/60 bg-slate-100/60 opacity-65'
+                              : isFirstUpcoming
+                              ? 'border-emerald-400/90 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-sm'
+                              : 'border-slate-200/80 bg-slate-50/60 hover:bg-slate-50'
+                          }`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
@@ -1022,7 +1038,18 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                                   {ORGANIZATION_SHORT_LABELS[act.organization]}
                                 </span>
 
-                                {act.status === 'PROPUESTA' ? (
+                                {isPast ? (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-600">
+                                    Realizada
+                                  </span>
+                                ) : isFirstUpcoming ? (
+                                  <span
+                                    data-testid="calendar-next-upcoming-badge"
+                                    className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-700 text-white"
+                                  >
+                                    Próxima actividad
+                                  </span>
+                                ) : act.status === 'PROPUESTA' ? (
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200">
                                     Propuesta Enviada
                                   </span>
@@ -1043,7 +1070,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                                 )}
                               </div>
 
-                              <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 mt-1.5">
+                              <h3
+                                className={`text-xs sm:text-sm font-extrabold mt-1.5 ${
+                                  isPast ? 'text-slate-600' : 'text-slate-900'
+                                }`}
+                              >
                                 {act.title}
                               </h3>
                             </div>
@@ -1052,7 +1083,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                             {canSeeCost && act.estimated_cost > 0 && (
                               <span
                                 data-testid="confidential-budget-amount"
-                                className="text-xs font-extrabold text-emerald-900 tabular-nums bg-emerald-100/80 px-2.5 py-1 rounded-xl border border-emerald-200 flex-shrink-0"
+                                className={`text-xs font-extrabold tabular-nums px-2.5 py-1 rounded-xl border flex-shrink-0 ${
+                                  isPast
+                                    ? 'text-slate-600 bg-slate-200/70 border-slate-300'
+                                    : 'text-emerald-900 bg-emerald-100/80 border-emerald-200'
+                                }`}
                               >
                                 {formatCurrency(act.estimated_cost)}
                               </span>

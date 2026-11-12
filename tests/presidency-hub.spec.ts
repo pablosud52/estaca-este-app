@@ -63,9 +63,26 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
       'ℹ️ Este importe ya está contemplado en el presupuesto disponible mostrado arriba.'
     );
 
-    // 2. Posición 1 debajo de KPI: Gráfica "Asignación de fondos a cada organización" iniciando en PORCENTAJES (%) por defecto
+    // 2. Posición 1 debajo de KPI: Gráfica ejecutiva con selector de Ingresos/Gastos y Jóvenes Juntos/Separados
     await expect(page.getByTestId('chart-canvas-container-PORCENTAJES')).toBeVisible();
-    await expect(page.getByTestId('youth-focus-amount')).toHaveText('$ 146.000,00 (34,8%)');
+    await expect(page.getByTestId('chart-metric-ingresos')).toBeVisible();
+    await expect(page.getByTestId('chart-metric-gastos')).toBeVisible();
+    await expect(page.getByTestId('chart-youth-unified')).toBeVisible();
+    await expect(page.getByTestId('chart-youth-split')).toBeVisible();
+    // La reseña inferior no elegante fue removida y reemplazada por la barra unificada en la gráfica
+    await expect(page.getByTestId('youth-focus-pill')).toHaveCount(0);
+
+    // Probar alternancia de Jóvenes: Juntos vs Separados
+    await page.getByTestId('chart-youth-split').click();
+    await expect(page.getByTestId('chart-youth-split')).toHaveClass(/bg-amber-500/);
+    await page.getByTestId('chart-youth-unified').click();
+    await expect(page.getByTestId('chart-youth-unified')).toHaveClass(/bg-amber-500/);
+
+    // Probar alternancia de Métrica: Ingresos vs Gastos
+    await page.getByTestId('chart-metric-gastos').click();
+    await expect(page.getByTestId('chart-metric-gastos')).toHaveClass(/bg-slate-900/);
+    await page.getByTestId('chart-metric-ingresos').click();
+    await expect(page.getByTestId('chart-metric-ingresos')).toHaveClass(/bg-slate-900/);
 
     // Captura visual del Panel en su estado inicial limpio (Escritorio y Móvil con acordeones contraídos)
     await page.evaluate(() => window.scrollTo(0, 0));

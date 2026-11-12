@@ -407,10 +407,36 @@ export const PresidencyHub: React.FC = () => {
       const t4 = b ? Number(b.t4_assigned) : 0;
       const assigned = Number((t1 + t2 + t3 + t4).toFixed(2));
 
-      const spent = nonReimbursableExpenses
-        .filter((e) => e.organization === orgCode)
-        .reduce((acc, e) => acc + Number(e.net_amount), 0);
+      const orgExpenses = nonReimbursableExpenses.filter(
+        (e) => e.organization === orgCode
+      );
 
+      const t1_spent = Number(
+        orgExpenses
+          .filter((e) => getQuarterFromDate(e.expense_date) === 'T1')
+          .reduce((acc, e) => acc + Number(e.net_amount), 0)
+          .toFixed(2)
+      );
+      const t2_spent = Number(
+        orgExpenses
+          .filter((e) => getQuarterFromDate(e.expense_date) === 'T2')
+          .reduce((acc, e) => acc + Number(e.net_amount), 0)
+          .toFixed(2)
+      );
+      const t3_spent = Number(
+        orgExpenses
+          .filter((e) => getQuarterFromDate(e.expense_date) === 'T3')
+          .reduce((acc, e) => acc + Number(e.net_amount), 0)
+          .toFixed(2)
+      );
+      const t4_spent = Number(
+        orgExpenses
+          .filter((e) => getQuarterFromDate(e.expense_date) === 'T4')
+          .reduce((acc, e) => acc + Number(e.net_amount), 0)
+          .toFixed(2)
+      );
+
+      const spent = Number((t1_spent + t2_spent + t3_spent + t4_spent).toFixed(2));
       const available = Number((assigned - spent).toFixed(2));
       const usagePercent =
         assigned > 0
@@ -431,6 +457,10 @@ export const PresidencyHub: React.FC = () => {
         t3_assigned: t3,
         t4_assigned: t4,
         assigned,
+        t1_spent,
+        t2_spent,
+        t3_spent,
+        t4_spent,
         spent,
         available,
         usagePercent,

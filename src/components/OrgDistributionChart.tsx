@@ -11,7 +11,7 @@ import {
   Plugin,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
-import { BarChart3, Sparkles } from 'lucide-react';
+import { BarChart3, ReceiptText, Users } from 'lucide-react';
 import { formatCurrency, ORGANIZATION_LABELS } from '../lib/formatters';
 import { OrganizationCode, QuarterCode } from '../types/database';
 
@@ -24,6 +24,10 @@ export interface OrgSummaryStat {
   t3_assigned: number;
   t4_assigned: number;
   assigned: number;
+  t1_spent: number;
+  t2_spent: number;
+  t3_spent: number;
+  t4_spent: number;
   spent: number;
   available: number;
   usagePercent: number;
@@ -34,7 +38,9 @@ interface OrgDistributionChartProps {
   orgStats: OrgSummaryStat[];
 }
 
-type PeriodFilter = 'GLOBAL' | QuarterCode;
+export type PeriodFilter = 'GLOBAL' | QuarterCode;
+export type MetricMode = 'INGRESOS' | 'GASTOS';
+export type YouthGrouping = 'UNIFICADOS' | 'DESGLOSADOS';
 
 const YOUTH_ORGS: OrganizationCode[] = ['HJ', 'MJ', 'SEMINARIO'];
 
@@ -55,95 +61,164 @@ const formatPercentEs = (value: number): string =>
   `${value.toFixed(1).replace('.', ',')}%`;
 
 export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgStats }) => {
+  const [metricMode, setMetricMode] = useState<MetricMode>('INGRESOS');
+  const [youthGrouping, setYouthGrouping] = useState<YouthGrouping>('UNIFICADOS');
   const [chartMode, setChartMode] = useState<'MONTOS' | 'PORCENTAJES'>('PORCENTAJES');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('GLOBAL');
 
-  // Obtener el monto asignado de cada organización según el filtro [Global | T1 | T2 | T3 | T4]
+  // Cálculo dinámico de métricas según [Ingresos | Gastos], [Global | T1-T4] y [Unificados | Desglosados]
   const periodStats = useMemo(() => {
-    const getAmountForPeriod = (item: OrgSummaryStat): number => {
-      switch (periodFilter) {
-        case 'T1':
-          return item.t1_assigned;
-        case 'T2':
-          return item.t2_assigned;
-        case 'T3':
-          return item.t3_assigned;
-        case 'T4':
-          return item.t4_assigned;
-        default:
-          return item.assigned;
+    const getValueForPeriod = (item: OrgSummaryStat): number => {
+      if (metricMode === 'INGRESOS') {
+        switch (periodFilter) {
+          case 'T1':
+            return item.t1_assigned;
+          case 'T2':
+            return item.t2_assigned;
+          case 'T3':
+            return item.t3_assigned;
+          case 'T4':
+            return item.t4_assigned;
+          default:
+            return item.assigned;
+        }
+      } else {
+        switch (periodFilter) {
+          case 'T1':
+            return item.t1_spent ?? 0;
+          case 'T2':
+            return item.t2_spent ?? 0;
+          case 'T3':
+            return item.t3_spent ?? 0;
+          case 'T4':
+            return item.t4_spent ?? 0;
+          default:
+            return item.spent;
+        }
       }
     };
 
-    const totalPeriodAssigned = orgStats.reduce(
-      (acc, item) => acc + getAmountForPeriod(item),
-      0
-    );
+    // Obtenemos los valores individuales de cada organización
+    const individualStats = orgStats.map((item) => ({
+      ...item,
+      amount: getValueForPeriod(item),
+      isYouth: YOUTH_ORGS.includes(item.organization),
+    }));
 
-    const items = orgStats.map((item) => {
-      const periodAmount = getAmountForPeriod(item);
-      const periodPercent =
-        totalPeriodAssigned > 0
-          ? Number(((periodAmount / totalPeriodAssigned) * 100).toFixed(1))
+    const youthItems = individualStats.filter((i) => i.isYouth);
+    const nonYouthItems = individualStats.filter((i) => !i.isYouth);
+
+    const youthTotalAmount = youthItems.reduce((acc, i) => acc + i.amount, 0);
+
+    interface DisplayItem {
+      key: string;
+      label: string;
+      amount: number;
+      isYouth: boolean;
+      organization?: OrganizationCode;
+      percent?: number;
+    }
+
+    let rawItems: DisplayItem[] = [];
+
+    if (youthGrouping === 'UNIFICADOS') {
+      // Barra unificada para Jóvenes (HJ + MJ + Seminario)
+      rawItems = [
+        {
+          key: 'JOVENES',
+          label: 'Jóvenes',
+          amount: youthTotalAmount,
+          isYouth: true,
+        },
+        ...nonYouthItems.map((item) => ({
+          key: item.organization,
+          label: CHART_AXIS_LABELS[item.organization],
+          amount: item.amount,
+          isYouth: false,
+          organization: item.organization,
+        })),
+      ];
+    } else {
+      // Barras individuales de las 9 organizaciones
+      rawItems = individualStats.map((item) => ({
+        key: item.organization,
+        label: CHART_AXIS_LABELS[item.organization],
+        amount: item.amount,
+        isYouth: item.isYouth,
+        organization: item.organization,
+      }));
+    }
+
+    const totalPeriodAmount = rawItems.reduce((acc, i) => acc + i.amount, 0);
+
+    const items = rawItems.map((item) => {
+      const percent =
+        totalPeriodAmount > 0
+          ? Number(((item.amount / totalPeriodAmount) * 100).toFixed(1))
           : 0;
-      const isYouth = YOUTH_ORGS.includes(item.organization);
-
       return {
         ...item,
-        periodAmount,
-        periodPercent,
-        isYouth,
+        percent,
       };
     });
 
-    const youthTotalAmount = items
-      .filter((i) => i.isYouth)
-      .reduce((acc, i) => acc + i.periodAmount, 0);
-
     const youthTotalPercent =
-      totalPeriodAssigned > 0
-        ? Number(((youthTotalAmount / totalPeriodAssigned) * 100).toFixed(1))
+      totalPeriodAmount > 0
+        ? Number(((youthTotalAmount / totalPeriodAmount) * 100).toFixed(1))
         : 0;
 
     return {
       items,
-      totalPeriodAssigned,
+      totalPeriodAmount,
       youthTotalAmount,
       youthTotalPercent,
     };
-  }, [orgStats, periodFilter]);
+  }, [orgStats, metricMode, periodFilter, youthGrouping]);
 
   const labels = useMemo(
-    () => periodStats.items.map((o) => CHART_AXIS_LABELS[o.organization]),
+    () => periodStats.items.map((o) => o.label),
     [periodStats.items]
   );
 
   const chartData = useMemo(() => {
     const isPercent = chartMode === 'PORCENTAJES';
+    const isIncome = metricMode === 'INGRESOS';
+
     return {
       labels,
       datasets: [
         {
-          label: isPercent ? 'Asignación (%)' : 'Asignación ($)',
+          label: isIncome
+            ? isPercent
+              ? 'Asignación (%)'
+              : 'Asignación ($)'
+            : isPercent
+            ? 'Gastos (%)'
+            : 'Gastos ($)',
           data: periodStats.items.map((o) =>
-            isPercent ? o.periodPercent : o.periodAmount
+            isPercent ? o.percent : o.amount
           ),
-          // Enfoque "Nuevas Generaciones": color cálido (ámbar/dorado) para HJ, MJ y Seminario
           backgroundColor: periodStats.items.map((o) =>
             o.isYouth
-              ? 'rgba(245, 158, 11, 0.90)' // amber-500 cálido para Nuevas Generaciones
-              : 'rgba(15, 118, 110, 0.85)' // teal-700 sobrio para el resto
+              ? 'rgba(245, 158, 11, 0.90)' // ámbar cálido característico para Jóvenes
+              : isIncome
+              ? 'rgba(15, 118, 110, 0.85)' // teal-700 para ingresos
+              : 'rgba(225, 29, 72, 0.82)' // rose-600 para gastos
           ),
           hoverBackgroundColor: periodStats.items.map((o) =>
-            o.isYouth ? 'rgba(217, 119, 6, 1)' : 'rgba(17, 94, 89, 1)'
+            o.isYouth
+              ? 'rgba(217, 119, 6, 1)'
+              : isIncome
+              ? 'rgba(17, 94, 89, 1)'
+              : 'rgba(190, 18, 60, 1)'
           ),
           borderRadius: 8,
           borderSkipped: false as const,
-          maxBarThickness: 38,
+          maxBarThickness: youthGrouping === 'UNIFICADOS' ? 44 : 36,
         },
       ],
     };
-  }, [chartMode, periodStats.items, labels]);
+  }, [chartMode, metricMode, youthGrouping, periodStats.items, labels]);
 
   // Plugin para imprimir los valores directamente en la punta de cada barra
   const barValueLabelsPlugin: Plugin<'bar'> = useMemo(
@@ -167,10 +242,14 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
 
           const labelText =
             chartMode === 'PORCENTAJES'
-              ? formatPercentEs(item.periodPercent)
-              : formatCurrency(item.periodAmount);
+              ? formatPercentEs(item.percent)
+              : formatCurrency(item.amount);
 
-          ctx.fillStyle = item.isYouth ? '#b45309' : '#0f172a';
+          ctx.fillStyle = item.isYouth
+            ? '#b45309'
+            : metricMode === 'INGRESOS'
+            ? '#0f172a'
+            : '#881337';
 
           if (isCompactCanvas) {
             ctx.save();
@@ -190,7 +269,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
         ctx.restore();
       },
     }),
-    [chartMode, periodStats.items]
+    [chartMode, metricMode, periodStats.items]
   );
 
   const options: ChartOptions<'bar'> = useMemo(() => {
@@ -230,14 +309,21 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
             title: (items) => {
               const idx = items[0]?.dataIndex ?? 0;
               const stat = periodStats.items[idx];
-              return stat ? ORGANIZATION_LABELS[stat.organization] : '';
+              if (!stat) return '';
+              if (stat.key === 'JOVENES') {
+                return 'Jóvenes (HJ + MJ + Seminario)';
+              }
+              return stat.organization
+                ? ORGANIZATION_LABELS[stat.organization]
+                : stat.label;
             },
             label: (ctx) => {
               const idx = ctx.dataIndex;
               const stat = periodStats.items[idx];
               if (!stat) return '';
-              return ` Asignado: ${formatCurrency(stat.periodAmount)} (${formatPercentEs(
-                stat.periodPercent
+              const actionLabel = metricMode === 'INGRESOS' ? 'Asignado' : 'Gastado';
+              return ` ${actionLabel}: ${formatCurrency(stat.amount)} (${formatPercentEs(
+                stat.percent
               )})`;
             },
           },
@@ -279,27 +365,106 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
         },
       },
     };
-  }, [chartMode, periodStats.items]);
+  }, [chartMode, metricMode, periodStats.items]);
 
   return (
     <section
-      aria-label="Asignación de fondos a cada organización"
+      aria-label="Distribución presupuestaria por organización"
       data-testid="org-distribution-chart-card"
       className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/90"
     >
       {/* Cabecera limpia y controles */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-5">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-800 flex items-center justify-center flex-shrink-0">
-            <BarChart3 className="w-5 h-5" />
+          <div
+            className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors ${
+              metricMode === 'INGRESOS'
+                ? 'bg-emerald-50 border border-emerald-100 text-emerald-800'
+                : 'bg-rose-50 border border-rose-100 text-rose-800'
+            }`}
+          >
+            {metricMode === 'INGRESOS' ? (
+              <BarChart3 className="w-5 h-5" />
+            ) : (
+              <ReceiptText className="w-5 h-5" />
+            )}
           </div>
           <h2 className="text-base font-extrabold text-slate-900 leading-tight">
-            Asignación de fondos a cada organización
+            {metricMode === 'INGRESOS'
+              ? 'Asignación de fondos por organización'
+              : 'Distribución de gastos por organización'}
           </h2>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Píldoras de período: [ Global ] [ T1 ] [ T2 ] [ T3 ] [ T4 ] */}
+          {/* 1. Selector Métrica: [ Ingresos ] [ Gastos ] */}
+          <div
+            role="group"
+            aria-label="Métrica a graficar"
+            className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80"
+          >
+            <button
+              type="button"
+              data-testid="chart-metric-ingresos"
+              onClick={() => setMetricMode('INGRESOS')}
+              className={`pressable px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
+                metricMode === 'INGRESOS'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Ingresos
+            </button>
+            <button
+              type="button"
+              data-testid="chart-metric-gastos"
+              onClick={() => setMetricMode('GASTOS')}
+              className={`pressable px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
+                metricMode === 'GASTOS'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Gastos
+            </button>
+          </div>
+
+          {/* 2. Selector Jóvenes: [ Juntos ] [ Separados ] */}
+          <div
+            role="group"
+            aria-label="Agrupación de jóvenes"
+            className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80"
+          >
+            <button
+              type="button"
+              data-testid="chart-youth-unified"
+              onClick={() => setYouthGrouping('UNIFICADOS')}
+              title="Ver jóvenes unificados en una sola barra (HJ + MJ + Seminario)"
+              className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
+                youthGrouping === 'UNIFICADOS'
+                  ? 'bg-amber-500 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Jóvenes juntos</span>
+            </button>
+            <button
+              type="button"
+              data-testid="chart-youth-split"
+              onClick={() => setYouthGrouping('DESGLOSADOS')}
+              title="Separar jóvenes en Hombres Jóvenes, Mujeres Jóvenes y Seminario"
+              className={`pressable px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
+                youthGrouping === 'DESGLOSADOS'
+                  ? 'bg-amber-500 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Separados
+            </button>
+          </div>
+
+          {/* 3. Píldoras de período: [ Global ] [ T1 ] [ T2 ] [ T3 ] [ T4 ] */}
           <div
             role="group"
             aria-label="Filtro por período"
@@ -311,7 +476,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
                 type="button"
                 data-testid={`chart-period-${period}`}
                 onClick={() => setPeriodFilter(period)}
-                className={`pressable px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
+                className={`pressable px-2 py-1.5 rounded-lg text-xs font-extrabold transition ${
                   periodFilter === period
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900'
@@ -322,7 +487,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
             ))}
           </div>
 
-          {/* Toggle Montos ($) vs Porcentajes (%) */}
+          {/* 4. Toggle Montos ($) vs Porcentajes (%) */}
           <div
             role="group"
             aria-label="Modo de visualización del gráfico"
@@ -365,39 +530,37 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
         className="h-72 sm:h-80 w-full relative"
       >
         <Bar
-          key={`${chartMode}-${periodFilter}`}
+          key={`${chartMode}-${periodFilter}-${metricMode}-${youthGrouping}`}
           data={chartData}
           options={options}
           plugins={[barValueLabelsPlugin]}
         />
       </div>
 
-      {/* Pastilla "Nuevas Generaciones" al pie de la gráfica */}
-      <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div
-          data-testid="youth-focus-pill"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-950 text-xs sm:text-sm font-extrabold self-start"
-        >
-          <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
-          <span>
-            Total Destinado a Jóvenes (HJ + MJ + Seminario):{' '}
-            <strong data-testid="youth-focus-amount" className="tabular-nums text-amber-900">
-              {formatCurrency(periodStats.youthTotalAmount)} (
-              {formatPercentEs(periodStats.youthTotalPercent)})
-            </strong>
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4 text-[11px] font-semibold text-slate-500">
+      {/* Leyenda limpia y elegante al pie (reemplaza a la reseña pesada) */}
+      <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-slate-500">
+        <div className="flex items-center gap-4">
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-amber-500 inline-block" />
-            <span>Nuevas Generaciones (HJ, MJ, Seminario)</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
+            <span>
+              {youthGrouping === 'UNIFICADOS'
+                ? 'Jóvenes (HJ + MJ + Seminario)'
+                : 'Nuevas Generaciones'}
+            </span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-teal-700 inline-block" />
+            <span
+              className={`w-2.5 h-2.5 rounded-full inline-block ${
+                metricMode === 'INGRESOS' ? 'bg-teal-700' : 'bg-rose-600'
+              }`}
+            />
             <span>Resto de Organizaciones</span>
           </span>
         </div>
+
+        <span className="text-slate-400 text-[10px] tabular-nums">
+          {metricMode === 'INGRESOS' ? 'Base: Fondos presupuestados' : 'Base: Gastos devengados'} ({periodFilter === 'GLOBAL' ? 'Anual' : periodFilter})
+        </span>
       </div>
     </section>
   );

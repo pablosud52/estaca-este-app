@@ -34,7 +34,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profiles, setProfiles] = useState<UserProfile[]>(DEV_PROFILES);
   const [user, setUser] = useState<UserProfile>(() => {
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-    return DEV_PROFILES.find((p) => p.id === savedId) || DEV_PROFILES[0];
+    return DEV_PROFILES.find((p) => p.id === savedId) || DEV_PROFILES.find((p) => p.id === 'lider-mj-01') || DEV_PROFILES[0];
   });
   const [isSimulating, setIsSimulating] = useState<boolean>(true);
   const [realAuthEmail, setRealAuthEmail] = useState<string | null>(null);

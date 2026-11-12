@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Bell,
+  Building2,
   Calendar,
   ChevronDown,
   FileEdit,
@@ -42,6 +43,7 @@ import { UserManagementPanel } from '../components/UserManagementPanel';
 import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
 import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
+import { SuppliersView } from './SuppliersView';
 import { LeaderView } from './LeaderView';
 
 const ALL_HUB_ORGS: OrganizationCode[] = [
@@ -92,9 +94,9 @@ const saveSessionProposals = (list: ActivityRecord[]) => {
 export const PresidencyHub: React.FC = () => {
   const { user, isSimulating } = useAuth();
 
-  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | USERS | OPERATIONS
+  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | USERS | OPERATIONS
   const [activeTab, setActiveTab] = useState<
-    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'USERS' | 'OPERATIONS'
+    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'USERS' | 'OPERATIONS'
   >('DASHBOARD');
   // Menú Drawer móvil (hamburguesa ☰ -> cruz ✕)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
@@ -673,7 +675,7 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const selectTabAndCloseDrawer = (
-    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'USERS' | 'OPERATIONS'
+    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'USERS' | 'OPERATIONS'
   ) => {
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
@@ -848,6 +850,21 @@ export const PresidencyHub: React.FC = () => {
                 <Calendar className="w-4 h-4 text-emerald-500" />
                 <span>Calendario</span>
               </button>
+
+              {/* Botón 4: Directorio de Proveedores (Vista 5) */}
+              <button
+                type="button"
+                data-testid="hub-nav-suppliers"
+                onClick={() => setActiveTab('SUPPLIERS')}
+                className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                  activeTab === 'SUPPLIERS'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                }`}
+              >
+                <Building2 className="w-4 h-4 text-sky-500" />
+                <span>Proveedores</span>
+              </button>
             </div>
 
             {/* Botones Exclusivos de Administrador */}
@@ -982,6 +999,20 @@ export const PresidencyHub: React.FC = () => {
                   <span>Calendario</span>
                 </button>
 
+                <button
+                  type="button"
+                  data-testid="drawer-nav-suppliers"
+                  onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'SUPPLIERS'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  <span>Directorio de Proveedores</span>
+                </button>
+
                 {user.role === 'ADMIN' && (
                   <>
                     <button
@@ -1058,6 +1089,12 @@ export const PresidencyHub: React.FC = () => {
             selectedYear={selectedYear}
             activitiesProp={activities}
             onActivitiesUpdate={setActivities}
+            embedded
+          />
+        ) : activeTab === 'SUPPLIERS' ? (
+          <SuppliersView
+            suppliers={suppliers}
+            onBack={() => setActiveTab('DASHBOARD')}
             embedded
           />
         ) : (

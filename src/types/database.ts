@@ -97,11 +97,16 @@ export interface SupplierRecord {
   id: number;
   commercial_name: string;
   legal_name?: string;
-  rut?: string;
+  description?: string;
   category: string;
   official_invoice: boolean;
   phone?: string;
+  phone_fixed?: string;
+  phone_mobile?: string;
   email?: string;
+  website?: string;
   address?: string;
+  rut?: string;
+  frequency?: number;
   rating: number;
 }

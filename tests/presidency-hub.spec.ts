@@ -208,8 +208,10 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
   test('4. Permiso granular en Presidencia: Secretario de Estaca visualiza Bandeja en modo solo lectura', async ({
     page,
   }) => {
-    await page.getByTestId('dev-role-trigger').click();
-    await page.getByTestId('switch-role-presidencia-secretario-01').click();
+    await page.evaluate(() => {
+      localStorage.setItem('estaca_este_active_profile_id', 'presidencia-secretario-01');
+    });
+    await page.reload();
 
     await navigateToHubTab(page, 'APPROVALS');
     await expect(page.getByTestId('approval-permission-readonly')).toBeVisible();

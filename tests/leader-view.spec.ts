@@ -168,13 +168,50 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await page.getByTestId('switch-role-admin-pablo-01').click();
     await expect(page.getByTestId('permanent-admin-badge')).toHaveCount(0);
 
-    // Cambiar a Usuario No Autorizado
-    await page.getByTestId('dev-role-trigger').click();
-    await page.getByTestId('switch-role-no-autorizado-01').click();
+    // Cambiar a Usuario No Autorizado mediante almacenamiento de sesión
+    await page.evaluate(() => {
+      localStorage.setItem('estaca_este_active_profile_id', 'no-autorizado-01');
+    });
+    await page.reload();
 
     await expect(page.getByTestId('unauthorized-view')).toBeVisible();
     await expect(page.getByTestId('unauthorized-official-message')).toHaveText(
       'Acceso restringido. Ponte en contacto con el administrador o un miembro de la presidencia de Estaca.'
     );
+  });
+
+  test('6. Verificación de conmutador simplificado y orden canónico de 9 roles de Estaca', async ({
+    page,
+  }) => {
+    await page.getByTestId('dev-role-trigger').click();
+    const roleList = page.getByTestId('dev-role-list');
+    await expect(roleList).toBeVisible();
+
+    const buttons = roleList.locator('button');
+    await expect(buttons).toHaveCount(9);
+
+    const expectedLabels = [
+      'yo (super admin)',
+      'Presidencia de Estaca',
+      'Sociedad de Socorro',
+      'Hombres Jóvenes',
+      'Mujeres Jóvenes',
+      'Primaria',
+      'JAS',
+      'AS',
+      'CFS',
+    ];
+
+    for (let i = 0; i < expectedLabels.length; i++) {
+      await expect(buttons.nth(i)).toContainText(expectedLabels[i]);
+    }
+
+    // Probar alternancia hacia JAS y CFS
+    await page.getByTestId('switch-role-lider-jas-01').click();
+    await expect(page.getByTestId('header-user-name')).toHaveText('Mateo Morales');
+
+    await page.getByTestId('dev-role-trigger').click();
+    await page.getByTestId('switch-role-lider-cfs-01').click();
+    await expect(page.getByTestId('header-user-name')).toHaveText('Gonzalo Silva');
   });
 });

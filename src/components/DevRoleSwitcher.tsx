@@ -2,10 +2,109 @@ import React, { useState } from 'react';
 import { Shield, Users, UserCheck, Lock, ChevronUp, ChevronDown, Sparkles, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { DEV_PROFILES } from '../data/seedData';
-import { ORGANIZATION_SHORT_LABELS } from '../lib/formatters';
+import { OrganizationCode, UserRole } from '../types/database';
+
+export interface SimplifiedRoleItem {
+  id: string;
+  label: string;
+  subtitle: string;
+  badge: string;
+  role: UserRole;
+  organization: OrganizationCode;
+  is_permanent_admin?: boolean;
+}
+
+/**
+ * Listado canónico y simplificado de roles para el conmutador de Super Admin.
+ * Orden estricto (de arriba hacia abajo):
+ * 1. yo (super admin)
+ * 2. Presidencia de Estaca
+ * 3. Sociedad de Socorro
+ * 4. Hombres Jóvenes
+ * 5. Mujeres Jóvenes
+ * 6. Primaria
+ * 7. JAS
+ * 8. AS
+ * 9. CFS
+ */
+export const SIMPLIFIED_ROLES: SimplifiedRoleItem[] = [
+  {
+    id: 'admin-pablo-01',
+    label: 'yo (super admin)',
+    subtitle: 'Pablo Lamela · Secretario Financiero',
+    badge: 'ADMIN',
+    role: 'ADMIN',
+    organization: 'TODAS',
+    is_permanent_admin: true,
+  },
+  {
+    id: 'presidencia-consejero1-01',
+    label: 'Presidencia de Estaca',
+    subtitle: 'Primer Consejero',
+    badge: 'PRESIDENCIA',
+    role: 'PRESIDENCIA',
+    organization: 'TODAS',
+  },
+  {
+    id: 'lider-ss-01',
+    label: 'Sociedad de Socorro',
+    subtitle: 'Valeria Silva',
+    badge: 'SS',
+    role: 'LIDER',
+    organization: 'SS',
+  },
+  {
+    id: 'lider-hj-01',
+    label: 'Hombres Jóvenes',
+    subtitle: 'Martín Rodríguez',
+    badge: 'HJ',
+    role: 'LIDER',
+    organization: 'HJ',
+  },
+  {
+    id: 'lider-mj-01',
+    label: 'Mujeres Jóvenes',
+    subtitle: 'Carolina Méndez',
+    badge: 'MJ',
+    role: 'LIDER',
+    organization: 'MJ',
+  },
+  {
+    id: 'lider-primaria-01',
+    label: 'Primaria',
+    subtitle: 'Lucía Fernández',
+    badge: 'PRIMARIA',
+    role: 'LIDER',
+    organization: 'PRIMARIA',
+  },
+  {
+    id: 'lider-jas-01',
+    label: 'JAS',
+    subtitle: 'Mateo Morales',
+    badge: 'JAS',
+    role: 'LIDER',
+    organization: 'JAS',
+  },
+  {
+    id: 'lider-as-01',
+    label: 'AS',
+    subtitle: 'Diego Pereira',
+    badge: 'AS',
+    role: 'LIDER',
+    organization: 'AS',
+  },
+  {
+    id: 'lider-cfs-01',
+    label: 'CFS',
+    subtitle: 'Gonzalo Silva',
+    badge: 'CFS',
+    role: 'LIDER',
+    organization: 'CFS',
+  },
+];
 
 export const DevRoleSwitcher: React.FC = () => {
-  const { user, switchProfileById, canUseRoleSwitcher, isRoleSwitcherVisible } = useAuth();
+  const { user, switchProfileById, canUseRoleSwitcher, isRoleSwitcherVisible, profiles } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
 
   // En producción, solo pablosud52@gmail.com tiene acceso al cambio rápido de rol
@@ -20,9 +119,8 @@ export const DevRoleSwitcher: React.FC = () => {
       case 'PRESIDENCIA':
         return 'bg-sky-500/20 text-sky-300 border-sky-500/40';
       case 'LIDER':
-        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
       default:
-        return 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
     }
   };
 
@@ -42,24 +140,33 @@ export const DevRoleSwitcher: React.FC = () => {
             <div className="flex items-center space-x-2">
               <Sparkles className="w-4 h-4 text-emerald-400" />
               <span className="text-xs font-bold tracking-wider uppercase text-slate-200">
-                Simulador RBAC (Paso 6.1)
+                Cambio de Rol
               </span>
             </div>
-            <span className="text-[10px] font-mono bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">
-              Dev Mode
+            <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+              Super Admin
             </span>
           </div>
 
-          <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/80 p-1.5">
-            {DEV_PROFILES.map((profile) => {
-              const isSelected = user.email === profile.email;
+          <div
+            data-testid="dev-role-list"
+            className="max-h-96 overflow-y-auto divide-y divide-slate-800/80 p-1.5"
+          >
+            {SIMPLIFIED_ROLES.map((item) => {
+              const targetProfile =
+                profiles.find((p) => p.id === item.id) ||
+                DEV_PROFILES.find((p) => p.id === item.id);
+              const isSelected = targetProfile
+                ? user.email.toLowerCase() === targetProfile.email.toLowerCase()
+                : false;
+
               return (
                 <button
-                  key={profile.id}
+                  key={item.id}
                   type="button"
-                  data-testid={`switch-role-${profile.id}`}
+                  data-testid={`switch-role-${item.id}`}
                   onClick={() => {
-                    switchProfileById(profile.id);
+                    switchProfileById(item.id);
                     setIsOpen(false);
                   }}
                   className={`pressable w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 transition ${
@@ -70,8 +177,8 @@ export const DevRoleSwitcher: React.FC = () => {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold truncate">{profile.full_name}</span>
-                      {profile.is_permanent_admin && (
+                      <span className="text-xs font-bold truncate">{item.label}</span>
+                      {item.is_permanent_admin && (
                         <span
                           title="Administrador Permanente Inmutable (Regla Sagrada #1)"
                           className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/20 text-amber-300 rounded border border-amber-500/30"
@@ -80,20 +187,16 @@ export const DevRoleSwitcher: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{profile.calling}</p>
+                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{item.subtitle}</p>
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(
-                        profile.role
+                        item.role
                       )}`}
                     >
-                      {profile.role === 'LIDER'
-                        ? ORGANIZATION_SHORT_LABELS[profile.organization]
-                        : profile.role === 'NO_AUTORIZADO'
-                        ? 'BLOQUEADO'
-                        : profile.role}
+                      {item.badge}
                     </span>
                     {isSelected && <Check className="w-4 h-4 text-emerald-400" />}
                   </div>

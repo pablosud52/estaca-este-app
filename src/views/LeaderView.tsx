@@ -36,6 +36,8 @@ import { ProposeActivityModal } from '../components/ProposeActivityModal';
 import { LcrSyncButton } from '../components/LcrSyncButton';
 import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
+import { SuppliersView } from './SuppliersView';
+import { SEED_SUPPLIERS } from '../data/seedData';
 
 interface LeaderViewProps {
   /** Si Presidencia o Admin inspecciona una organización en modo espejo */
@@ -106,9 +108,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   const [quarterFilter, setQuarterFilter] = useState<'TODOS' | QuarterCode>('TODOS');
   const [calendarScope, setCalendarScope] = useState<'ORG' | 'ESTACA_ALL'>('ORG');
 
-  // Modal de propuesta de actividad, Vista 4 (Calendario General de Estaca) y banner de confirmación
+  // Modal de propuesta de actividad, Vistas embebidas (Calendario y Proveedores) y banner de confirmación
   const [isProposeOpen, setIsProposeOpen] = useState<boolean>(false);
   const [isFullCalendarViewOpen, setIsFullCalendarViewOpen] = useState<boolean>(false);
+  const [isSuppliersViewOpen, setIsSuppliersViewOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const handleManualCalendarSync = async () => {
@@ -605,6 +608,14 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             embedded
           />
         </main>
+      ) : isSuppliersViewOpen ? (
+        <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
+          <SuppliersView
+            suppliers={SEED_SUPPLIERS}
+            onBack={() => setIsSuppliersViewOpen(false)}
+            embedded
+          />
+        </main>
       ) : (
       <main className="max-w-lg w-full mx-auto px-4 pt-4 space-y-4 flex-1">
         {/* Toast / Confirmación de Propuesta */}
@@ -760,15 +771,28 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               </div>
             </div>
 
-            <button
-              type="button"
-              data-testid="open-propose-modal-btn"
-              onClick={() => setIsProposeOpen(true)}
-              className="pressable inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm whitespace-nowrap flex-shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Proponer Actividad</span>
-            </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="open-suppliers-view-btn"
+                  onClick={() => setIsSuppliersViewOpen(true)}
+                  className="pressable inline-flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/80 text-xs font-extrabold px-3 py-2 rounded-xl transition"
+                  title="Directorio de proveedores recomendados"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-sky-600" />
+                  <span className="hidden xs:inline">Proveedores</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="open-propose-modal-btn"
+                  onClick={() => setIsProposeOpen(true)}
+                  className="pressable inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm whitespace-nowrap flex-shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Proponer Actividad</span>
+                </button>
+              </div>
           </div>
 
           {nextUpcomingActivity ? (

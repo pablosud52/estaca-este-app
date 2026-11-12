@@ -90,3 +90,5 @@ Thumbs.db
 test-results/
 playwright-report/
 tsconfig.tsbuildinfo
+.gemini/rsc/security-audit
+.gemini/commands/security-audit.toml

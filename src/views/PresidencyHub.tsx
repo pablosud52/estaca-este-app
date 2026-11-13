@@ -279,11 +279,12 @@ export const PresidencyHub: React.FC = () => {
         }
 
         if (!supplierRes.error && supplierRes.data && supplierRes.data.length > 0) {
-          setSuppliers((prev) => {
-            const remoteNames = new Set(supplierRes.data.map((s) => s.commercial_name));
-            const localNewOnly = prev.filter((item) => !remoteNames.has(item.commercial_name));
-            return [...(supplierRes.data as SupplierRecord[]), ...localNewOnly];
-          });
+          const isMigrated = supplierRes.data.some(
+            (s) => Boolean((s as SupplierRecord).updated_at)
+          );
+          if (isMigrated) {
+            setSuppliers(supplierRes.data as SupplierRecord[]);
+          }
         }
       } catch {
         // Fallback silencioso a SEED_DATA auditado

@@ -10,7 +10,7 @@
     "phone_fixed": "2522 1238",
     "phone": "2522 1238",
     "website": "https://panino.com.uy",
-    "address": "Cno. Carrasco 4735, Montevideo | Cno Carrasco 4735, Montevideo",
+    "address": "Cno. Carrasco 4735, Montevideo",
     "rut": "214178550011",
     "frequency": 19
   },
@@ -37,7 +37,7 @@
     "description": "Empresa de transporte de pasajeros, excursiones y traslados en ómnibus y minubús.",
     "phone_mobile": "099 123 116",
     "phone": "099 123 116",
-    "address": "Pascasio Báez Mena 2354, Montevideo | Pascasio Báez Mena 2354 - Montevideo",
+    "address": "Pascasio Báez Mena 2354, Montevideo",
     "rut": "217578570014",
     "frequency": 8
   },
@@ -49,11 +49,11 @@
     "category": "Mayoristas / Alimentos",
     "legal_name": "Claudia Bracco",
     "description": "Distribuidora de alimentos congelados: hamburguesas, papas prefritas, vegetales y pastas.",
-    "phone_fixed": "2366 0460 | 26144930 - 099670406",
+    "phone_fixed": "2366 0460 | 2614 4930",
     "phone_mobile": "099 670 406",
-    "phone": "099 670 406 | 2366 0460 | 26144930 - 099670406",
+    "phone": "099 670 406 | 2366 0460 | 2614 4930",
     "website": "https://congeladosmarmatu.com.uy",
-    "address": "Local Malvín | Av. Artigas 760 bis Las Piedras, Canelones | Estanislao López 4794 (Sucursal 1), Malvín, Montevideo (+1 sucursales)",
+    "address": "Estanislao López 4794, Montevideo | Av. Artigas 760 bis Las Piedras, Canelones",
     "rut": "216703240012",
     "frequency": 7
   },
@@ -68,7 +68,7 @@
     "phone_fixed": "2208 6310",
     "phone": "2208 6310",
     "website": "https://www.ardomayorista.com",
-    "address": "Arenal Grande 2527 / 29, Montevideo | Juan Carlos Patrón 1830, Montevideo | Juan Carlos Patron 1830, Montevideo",
+    "address": "Arenal Grande 2527 / 29, Montevideo | Juan Carlos Patrón 1830, Montevideo",
     "rut": "215245570013",
     "frequency": 6
   },
@@ -83,7 +83,7 @@
     "phone_fixed": "2400 5248",
     "phone": "2400 5248",
     "website": "https://www.baldiviaplasticos.com.uy",
-    "address": "Guayabos 1549, Montevideo | 8 de Octubre 3542, Montevideo | Guayabos 1543, Montevideo",
+    "address": "Guayabos 1539, Montevideo | 8 de Octubre 3542, Montevideo",
     "rut": "211191140013",
     "frequency": 6
   },
@@ -142,7 +142,7 @@
     "description": "Fabricación y distribución de envases descartables, cajas de cartón y packaging.",
     "phone_fixed": "2508 6828 | 2216 4444",
     "phone": "2508 6828 | 2216 4444",
-    "address": "8 de Octubre 3896 Bis / Justicia 2402, Montevideo | 8 de Octubre 3696Bis / Justicia 2402, Montevideo | 8 de Octubre 3668 Bis, Montevideo (+1 sucursales)",
+    "address": "8 de Octubre 3549, Montevideo | Justicia 2402, Montevideo",
     "rut": "213540650018",
     "frequency": 4
   },
@@ -200,7 +200,7 @@
     "description": "Artículos de cotillón, descartables, decoración temática y repostería para fiestas.",
     "phone_fixed": "2507 0797",
     "phone": "2507 0797",
-    "address": "8 de Octubre 3799, Montevideo | 18 de Julio 1611, Montevideo | 18 de Julio 1511, Montevideo",
+    "address": "8 de Octubre 3799, Montevideo | 18 de Julio 1511, Montevideo",
     "rut": "216985040016",
     "frequency": 3
   },
@@ -243,7 +243,7 @@
     "description": "Confitería tradicional: masas finas, sándwiches de copetín y servicio de lunch.",
     "phone_fixed": "2902 7354 | 2902 7334",
     "phone": "2902 7354 | 2902 7334",
-    "address": "San Jose 1014, Montevideo | San José 1014, Montevideo",
+    "address": "San Jose 1014, Montevideo",
     "rut": "211059840011",
     "frequency": 3
   },
@@ -255,9 +255,9 @@
     "category": "Descartables / Cotillón",
     "legal_name": "MANIC SRL",
     "description": "Distribuidora mayorista de descartables, artículos plásticos y papelera comercial.",
-    "phone_fixed": "2600 2187 - 2601 7141 | 2600 2187 | 2601 7141",
-    "phone": "2600 2187 - 2601 7141 | 2600 2187 | 2601 7141",
-    "address": "Alberdi 6190 | Alberdi 6190, Montevideo",
+    "phone_fixed": "2600 2187 | 2601 7141",
+    "phone": "2600 2187 | 2601 7141",
+    "address": "Alberdi 6190, Montevideo",
     "rut": "211207640015",
     "frequency": 3
   },
@@ -271,7 +271,7 @@
     "description": "Mercería mayorista y minorista: hilos, lanas, telas, cintas y accesorios de costura.",
     "phone_fixed": "2916 4517 | 2915 5937 | 2203 9001 | 2204 3129 | 2200 4401 | 2200 8349",
     "phone": "2916 4517 | 2915 5937 | 2203 9001 | 2204 3129 | 2200 4401 | 2200 8349",
-    "address": "Colón 1412, Montevideo | Gral. Flores 2470 / Suc. Marcelino Berthelot 1794, Montevideo | Gral. Flores 2470, Montevideo",
+    "address": "Av. General Flores 2470, Montevideo | Marcelino Berthelot 1794, Montevideo",
     "rut": "211378730019",
     "frequency": 3
   },
@@ -313,7 +313,7 @@
     "phone_mobile": "097 345 743",
     "phone": "097 345 743",
     "website": "https://www.albertogandulia.com.uy",
-    "address": "18 de Julio 1716, Montevideo | 18 de Julio 1716 / Sucursal Unión: 8 de Octubre 3699, Montevideo",
+    "address": "18 de Julio 1716, Montevideo | 8 de Octubre 3699, Montevideo | 21 de Setiembre 2807, Montevideo",
     "rut": "210217240011",
     "frequency": 2
   },
@@ -386,7 +386,7 @@
     "description": "Panadería y confitería en Cordón: panes frescos, servicio de lunch y repostería.",
     "phone_fixed": "2408 6368",
     "phone": "2408 6368",
-    "address": "Dr. Pablo de Maria 1421, Montevideo | Dr. Pablo de María 1421, Montevideo",
+    "address": "Dr. Pablo de María 1421, Montevideo",
     "rut": "211555510016",
     "frequency": 2
   },

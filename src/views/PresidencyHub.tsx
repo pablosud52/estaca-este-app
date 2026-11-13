@@ -773,24 +773,26 @@ export const PresidencyHub: React.FC = () => {
               </span>
             </div>
 
-            {/* Derecha: Selector de Año [ Año 2026 ▾ ] + Usuario Activo (visible en PC) */}
+            {/* Derecha: Selector de Año (oculto en pestaña Proveedores) + Usuario Activo (visible en PC) */}
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-              <div className="relative inline-flex items-center flex-shrink-0">
-                <select
-                  aria-label="Seleccionar año fiscal"
-                  data-testid="year-selector-dropdown"
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 transition"
-                >
-                  {availableYears.map((yr) => (
-                    <option key={yr} value={yr}>
-                      Año {yr}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-600 pointer-events-none absolute right-1.5" />
-              </div>
+              {activeTab !== 'SUPPLIERS' && (
+                <div className="relative inline-flex items-center flex-shrink-0">
+                  <select
+                    aria-label="Seleccionar año fiscal"
+                    data-testid="year-selector-dropdown"
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 transition"
+                  >
+                    {availableYears.map((yr) => (
+                      <option key={yr} value={yr}>
+                        Año {yr}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-600 pointer-events-none absolute right-1.5" />
+                </div>
+              )}
 
               <div className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs">
                 <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />

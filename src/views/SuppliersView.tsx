@@ -8,6 +8,7 @@ import {
   Globe,
   MapPin,
   ChevronDown,
+  ChevronUp,
   X,
   ArrowLeft,
 } from 'lucide-react';
@@ -28,8 +29,15 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('TODOS');
   const [sortOrder, setSortOrder] = useState<SortOrder>('RELEVANCE');
+  const [onlyWhatsApp, setOnlyWhatsApp] = useState(false);
+  const [onlyFixed, setOnlyFixed] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Record<number, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const toggleExpand = (id: number) => {
+    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // Lista única de categorías ordenadas por cantidad
   const categories = useMemo(() => {
@@ -62,6 +70,12 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         if (selectedCategory !== 'TODOS' && s.category !== selectedCategory) {
           return false;
         }
+        if (onlyWhatsApp && !String(s.phone_mobile || '').trim()) {
+          return false;
+        }
+        if (onlyFixed && !String(s.phone_fixed || '').trim()) {
+          return false;
+        }
         if (!nTerm) return true;
         return (
           normalize(s.commercial_name).includes(nTerm) ||
@@ -83,7 +97,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         }
         return b.commercial_name.localeCompare(a.commercial_name, 'es');
       });
-  }, [suppliers, searchTerm, selectedCategory, sortOrder]);
+  }, [suppliers, searchTerm, selectedCategory, sortOrder, onlyWhatsApp, onlyFixed]);
 
   const handleCopy = async (key: string, digitsOnly: string, displayLabel: string) => {
     try {
@@ -126,6 +140,12 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   };
 
+  const getBrandMapsUrl = (commercialName: string) => {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      `${commercialName}, Montevideo, Uruguay`
+    )}`;
+  };
+
   const handleToggleAlpha = () => {
     if (sortOrder === 'AZ') {
       setSortOrder('ZA');
@@ -147,7 +167,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       )}
 
-      {/* ZONA FIJA SUPERIOR (Sticky): Cabecera + Buscador + Categorías/Filtros */}
+      {/* ZONA FIJA SUPERIOR (Sticky): Cabecera + Buscador + Categorías/Orden + Toggles WhatsApp/Fijo */}
       <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md pt-2 pb-2.5 -mx-4 px-4 border-b border-slate-200 shadow-2xs space-y-2">
         {/* Cabecera compacta en una sola línea */}
         <div className="flex items-center justify-between gap-2">
@@ -240,9 +260,40 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Píldoras táctiles rápidas de vía de contacto */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOnlyWhatsApp((prev) => !prev)}
+            className={`pressable inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition touch-manipulation ${
+              onlyWhatsApp
+                ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <MessageCircle
+              className={`w-3 h-3 ${onlyWhatsApp ? 'text-white fill-white' : 'text-emerald-600'}`}
+            />
+            <span>Con WhatsApp</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setOnlyFixed((prev) => !prev)}
+            className={`pressable inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition touch-manipulation ${
+              onlyFixed
+                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <Phone className={`w-3 h-3 ${onlyFixed ? 'text-white fill-white' : 'text-slate-500'}`} />
+            <span>Con Teléfono Fijo</span>
+          </button>
+        </div>
       </div>
 
-      {/* Listado de Proveedores: Tarjetas individuales */}
+      {/* Listado de Proveedores: Tarjetas plegables por defecto */}
       <div className="pt-3">
         {filteredSuppliers.length === 0 ? (
           <div className="text-center py-12 px-4 bg-white rounded-2xl border border-slate-300 shadow-sm my-2">
@@ -254,15 +305,18 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               onClick={() => {
                 setSearchTerm('');
                 setSelectedCategory('TODOS');
+                setOnlyWhatsApp(false);
+                setOnlyFixed(false);
               }}
               className="mt-3 text-xs font-semibold text-slate-900 underline underline-offset-4"
             >
-              Ver todos los proveedores
+              Restablecer filtros
             </button>
           </div>
         ) : (
           <div className="space-y-3">
             {filteredSuppliers.map((s) => {
+              const isExpanded = Boolean(expandedIds[s.id]);
               const mobiles = s.phone_mobile
                 ? s.phone_mobile.split('|').map((p) => p.trim()).filter(Boolean)
                 : [];
@@ -272,11 +326,13 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               const addresses = s.address
                 ? s.address.split('|').map((a) => a.trim()).filter(Boolean)
                 : [];
+              const visibleAddresses = addresses.slice(0, 2);
+              const extraAddressesCount = Math.max(0, addresses.length - 2);
 
               return (
                 <article
                   key={s.id}
-                  className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300/90 shadow-sm hover:border-slate-400 transition-colors space-y-3"
+                  className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300/90 shadow-sm hover:border-slate-400 transition-colors space-y-2.5"
                 >
                   {/* 1. Cabecera: Nombre Comercial subrayado + Razón Social + Pastilla de Rubro */}
                   <div className="flex items-start justify-between gap-3">
@@ -295,164 +351,194 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     </span>
                   </div>
 
-                  {/* 2. Descripción destacada con presencia (seminegrita) */}
+                  {/* 2. Descripción destacada */}
                   {s.description && (
                     <p className="text-xs font-semibold text-slate-800 leading-relaxed bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/60">
                       {s.description}
                     </p>
                   )}
 
-                  {/* 3. Teléfonos compactos con botones de solo icono rellenos [Copiar] [WhatsApp] [Llamar] */}
-                  {(mobiles.length > 0 || fixeds.length > 0) && (
-                    <div className="space-y-1">
-                      {/* Celulares / WhatsApp */}
-                      {mobiles.map((mob, idx) => {
-                        const digits = mob.replace(/\D/g, '');
-                        const copyKey = `mob-${s.id}-${idx}`;
-                        const isCopied = copiedKey === copyKey;
-                        const waHref = getWhatsAppHref(mob);
+                  {/* Botón Ampliar / Ocultar */}
+                  <div className="flex justify-end pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(s.id)}
+                      aria-expanded={isExpanded}
+                      className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-slate-700 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition touch-manipulation"
+                    >
+                      <span>{isExpanded ? 'Menos' : '+ Más'}</span>
+                      {isExpanded ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                      )}
+                    </button>
+                  </div>
 
-                        return (
-                          <div
-                            key={copyKey}
-                            className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50/80 border border-slate-200/70 text-xs"
+                  {/* Contenido desplegable: Teléfonos -> Direcciones (máx 2 + Maps) -> Web */}
+                  {isExpanded && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2.5">
+                      {/* 3. Teléfonos compactos con botones de solo icono rellenos [Copiar] [WhatsApp] [Llamar] */}
+                      {(mobiles.length > 0 || fixeds.length > 0) && (
+                        <div className="space-y-1">
+                          {mobiles.map((mob, idx) => {
+                            const digits = mob.replace(/\D/g, '');
+                            const copyKey = `mob-${s.id}-${idx}`;
+                            const isCopied = copiedKey === copyKey;
+                            const waHref = getWhatsAppHref(mob);
+
+                            return (
+                              <div
+                                key={copyKey}
+                                className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50/80 border border-slate-200/70 text-xs"
+                              >
+                                <span className="font-mono text-slate-900 font-bold tabular-nums text-[12px]">
+                                  {mob}
+                                </span>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopy(copyKey, digits, mob)}
+                                    className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
+                                      isCopied
+                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                        : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                    }`}
+                                    title="Copiar número"
+                                    aria-label="Copiar número"
+                                  >
+                                    {isCopied ? (
+                                      <Check className="w-4 h-4 stroke-[2.5]" />
+                                    ) : (
+                                      <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
+                                    )}
+                                  </button>
+
+                                  <a
+                                    href={waHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="pressable p-1.5 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 shadow-xs transition touch-manipulation"
+                                    title="Abrir WhatsApp"
+                                    aria-label="Abrir WhatsApp"
+                                  >
+                                    <MessageCircle className="w-4 h-4 fill-white stroke-[1.5]" />
+                                  </a>
+
+                                  <a
+                                    href={`tel:${digits}`}
+                                    className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
+                                    title="Llamar"
+                                    aria-label="Llamar"
+                                  >
+                                    <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
+                                  </a>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {fixeds.map((fix, idx) => {
+                            const digits = fix.replace(/\D/g, '');
+                            const copyKey = `fix-${s.id}-${idx}`;
+                            const isCopied = copiedKey === copyKey;
+
+                            return (
+                              <div
+                                key={copyKey}
+                                className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50/80 border border-slate-200/70 text-xs"
+                              >
+                                <span className="font-mono text-slate-900 font-bold tabular-nums text-[12px]">
+                                  {fix}
+                                </span>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopy(copyKey, digits, fix)}
+                                    className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
+                                      isCopied
+                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                        : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                    }`}
+                                    title="Copiar número"
+                                    aria-label="Copiar número"
+                                  >
+                                    {isCopied ? (
+                                      <Check className="w-4 h-4 stroke-[2.5]" />
+                                    ) : (
+                                      <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
+                                    )}
+                                  </button>
+
+                                  <a
+                                    href={`tel:${digits}`}
+                                    className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
+                                    title="Llamar"
+                                    aria-label="Llamar"
+                                  >
+                                    <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
+                                  </a>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* 4. Direcciones (máx 2 visibles + enlace a Maps para múltiples sucursales) */}
+                      {addresses.length > 0 && (
+                        <div className="space-y-1 pt-0.5">
+                          {visibleAddresses.map((addr, aIdx) => (
+                            <a
+                              key={aIdx}
+                              href={getMapsUrl(addr)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="pressable flex items-start gap-1.5 text-[11px] text-slate-600 hover:text-slate-900 font-medium leading-normal group/addr transition touch-manipulation"
+                              title="Abrir ubicación en Google Maps"
+                            >
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 group-hover/addr:text-rose-500 flex-shrink-0 mt-0.5 transition-colors" />
+                              <span className="underline underline-offset-2 decoration-slate-300 group-hover/addr:decoration-slate-900">
+                                {addr}
+                              </span>
+                            </a>
+                          ))}
+
+                          {extraAddressesCount > 0 && (
+                            <a
+                              href={getBrandMapsUrl(s.commercial_name)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="pressable flex items-center gap-1.5 text-[11px] text-sky-700 hover:text-sky-900 font-bold pt-0.5 touch-manipulation"
+                            >
+                              <MapPin className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                              <span className="underline underline-offset-2">
+                                +{extraAddressesCount}{' '}
+                                {extraAddressesCount === 1
+                                  ? 'sucursal más (Ver en Maps)'
+                                  : 'sucursales más (Ver en Maps)'}
+                              </span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 5. Página Web */}
+                      {s.website && (
+                        <div className="pt-0.5">
+                          <a
+                            href={s.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="pressable inline-flex items-center gap-1.5 text-xs text-sky-800 hover:text-sky-950 font-semibold underline underline-offset-4 decoration-sky-300 hover:decoration-sky-900 transition touch-manipulation"
                           >
-                            <span className="font-mono text-slate-900 font-bold tabular-nums text-[12px]">
-                              {mob}
-                            </span>
-
-                            {/* Orden estricto: Copiar -> WhatsApp -> Llamar */}
-                            <div className="flex items-center gap-1.5">
-                              {/* 1. Botón Copiar */}
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(copyKey, digits, mob)}
-                                className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
-                                  isCopied
-                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                    : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
-                                }`}
-                                title="Copiar número"
-                                aria-label="Copiar número"
-                              >
-                                {isCopied ? (
-                                  <Check className="w-4 h-4 stroke-[2.5]" />
-                                ) : (
-                                  <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
-                                )}
-                              </button>
-
-                              {/* 2. Botón WhatsApp */}
-                              <a
-                                href={waHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="pressable p-1.5 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 shadow-xs transition touch-manipulation"
-                                title="Abrir WhatsApp"
-                                aria-label="Abrir WhatsApp"
-                              >
-                                <MessageCircle className="w-4 h-4 fill-white stroke-[1.5]" />
-                              </a>
-
-                              {/* 3. Botón Llamar */}
-                              <a
-                                href={`tel:${digits}`}
-                                className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
-                                title="Llamar"
-                                aria-label="Llamar"
-                              >
-                                <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* Fijos */}
-                      {fixeds.map((fix, idx) => {
-                        const digits = fix.replace(/\D/g, '');
-                        const copyKey = `fix-${s.id}-${idx}`;
-                        const isCopied = copiedKey === copyKey;
-
-                        return (
-                          <div
-                            key={copyKey}
-                            className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50/80 border border-slate-200/70 text-xs"
-                          >
-                            <span className="font-mono text-slate-900 font-bold tabular-nums text-[12px]">
-                              {fix}
-                            </span>
-
-                            {/* Orden estricto: Copiar -> Llamar */}
-                            <div className="flex items-center gap-1.5">
-                              {/* 1. Botón Copiar */}
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(copyKey, digits, fix)}
-                                className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
-                                  isCopied
-                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                    : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
-                                }`}
-                                title="Copiar número"
-                                aria-label="Copiar número"
-                              >
-                                {isCopied ? (
-                                  <Check className="w-4 h-4 stroke-[2.5]" />
-                                ) : (
-                                  <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
-                                )}
-                              </button>
-
-                              {/* 2. Botón Llamar */}
-                              <a
-                                href={`tel:${digits}`}
-                                className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
-                                title="Llamar"
-                                aria-label="Llamar"
-                              >
-                                <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* 4. Direcciones individuales clickeables hacia Google Maps */}
-                  {addresses.length > 0 && (
-                    <div className="space-y-1 pt-0.5">
-                      {addresses.map((addr, aIdx) => (
-                        <a
-                          key={aIdx}
-                          href={getMapsUrl(addr)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="pressable flex items-start gap-1.5 text-[11px] text-slate-600 hover:text-slate-900 font-medium leading-normal group/addr transition touch-manipulation"
-                          title="Abrir ubicación en Google Maps"
-                        >
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 group-hover/addr:text-rose-500 flex-shrink-0 mt-0.5 transition-colors" />
-                          <span className="underline underline-offset-2 decoration-slate-300 group-hover/addr:decoration-slate-900">
-                            {addr}
-                          </span>
-                        </a>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 5. Página Web (al final) con ícono de mundo y URL linkeable */}
-                  {s.website && (
-                    <div className="pt-0.5">
-                      <a
-                        href={s.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="pressable inline-flex items-center gap-1.5 text-xs text-sky-800 hover:text-sky-950 font-semibold underline underline-offset-4 decoration-sky-300 hover:decoration-sky-900 transition touch-manipulation"
-                      >
-                        <Globe className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
-                        <span>{cleanDisplayUrl(s.website)}</span>
-                      </a>
+                            <Globe className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                            <span>{cleanDisplayUrl(s.website)}</span>
+                          </a>
+                        </div>
+                      )}
                     </div>
                   )}
                 </article>

@@ -577,22 +577,24 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               </span>
             </div>
 
-            <div className="relative inline-flex items-center">
-              <select
-                aria-label="Seleccionar año fiscal"
-                data-testid="year-selector-dropdown"
-                value={activeYear}
-                onChange={(e) => handleYearSelect(Number(e.target.value))}
-                className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-0.5 text-[11px] font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              >
-                {availableYears.map((yr) => (
-                  <option key={yr} value={yr}>
-                    Año {yr}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3 h-3 text-slate-500 pointer-events-none absolute right-1.5" />
-            </div>
+            {!isSuppliersViewOpen && (
+              <div className="relative inline-flex items-center">
+                <select
+                  aria-label="Seleccionar año fiscal"
+                  data-testid="year-selector-dropdown"
+                  value={activeYear}
+                  onChange={(e) => handleYearSelect(Number(e.target.value))}
+                  className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-0.5 text-[11px] font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                >
+                  {availableYears.map((yr) => (
+                    <option key={yr} value={yr}>
+                      Año {yr}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3 h-3 text-slate-500 pointer-events-none absolute right-1.5" />
+              </div>
+            )}
           </div>
         </div>
       </header>

@@ -1597,66 +1597,18 @@
   },
   {
     "id": 55,
-    "commercial_name": "Papelería Flober",
+    "commercial_name": "Papelería Flober Rivera",
     "official_invoice": true,
     "rating": 5,
     "category": "Papelería / Librería",
-    "legal_name": "PAPELERIA FLOBER SRL",
-    "description": "Cadena de papelerías: útiles escolares, artículos de oficina, fotocopias y bazar.",
-    "phone_fixed": "2402 2790 | 2402 7936 | 2708 3904 | 2705 5566 | 2914 5019",
-    "phone_mobile": "095 386 939 | 095 359 506 | 098 975 816 | 095 307 719",
-    "phone": "095 386 939 | 095 359 506 | 098 975 816 | 095 307 719",
-    "website": "https://papeleriaflober.com.uy",
-    "address": "Dr. Pablo de María 1412, Montevideo | Av. Brasil 2738, Montevideo | Av. Brasil 3044, Montevideo | Ituzaingó 1417, Montevideo",
-    "hours": "Cordón/Pocitos/Pocitos+: Lun-Vie 09:00-19:00, Sáb 09:00-13:00 | Ciudad Vieja: Lun-Vie 09:00-18:00",
-    "branches": [
-      {
-        "name": "Cordón (Casa Central)",
-        "address": "Dr. Pablo de María 1412, Montevideo",
-        "phone_fixed": [
-          "2402 2790",
-          "2402 7936"
-        ],
-        "phone_mobile": [
-          "095 386 939"
-        ],
-        "hours": "Lun-Vie 09:00-19:00, Sáb 09:00-13:00"
-      },
-      {
-        "name": "Pocitos",
-        "address": "Av. Brasil 2738, Montevideo",
-        "phone_fixed": [
-          "2708 3904"
-        ],
-        "phone_mobile": [
-          "095 359 506"
-        ],
-        "hours": "Lun-Vie 09:00-19:00, Sáb 09:00-13:00"
-      },
-      {
-        "name": "Pocitos+",
-        "address": "Av. Brasil 3044, Montevideo",
-        "phone_fixed": [
-          "2705 5566"
-        ],
-        "phone_mobile": [
-          "098 975 816"
-        ],
-        "hours": "Lun-Vie 09:00-19:00, Sáb 09:00-13:00"
-      },
-      {
-        "name": "Ciudad Vieja",
-        "address": "Ituzaingó 1417, Montevideo",
-        "phone_fixed": [
-          "2914 5019"
-        ],
-        "phone_mobile": [
-          "095 307 719"
-        ],
-        "hours": "Lun-Vie 09:00-18:00"
-      }
-    ],
-    "rut": "214131590017",
+    "legal_name": "PARBER SRL",
+    "description": "Papelería: útiles escolares, artículos de oficina, fotocopias, impresiones y bazar.",
+    "phone_fixed": "2622 8935 | 2628 2436",
+    "phone_mobile": "095 668 474",
+    "phone": "095 668 474",
+    "address": "Av. Gral. Rivera 3475, Montevideo",
+    "hours": "Lun-Vie 09:00-18:00, Sáb y Dom cerrado",
+    "rut": "217223130017",
     "frequency": 1,
     "updated_at": "2026-11-13"
   },

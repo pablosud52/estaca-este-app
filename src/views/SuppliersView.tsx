@@ -147,7 +147,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       )}
 
-      {/* ZONA FIJA SUPERIOR (Sticky): Cabecera + Buscador + Categorías/Filtros con separación uniforme de 8px (space-y-2) */}
+      {/* ZONA FIJA SUPERIOR (Sticky): Cabecera + Buscador + Categorías/Filtros */}
       <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md pt-2 pb-2.5 -mx-4 px-4 border-b border-slate-200 shadow-2xs space-y-2">
         {/* Cabecera compacta en una sola línea */}
         <div className="flex items-center justify-between gap-2">
@@ -242,7 +242,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       </div>
 
-      {/* Listado de Proveedores: Tarjetas individuales con borde gris más oscuro */}
+      {/* Listado de Proveedores: Tarjetas individuales */}
       <div className="pt-3">
         {filteredSuppliers.length === 0 ? (
           <div className="text-center py-12 px-4 bg-white rounded-2xl border border-slate-300 shadow-sm my-2">
@@ -302,7 +302,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     </p>
                   )}
 
-                  {/* 3. Teléfonos compactos con espaciado mínimo */}
+                  {/* 3. Teléfonos compactos con botones de solo icono rellenos [Copiar] [WhatsApp] [Llamar] */}
                   {(mobiles.length > 0 || fixeds.length > 0) && (
                     <div className="space-y-1">
                       {/* Celulares / WhatsApp */}
@@ -321,42 +321,48 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                               {mob}
                             </span>
 
-                            <div className="flex items-center gap-1">
-                              {/* WhatsApp */}
+                            {/* Orden estricto: Copiar -> WhatsApp -> Llamar */}
+                            <div className="flex items-center gap-1.5">
+                              {/* 1. Botón Copiar */}
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(copyKey, digits, mob)}
+                                className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
+                                  isCopied
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                    : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                }`}
+                                title="Copiar número"
+                                aria-label="Copiar número"
+                              >
+                                {isCopied ? (
+                                  <Check className="w-4 h-4 stroke-[2.5]" />
+                                ) : (
+                                  <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
+                                )}
+                              </button>
+
+                              {/* 2. Botón WhatsApp */}
                               <a
                                 href={waHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition touch-manipulation"
+                                className="pressable p-1.5 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 shadow-xs transition touch-manipulation"
                                 title="Abrir WhatsApp"
+                                aria-label="Abrir WhatsApp"
                               >
-                                <MessageCircle className="w-3 h-3 text-emerald-600" />
-                                <span>WhatsApp</span>
+                                <MessageCircle className="w-4 h-4 fill-white stroke-[1.5]" />
                               </a>
 
-                              {/* Llamar */}
+                              {/* 3. Botón Llamar */}
                               <a
                                 href={`tel:${digits}`}
-                                className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
+                                className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
                                 title="Llamar"
+                                aria-label="Llamar"
                               >
-                                <Phone className="w-3 h-3 text-slate-500" />
-                                <span>Llamar</span>
+                                <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
                               </a>
-
-                              {/* Copiar */}
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(copyKey, digits, mob)}
-                                className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
-                                title="Copiar número"
-                              >
-                                {isCopied ? (
-                                  <Check className="w-3 h-3 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3 h-3 text-slate-400" />
-                                )}
-                              </button>
                             </div>
                           </div>
                         );
@@ -377,30 +383,36 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                               {fix}
                             </span>
 
-                            <div className="flex items-center gap-1">
-                              {/* Llamar */}
-                              <a
-                                href={`tel:${digits}`}
-                                className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
-                                title="Llamar"
-                              >
-                                <Phone className="w-3 h-3 text-slate-500" />
-                                <span>Llamar</span>
-                              </a>
-
-                              {/* Copiar */}
+                            {/* Orden estricto: Copiar -> Llamar */}
+                            <div className="flex items-center gap-1.5">
+                              {/* 1. Botón Copiar */}
                               <button
                                 type="button"
                                 onClick={() => handleCopy(copyKey, digits, fix)}
-                                className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
+                                className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
+                                  isCopied
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                    : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+                                }`}
                                 title="Copiar número"
+                                aria-label="Copiar número"
                               >
                                 {isCopied ? (
-                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <Check className="w-4 h-4 stroke-[2.5]" />
                                 ) : (
-                                  <Copy className="w-3 h-3 text-slate-400" />
+                                  <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
                                 )}
                               </button>
+
+                              {/* 2. Botón Llamar */}
+                              <a
+                                href={`tel:${digits}`}
+                                className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
+                                title="Llamar"
+                                aria-label="Llamar"
+                              >
+                                <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
+                              </a>
                             </div>
                           </div>
                         );

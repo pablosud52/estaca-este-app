@@ -20,9 +20,10 @@ Simplificar el menú desplegable del conmutador de roles (`DevRoleSwitcher`) acc
     7. `JAS` (Mateo Morales)
     8. `AS` (Diego Pereira)
     9. `CFS` (Gonzalo Silva)
-  - Incorporación de los perfiles de líderes de `JAS` y `CFS` en `src/data/seedData.ts` con sus datos oficiales y de contacto.
-  - Formato visual depurado en el menú: títulos directos y limpios, subtítulos descriptivos con nombre y llamamiento, distintivos organizacionales estilizados y distintivo "Inmutable" para el Super Admin.
-  - Cobertura de pruebas automatizadas en Playwright (`tests/leader-view.spec.ts`) verificando el orden exacto de los 9 roles, la cantidad de opciones y la conmutación funcional a JAS y CFS.
+  - Incorporación de detección de clic fuera del menú (`click-outside` / `Escape`) con limpieza de listeners para autocierre natural.
+  - Eliminación del ícono `Sparkles` a la izquierda del encabezado para una estética limpia.
+  - Actualización del encabezado oficial a `Selector de Rol`.
+  - Cobertura de pruebas automatizadas en Playwright (`tests/leader-view.spec.ts`) verificando orden, cantidad, conmutación a JAS/CFS y autocierre al hacer clic fuera.
 
 - **Excluido**:
   - Modificación de reglas RBAC o seguridad en Supabase (se mantienen intactas las reglas sagradas de administradores inmutables y confidencialidad).

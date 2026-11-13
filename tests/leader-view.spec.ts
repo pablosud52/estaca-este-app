@@ -213,5 +213,15 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await page.getByTestId('dev-role-trigger').click();
     await page.getByTestId('switch-role-lider-cfs-01').click();
     await expect(page.getByTestId('header-user-name')).toHaveText('Gonzalo Silva');
+
+    // Verificar nuevo título "Selector de Rol", ausencia de ícono junto al título y cierre con clic fuera
+    await page.getByTestId('dev-role-trigger').click();
+    const menu = page.getByTestId('dev-role-menu');
+    await expect(menu).toBeVisible();
+    await expect(menu).toContainText('Selector de Rol');
+
+    // Clic fuera del menú desplegable para comprobar que se cierra
+    await page.getByTestId('header-user-name').click({ force: true });
+    await expect(menu).not.toBeVisible();
   });
 });

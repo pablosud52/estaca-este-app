@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Shield, Users, UserCheck, Lock, ChevronUp, ChevronDown, Sparkles, Check } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Shield, Users, UserCheck, Lock, ChevronUp, ChevronDown, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { DEV_PROFILES } from '../data/seedData';
 import { OrganizationCode, UserRole } from '../types/database';
@@ -106,6 +106,34 @@ export const SIMPLIFIED_ROLES: SimplifiedRoleItem[] = [
 export const DevRoleSwitcher: React.FC = () => {
   const { user, switchProfileById, canUseRoleSwitcher, isRoleSwitcherVisible, profiles } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Cierre automático al hacer clic fuera del menú o presionar Escape
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
 
   // En producción, solo pablosud52@gmail.com tiene acceso al cambio rápido de rol
   if (!canUseRoleSwitcher || !isRoleSwitcherVisible) {
@@ -126,6 +154,7 @@ export const DevRoleSwitcher: React.FC = () => {
 
   return (
     <div
+      ref={containerRef}
       data-testid="dev-role-switcher"
       className="fixed bottom-4 right-4 z-50 flex flex-col items-end"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
@@ -137,12 +166,9 @@ export const DevRoleSwitcher: React.FC = () => {
           className="mb-2.5 w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-slate-900/95 backdrop-blur-md text-white shadow-2xl border border-slate-700/80 overflow-hidden transition-all duration-200 ease-out-expo origin-bottom-right"
         >
           <div className="px-4 py-3 bg-slate-800/90 border-b border-slate-700/80 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-bold tracking-wider uppercase text-slate-200">
-                Cambio de Rol
-              </span>
-            </div>
+            <span className="text-xs font-bold tracking-wider uppercase text-slate-200">
+              Selector de Rol
+            </span>
             <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
               Super Admin
             </span>

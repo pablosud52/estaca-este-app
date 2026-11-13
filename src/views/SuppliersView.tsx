@@ -3,17 +3,16 @@ import {
   Search,
   Phone,
   MessageCircle,
-  ExternalLink,
+  Copy,
+  Check,
+  Globe,
   MapPin,
-  ArrowUpDown,
-  Building2,
+  ChevronDown,
   X,
-  Layers,
-  Sparkles,
   ArrowLeft,
+  ArrowUpDown,
 } from 'lucide-react';
 import { SupplierRecord } from '../types/database';
-import { SupplierContactModal } from '../components/SupplierContactModal';
 
 interface SuppliersViewProps {
   suppliers: SupplierRecord[];
@@ -21,399 +20,376 @@ interface SuppliersViewProps {
   embedded?: boolean;
 }
 
-type SortMode = 'FREQUENCY' | 'ALPHABETIC';
+type SortOrder = 'RELEVANCE' | 'ALPHABETIC';
 
 export const SuppliersView: React.FC<SuppliersViewProps> = ({
   suppliers,
   onBack,
-  embedded = false,
 }) => {
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('TODOS');
-  const [sortMode, setSortMode] = useState<SortMode>('FREQUENCY');
-  const [activeModalSupplier, setActiveModalSupplier] = useState<SupplierRecord | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('TODOS');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('RELEVANCE');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  // 1. Extraer categorías únicas con conteo
+  // Lista única de categorías ordenadas por cantidad
   const categories = useMemo(() => {
-    const map = new Map<string, number>();
+    const counts = new Map<string, number>();
     suppliers.forEach((s) => {
-      const cat = s.category || 'Otros';
-      map.set(cat, (map.get(cat) || 0) + 1);
+      const cat = s.category || 'Varios';
+      counts.set(cat, (counts.get(cat) || 0) + 1);
     });
-    const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-    return [{ name: 'TODOS', count: suppliers.length }, ...sorted.map(([name, count]) => ({ name, count }))];
+    const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    return [
+      { id: 'TODOS', label: 'Todos los rubros', count: suppliers.length },
+      ...sorted.map(([name, count]) => ({ id: name, label: name, count })),
+    ];
   }, [suppliers]);
 
-  // 2. Filtrado y ordenamiento inteligente
+  // Filtrado y orden
   const filteredSuppliers = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
 
+    const normalize = (str?: string) =>
+      (str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const nTerm = normalize(term);
+
     return suppliers
       .filter((s) => {
-        // Filtro por categoría
         if (selectedCategory !== 'TODOS' && s.category !== selectedCategory) {
           return false;
         }
-
-        // Búsqueda libre insensible a tildes y mayúsculas
-        if (!term) return true;
-
-        const normalize = (txt?: string) =>
-          (txt || '')
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '');
-
-        const nTerm = normalize(term);
-        const matchName = normalize(s.commercial_name).includes(nTerm);
-        const matchLegal = normalize(s.legal_name).includes(nTerm);
-        const matchDesc = normalize(s.description).includes(nTerm);
-        const matchCat = normalize(s.category).includes(nTerm);
-        const matchAddress = normalize(s.address).includes(nTerm);
-
-        return matchName || matchLegal || matchDesc || matchCat || matchAddress;
+        if (!nTerm) return true;
+        return (
+          normalize(s.commercial_name).includes(nTerm) ||
+          normalize(s.legal_name).includes(nTerm) ||
+          normalize(s.description).includes(nTerm) ||
+          normalize(s.category).includes(nTerm) ||
+          normalize(s.address).includes(nTerm)
+        );
       })
       .sort((a, b) => {
-        if (sortMode === 'FREQUENCY') {
+        if (sortOrder === 'RELEVANCE') {
           const fa = a.frequency || 0;
           const fb = b.frequency || 0;
           if (fb !== fa) return fb - fa;
           return a.commercial_name.localeCompare(b.commercial_name, 'es');
-        } else {
-          return a.commercial_name.localeCompare(b.commercial_name, 'es');
         }
+        return a.commercial_name.localeCompare(b.commercial_name, 'es');
       });
-  }, [suppliers, searchTerm, selectedCategory, sortMode]);
+  }, [suppliers, searchTerm, selectedCategory, sortOrder]);
 
-  // Helper para contar teléfonos de un proveedor
-  const getPhoneCount = (s: SupplierRecord) => {
-    let count = 0;
-    if (s.phone_mobile) count += s.phone_mobile.split('|').length;
-    if (s.phone_fixed) count += s.phone_fixed.split('|').length;
-    return count;
+  const handleCopy = async (key: string, digitsOnly: string, displayLabel: string) => {
+    try {
+      await navigator.clipboard.writeText(digitsOnly);
+      setCopiedKey(key);
+      setToastMessage(`Copiado: ${digitsOnly}`);
+      setTimeout(() => {
+        setCopiedKey(null);
+        setToastMessage(null);
+      }, 2000);
+    } catch {
+      setToastMessage(displayLabel);
+      setTimeout(() => setToastMessage(null), 2000);
+    }
   };
 
-  const getPrimaryWhatsApp = (s: SupplierRecord) => {
-    if (!s.phone_mobile) return null;
-    const first = s.phone_mobile.split('|')[0].trim();
-    let raw = first.replace(/\D/g, '');
-    if (raw.startsWith('09')) raw = '598' + raw.slice(1);
-    else if (!raw.startsWith('598') && raw.startsWith('9')) raw = '598' + raw;
-    return raw ? `https://wa.me/${raw}` : null;
+  const getWhatsAppHref = (raw: string) => {
+    const digits = raw.replace(/\D/g, '');
+    let normalized = digits;
+    if (normalized.startsWith('09')) {
+      normalized = '598' + normalized.slice(1);
+    } else if (!normalized.startsWith('598') && normalized.startsWith('9')) {
+      normalized = '598' + normalized;
+    }
+    return `https://wa.me/${normalized}`;
   };
 
-  const getPrimaryPhone = (s: SupplierRecord) => {
-    if (s.phone_fixed) {
-      const first = s.phone_fixed.split('|')[0].trim();
-      return first.replace(/\D/g, '');
-    }
-    if (s.phone_mobile) {
-      const first = s.phone_mobile.split('|')[0].trim();
-      return first.replace(/\D/g, '');
-    }
-    return null;
+  const cleanDisplayUrl = (url: string) => {
+    return url
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\/$/, '');
   };
 
   return (
-    <div className="w-full pb-16">
-      {/* Toast de notificación rápida */}
+    <div className="w-full max-w-2xl mx-auto px-4 pb-20">
+      {/* Toast discreto de copiado */}
       {toastMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl border border-slate-700/80 backdrop-blur-md animate-fade-in flex items-center gap-2">
-          <span>✓</span>
+        <div
+          role="status"
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-lg border border-slate-700/80 animate-fade-in flex items-center gap-1.5"
+        >
+          <Check className="w-3.5 h-3.5 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Cabecera / Banner */}
-      <div className="mb-4">
+      {/* Cabecera sobria y limpia (sin kickers, sin decoraciones de IA) */}
+      <header className="pt-2 pb-4">
         {onBack && (
           <button
             onClick={onBack}
-            className="pressable inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 mb-3 px-2 py-1 rounded-lg hover:bg-slate-100 transition touch-manipulation"
+            className="pressable inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 mb-2 py-1 touch-manipulation"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Volver al Panel</span>
+            <span>Volver</span>
           </button>
         )}
-
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-xl bg-emerald-100 text-emerald-800">
-                <Building2 className="w-4 h-4" />
-              </span>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-800">
-                Directorio Oficial
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
-              Proveedores y Servicios
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-              Contactos verificados y proveedores de confianza para eventos y actividades de la Estaca.
-            </p>
-          </div>
-
-          <div className="hidden sm:flex flex-col items-end">
-            <span className="text-2xl font-black text-slate-900 tabular-nums">
-              {suppliers.length}
-            </span>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
-              Registrados
-            </span>
-          </div>
+        <div className="flex items-baseline justify-between">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+            Proveedores
+          </h1>
+          <span className="text-xs text-slate-400 font-medium tabular-nums">
+            {filteredSuppliers.length} de {suppliers.length}
+          </span>
         </div>
-      </div>
+      </header>
 
-      {/* Controles de Búsqueda y Filtros (Sticky para Smartphone) */}
-      <div className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-md pt-2 pb-3 mb-4 -mx-4 px-4 border-b border-slate-200/80 space-y-3">
-        {/* Input de Búsqueda */}
+      {/* Controles: Buscador + Desplegable de Rubro + Orden */}
+      <div className="space-y-2.5 pb-4">
+        {/* Input de Búsqueda limpio */}
         <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nombre, producto, cotillón, sonido..."
-            className="w-full pl-10 pr-10 py-3 rounded-2xl bg-white border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition"
+            placeholder="Buscar por nombre, producto o servicio..."
+            className="w-full pl-9 pr-9 py-2.5 bg-white rounded-xl border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 transition"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
-              aria-label="Limpiar búsqueda"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+              aria-label="Borrar búsqueda"
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {/* Chips de Categorías (Desplazable horizontalmente en móvil) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 overscroll-contain">
-          {categories.map((cat) => {
-            const isSelected = selectedCategory === cat.name;
-            return (
-              <button
-                key={cat.name}
-                onClick={() => setSelectedCategory(cat.name)}
-                className={`pressable flex-shrink-0 text-[11px] font-extrabold px-3 py-1.5 rounded-xl transition touch-manipulation flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100'
-                }`}
-              >
-                <span>{cat.name}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-md ${
-                    isSelected ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-500'
-                  }`}
-                >
-                  {cat.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Fila inferior de ordenamiento y contador de resultados */}
-        <div className="flex items-center justify-between text-xs pt-1">
-          <span className="font-bold text-slate-500">
-            {filteredSuppliers.length === suppliers.length ? (
-              <span>Mostrando todos ({suppliers.length})</span>
-            ) : (
-              <span className="text-slate-900 font-extrabold">
-                {filteredSuppliers.length} encontrados
-              </span>
-            )}
-          </span>
+        {/* Fila compacta: Desplegable de rubro + Botón de orden */}
+        <div className="grid grid-cols-[1fr_auto] gap-2">
+          {/* Desplegable de Rubro */}
+          <div className="relative">
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full appearance-none bg-white border border-slate-200 rounded-xl px-3 py-2 pr-8 text-xs font-medium text-slate-700 focus:outline-none focus:border-slate-400 cursor-pointer"
+            >
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label} ({c.count})
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
 
           {/* Toggle de orden */}
-          <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-slate-200 shadow-2xs">
-            <button
-              onClick={() => setSortMode('FREQUENCY')}
-              className={`pressable px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition touch-manipulation ${
-                sortMode === 'FREQUENCY'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              ⚡ Relevantes
-            </button>
-            <button
-              onClick={() => setSortMode('ALPHABETIC')}
-              className={`pressable px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition touch-manipulation ${
-                sortMode === 'ALPHABETIC'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              🔤 A-Z
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setSortOrder((prev) => (prev === 'RELEVANCE' ? 'ALPHABETIC' : 'RELEVANCE'))
+            }
+            className="pressable inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-50 transition touch-manipulation"
+            title="Cambiar orden"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+            <span>{sortOrder === 'RELEVANCE' ? 'Relevancia' : 'A-Z'}</span>
+          </button>
         </div>
       </div>
 
-      {/* Lista de Tarjetas de Proveedores */}
+      {/* Listado de Proveedores: diseño tipo directorio sobrio */}
       {filteredSuppliers.length === 0 ? (
-        <div className="text-center py-12 px-4 bg-white rounded-3xl border border-slate-200/80 my-4 shadow-sm">
-          <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <Search className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-extrabold text-slate-800">
-            No se encontraron comercios
-          </h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-            Prueba buscando con otra palabra clave o cambiando el filtro de rubro seleccionado.
+        <div className="text-center py-12 px-4 bg-white rounded-2xl border border-slate-200/80 my-2">
+          <p className="text-sm font-semibold text-slate-700">Sin resultados</p>
+          <p className="text-xs text-slate-400 mt-1">
+            No encontramos ningún comercio con ese criterio de búsqueda.
           </p>
           <button
             onClick={() => {
               setSearchTerm('');
               setSelectedCategory('TODOS');
             }}
-            className="pressable mt-4 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold transition touch-manipulation"
+            className="mt-3 text-xs font-semibold text-slate-900 underline underline-offset-4"
           >
-            Restablecer Filtros
+            Ver todos los proveedores
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {filteredSuppliers.map((supplier) => {
-            const phoneCount = getPhoneCount(supplier);
-            const waLink = getPrimaryWhatsApp(supplier);
-            const callNumber = getPrimaryPhone(supplier);
+        <div className="divide-y divide-slate-100 bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+          {filteredSuppliers.map((s) => {
+            // Parsear números de móvil y fijos
+            const mobiles = s.phone_mobile
+              ? s.phone_mobile.split('|').map((p) => p.trim()).filter(Boolean)
+              : [];
+            const fixeds = s.phone_fixed
+              ? s.phone_fixed.split('|').map((p) => p.trim()).filter(Boolean)
+              : [];
 
             return (
-              <div
-                key={supplier.id}
-                className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs hover:border-slate-300 transition flex flex-col justify-between gap-3 relative group"
-              >
-                {/* Cabecera de la tarjeta */}
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700">
-                      {supplier.category}
-                    </span>
-
-                    {/* Badge de uso frecuente si tiene más de 3 compras */}
-                    {(supplier.frequency || 0) >= 4 && (
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200/80 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-amber-500" />
-                        <span>Frecuente ({supplier.frequency})</span>
-                      </span>
+              <article key={s.id} className="p-4 sm:p-5 space-y-2.5">
+                {/* Cabecera del ítem: Nombre + Razón Social + Rubro */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-base font-bold text-slate-900 leading-snug">
+                      {s.commercial_name}
+                    </h2>
+                    {s.legal_name && (
+                      <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide leading-tight mt-0.5">
+                        {s.legal_name}
+                      </p>
                     )}
                   </div>
-
-                  <h3 className="text-base font-black text-slate-900 tracking-tight mt-2 leading-snug">
-                    {supplier.commercial_name}
-                  </h3>
-
-                  {supplier.legal_name && (
-                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide truncate mt-0.5">
-                      {supplier.legal_name}
-                    </p>
-                  )}
-
-                  {supplier.description && (
-                    <p className="text-xs text-slate-600 font-medium mt-2 leading-relaxed">
-                      {supplier.description}
-                    </p>
-                  )}
-
-                  {supplier.address && (
-                    <div className="mt-2.5 flex items-start gap-1.5 text-[11px] text-slate-400 font-medium">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
-                      <span className="line-clamp-2 leading-tight">
-                        {supplier.address}
-                      </span>
-                    </div>
-                  )}
+                  <span className="flex-shrink-0 text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                    {s.category}
+                  </span>
                 </div>
 
-                {/* Botonera de Contacto Touch */}
-                <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                  {/* Si tiene múltiples teléfonos o se prefiere ver el detalle completo */}
-                  {phoneCount > 1 ? (
-                    <button
-                      onClick={() => setActiveModalSupplier(supplier)}
-                      className="pressable flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 text-white text-xs font-extrabold shadow-sm hover:bg-slate-800 transition touch-manipulation active:scale-[0.98]"
-                    >
-                      <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Ver Teléfonos ({phoneCount})</span>
-                    </button>
-                  ) : (
-                    <>
-                      {/* Llamar directo */}
-                      {callNumber && (
-                        <a
-                          href={`tel:${callNumber}`}
-                          className="pressable flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-900 text-white text-xs font-extrabold shadow-sm hover:bg-slate-800 transition touch-manipulation active:scale-[0.98]"
-                        >
-                          <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Llamar</span>
-                        </a>
-                      )}
+                {/* Descripción concisa */}
+                {s.description && (
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    {s.description}
+                  </p>
+                )}
 
-                      {/* WhatsApp directo si es móvil */}
-                      {waLink && (
-                        <a
-                          href={waLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="pressable flex items-center justify-center gap-1.5 py-2.5 px-3.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold shadow-sm hover:bg-emerald-700 transition touch-manipulation active:scale-[0.98]"
-                          aria-label="Abrir chat de WhatsApp"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">WhatsApp</span>
-                        </a>
-                      )}
-                    </>
-                  )}
+                {/* Dirección si existe */}
+                {s.address && (
+                  <p className="text-[11px] text-slate-400 flex items-start gap-1 leading-normal">
+                    <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0 mt-0.5" />
+                    <span>{s.address}</span>
+                  </p>
+                )}
 
-                  {/* Web oficial */}
-                  {supplier.website && (
+                {/* Página Web visible si existe (ícono de mundo + URL linkeable) */}
+                {s.website && (
+                  <div className="pt-0.5">
                     <a
-                      href={supplier.website}
+                      href={s.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="pressable p-2.5 rounded-xl bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200/80 transition touch-manipulation active:scale-[0.98]"
-                      title="Visitar sitio web"
-                      aria-label="Visitar sitio web"
+                      className="inline-flex items-center gap-1.5 text-xs text-slate-700 hover:text-slate-900 font-medium underline underline-offset-4 decoration-slate-300 hover:decoration-slate-900 transition"
                     >
-                      <ExternalLink className="w-4 h-4" />
+                      <Globe className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{cleanDisplayUrl(s.website)}</span>
                     </a>
-                  )}
+                  </div>
+                )}
 
-                  {/* Botón rápido para abrir modal si tiene 1 teléfono pero quiere copiarlo */}
-                  {phoneCount === 1 && (
-                    <button
-                      onClick={() => setActiveModalSupplier(supplier)}
-                      className="pressable p-2.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition touch-manipulation active:scale-[0.98]"
-                      title="Opciones de contacto y copiar"
-                      aria-label="Más opciones de contacto"
-                    >
-                      <Layers className="w-4 h-4" />
-                    </button>
-                  )}
+                {/* Vías de contacto telefónico: visibles con sus acciones al lado */}
+                <div className="pt-1 space-y-1.5">
+                  {/* Celulares / WhatsApp */}
+                  {mobiles.map((mob, idx) => {
+                    const digits = mob.replace(/\D/g, '');
+                    const copyKey = `mob-${s.id}-${idx}`;
+                    const isCopied = copiedKey === copyKey;
+                    const waHref = getWhatsAppHref(mob);
+
+                    return (
+                      <div
+                        key={copyKey}
+                        className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs"
+                      >
+                        <span className="font-mono text-slate-800 font-medium tabular-nums">
+                          {mob}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                          {/* Botón WhatsApp */}
+                          <a
+                            href={waHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition touch-manipulation"
+                            title="Abrir WhatsApp"
+                          >
+                            <MessageCircle className="w-3 h-3 text-emerald-600" />
+                            <span>WhatsApp</span>
+                          </a>
+
+                          {/* Botón Llamar */}
+                          <a
+                            href={`tel:${digits}`}
+                            className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
+                            title="Llamar"
+                          >
+                            <Phone className="w-3 h-3 text-slate-500" />
+                            <span>Llamar</span>
+                          </a>
+
+                          {/* Botón Copiar */}
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(copyKey, digits, mob)}
+                            className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
+                            title="Copiar número"
+                          >
+                            {isCopied ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-400" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Teléfonos fijos */}
+                  {fixeds.map((fix, idx) => {
+                    const digits = fix.replace(/\D/g, '');
+                    const copyKey = `fix-${s.id}-${idx}`;
+                    const isCopied = copiedKey === copyKey;
+
+                    return (
+                      <div
+                        key={copyKey}
+                        className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50 border border-slate-100 text-xs"
+                      >
+                        <span className="font-mono text-slate-800 font-medium tabular-nums">
+                          {fix}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                          {/* Botón Llamar */}
+                          <a
+                            href={`tel:${digits}`}
+                            className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
+                            title="Llamar"
+                          >
+                            <Phone className="w-3 h-3 text-slate-500" />
+                            <span>Llamar</span>
+                          </a>
+
+                          {/* Botón Copiar */}
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(copyKey, digits, fix)}
+                            className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition touch-manipulation"
+                            title="Copiar número"
+                          >
+                            {isCopied ? (
+                              <Check className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-400" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
-      )}
-
-      {/* Modal / Bottom Sheet de Contactos */}
-      {activeModalSupplier && (
-        <SupplierContactModal
-          supplier={activeModalSupplier}
-          onClose={() => setActiveModalSupplier(null)}
-          onToast={showToast}
-        />
       )}
     </div>
   );

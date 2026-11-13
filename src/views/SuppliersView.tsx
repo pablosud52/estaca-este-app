@@ -11,6 +11,8 @@ import {
   ChevronUp,
   X,
   ArrowLeft,
+  Clock,
+  AlertCircle,
 } from 'lucide-react';
 import { SupplierRecord } from '../types/database';
 
@@ -70,19 +72,24 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         if (selectedCategory !== 'TODOS' && s.category !== selectedCategory) {
           return false;
         }
-        if (onlyWhatsApp && !String(s.phone_mobile || '').trim()) {
-          return false;
+        if (onlyWhatsApp) {
+          const hasBranchMobile = s.branches?.some((b) => (b.phone_mobile?.length || 0) > 0);
+          if (!String(s.phone_mobile || '').trim() && !hasBranchMobile) return false;
         }
-        if (onlyFixed && !String(s.phone_fixed || '').trim()) {
-          return false;
+        if (onlyFixed) {
+          const hasBranchFixed = s.branches?.some((b) => (b.phone_fixed?.length || 0) > 0);
+          if (!String(s.phone_fixed || '').trim() && !hasBranchFixed) return false;
         }
         if (!nTerm) return true;
+        const branchMatch = s.branches?.some(
+          (b) => normalize(b.name).includes(nTerm) || normalize(b.address).includes(nTerm)
+        );
         return (
           normalize(s.commercial_name).includes(nTerm) ||
-          normalize(s.legal_name).includes(nTerm) ||
           normalize(s.description).includes(nTerm) ||
           normalize(s.category).includes(nTerm) ||
-          normalize(s.address).includes(nTerm)
+          normalize(s.address).includes(nTerm) ||
+          Boolean(branchMatch)
         );
       })
       .sort((a, b) => {
@@ -140,10 +147,63 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   };
 
-  const getBrandMapsUrl = (commercialName: string) => {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      `${commercialName}, Montevideo, Uruguay`
-    )}`;
+  const renderPhoneRow = (rawPhone: string, copyKey: string, isMobile: boolean) => {
+    const digits = rawPhone.replace(/\D/g, '');
+    const isCopied = copiedKey === copyKey;
+    const waHref = isMobile ? getWhatsAppHref(rawPhone) : null;
+
+    return (
+      <div
+        key={copyKey}
+        className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50/80 border border-slate-200/70 text-xs"
+      >
+        <span className="font-mono text-slate-900 font-bold tabular-nums text-[12px]">
+          {rawPhone}
+        </span>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleCopy(copyKey, digits, rawPhone)}
+            className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
+              isCopied
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
+            }`}
+            title="Copiar número"
+            aria-label="Copiar número"
+          >
+            {isCopied ? (
+              <Check className="w-4 h-4 stroke-[2.5]" />
+            ) : (
+              <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
+            )}
+          </button>
+
+          {waHref && (
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pressable p-1.5 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 shadow-xs transition touch-manipulation"
+              title="Abrir WhatsApp"
+              aria-label="Abrir WhatsApp"
+            >
+              <MessageCircle className="w-4 h-4 fill-white stroke-[1.5]" />
+            </a>
+          )}
+
+          <a
+            href={`tel:${digits}`}
+            className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
+            title="Llamar"
+            aria-label="Llamar"
+          >
+            <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
+          </a>
+        </div>
+      </div>
+    );
   };
 
   const handleToggleAlpha = () => {
@@ -326,23 +386,24 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               const addresses = s.address
                 ? s.address.split('|').map((a) => a.trim()).filter(Boolean)
                 : [];
-              const visibleAddresses = addresses.slice(0, 2);
-              const extraAddressesCount = Math.max(0, addresses.length - 2);
+              const branches = s.branches && s.branches.length > 0 ? s.branches : null;
+              const hasBranchHours = Boolean(branches?.some((b) => b.hours));
 
               return (
                 <article
                   key={s.id}
                   className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-300/90 shadow-sm hover:border-slate-400 transition-colors space-y-2.5"
                 >
-                  {/* 1. Cabecera: Nombre Comercial subrayado + Razón Social + Pastilla de Rubro */}
+                  {/* 1. Cabecera: Nombre Comercial subrayado + alerta sin factura + Pastilla de Rubro */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h2 className="text-base font-black text-slate-900 leading-snug tracking-tight underline underline-offset-3 decoration-slate-400">
                         {s.commercial_name}
                       </h2>
-                      {s.legal_name && (
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide leading-tight mt-1">
-                          {s.legal_name}
+                      {s.official_invoice === false && (
+                        <p className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 mt-1">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span>No emite factura oficial</span>
                         </p>
                       )}
                     </div>
@@ -375,157 +436,102 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     </button>
                   </div>
 
-                  {/* Contenido desplegable: Teléfonos -> Direcciones (máx 2 + Maps) -> Web */}
+                  {/* Contenido desplegable: Sucursales (o Teléfonos -> Direcciones) -> Horarios -> Web */}
                   {isExpanded && (
                     <div className="pt-2 border-t border-slate-100 space-y-2.5">
-                      {/* 3. Teléfonos compactos con botones de solo icono rellenos [Copiar] [WhatsApp] [Llamar] */}
-                      {(mobiles.length > 0 || fixeds.length > 0) && (
-                        <div className="space-y-1">
-                          {mobiles.map((mob, idx) => {
-                            const digits = mob.replace(/\D/g, '');
-                            const copyKey = `mob-${s.id}-${idx}`;
-                            const isCopied = copiedKey === copyKey;
-                            const waHref = getWhatsAppHref(mob);
-
-                            return (
-                              <div
-                                key={copyKey}
-                                className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50/80 border border-slate-200/70 text-xs"
-                              >
-                                <span className="font-mono text-slate-900 font-bold tabular-nums text-[12px]">
-                                  {mob}
-                                </span>
-
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopy(copyKey, digits, mob)}
-                                    className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
-                                      isCopied
-                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                        : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
-                                    }`}
-                                    title="Copiar número"
-                                    aria-label="Copiar número"
-                                  >
-                                    {isCopied ? (
-                                      <Check className="w-4 h-4 stroke-[2.5]" />
-                                    ) : (
-                                      <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
-                                    )}
-                                  </button>
-
-                                  <a
-                                    href={waHref}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="pressable p-1.5 rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 shadow-xs transition touch-manipulation"
-                                    title="Abrir WhatsApp"
-                                    aria-label="Abrir WhatsApp"
-                                  >
-                                    <MessageCircle className="w-4 h-4 fill-white stroke-[1.5]" />
-                                  </a>
-
-                                  <a
-                                    href={`tel:${digits}`}
-                                    className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
-                                    title="Llamar"
-                                    aria-label="Llamar"
-                                  >
-                                    <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
-                                  </a>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {fixeds.map((fix, idx) => {
-                            const digits = fix.replace(/\D/g, '');
-                            const copyKey = `fix-${s.id}-${idx}`;
-                            const isCopied = copiedKey === copyKey;
-
-                            return (
-                              <div
-                                key={copyKey}
-                                className="flex items-center justify-between gap-2 py-1 px-2.5 rounded-lg bg-slate-50/80 border border-slate-200/70 text-xs"
-                              >
-                                <span className="font-mono text-slate-900 font-bold tabular-nums text-[12px]">
-                                  {fix}
-                                </span>
-
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopy(copyKey, digits, fix)}
-                                    className={`pressable p-1.5 rounded-lg border transition touch-manipulation ${
-                                      isCopied
-                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                        : 'bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300'
-                                    }`}
-                                    title="Copiar número"
-                                    aria-label="Copiar número"
-                                  >
-                                    {isCopied ? (
-                                      <Check className="w-4 h-4 stroke-[2.5]" />
-                                    ) : (
-                                      <Copy className="w-4 h-4 fill-slate-700 stroke-[1.5]" />
-                                    )}
-                                  </button>
-
-                                  <a
-                                    href={`tel:${digits}`}
-                                    className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
-                                    title="Llamar"
-                                    aria-label="Llamar"
-                                  >
-                                    <Phone className="w-4 h-4 fill-white stroke-[1.5]" />
-                                  </a>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* 4. Direcciones (máx 2 visibles + enlace a Maps para múltiples sucursales) */}
-                      {addresses.length > 0 && (
-                        <div className="space-y-1 pt-0.5">
-                          {visibleAddresses.map((addr, aIdx) => (
-                            <a
-                              key={aIdx}
-                              href={getMapsUrl(addr)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="pressable flex items-start gap-1.5 text-[11px] text-slate-600 hover:text-slate-900 font-medium leading-normal group/addr transition touch-manipulation"
-                              title="Abrir ubicación en Google Maps"
+                      {branches ? (
+                        <div className="space-y-2">
+                          {branches.map((branch, bIdx) => (
+                            <div
+                              key={bIdx}
+                              className="p-2.5 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1.5"
                             >
-                              <MapPin className="w-3.5 h-3.5 text-slate-400 group-hover/addr:text-rose-500 flex-shrink-0 mt-0.5 transition-colors" />
-                              <span className="underline underline-offset-2 decoration-slate-300 group-hover/addr:decoration-slate-900">
-                                {addr}
-                              </span>
-                            </a>
+                              {branch.name && (
+                                <p className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wide">
+                                  {branch.name}
+                                </p>
+                              )}
+
+                              <a
+                                href={getMapsUrl(branch.address)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="pressable flex items-start gap-1.5 text-[11px] text-slate-600 hover:text-slate-900 font-medium leading-normal group/addr transition touch-manipulation"
+                                title="Abrir ubicación en Google Maps"
+                              >
+                                <MapPin className="w-3.5 h-3.5 text-slate-400 group-hover/addr:text-rose-500 flex-shrink-0 mt-0.5 transition-colors" />
+                                <span className="underline underline-offset-2 decoration-slate-300 group-hover/addr:decoration-slate-900">
+                                  {branch.address}
+                                </span>
+                              </a>
+
+                              {((branch.phone_mobile && branch.phone_mobile.length > 0) ||
+                                (branch.phone_fixed && branch.phone_fixed.length > 0)) && (
+                                <div className="space-y-1 pt-0.5">
+                                  {(branch.phone_mobile || []).map((mob, idx) =>
+                                    renderPhoneRow(mob, `b-mob-${s.id}-${bIdx}-${idx}`, true)
+                                  )}
+                                  {(branch.phone_fixed || []).map((fix, idx) =>
+                                    renderPhoneRow(fix, `b-fix-${s.id}-${bIdx}-${idx}`, false)
+                                  )}
+                                </div>
+                              )}
+
+                              {branch.hours && (
+                                <p className="flex items-start gap-1.5 text-[11px] text-slate-500 font-medium pt-0.5">
+                                  <Clock className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                                  <span>{branch.hours}</span>
+                                </p>
+                              )}
+                            </div>
                           ))}
-
-                          {extraAddressesCount > 0 && (
-                            <a
-                              href={getBrandMapsUrl(s.commercial_name)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="pressable flex items-center gap-1.5 text-[11px] text-sky-700 hover:text-sky-900 font-bold pt-0.5 touch-manipulation"
-                            >
-                              <MapPin className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
-                              <span className="underline underline-offset-2">
-                                +{extraAddressesCount}{' '}
-                                {extraAddressesCount === 1
-                                  ? 'sucursal más (Ver en Maps)'
-                                  : 'sucursales más (Ver en Maps)'}
-                              </span>
-                            </a>
-                          )}
                         </div>
+                      ) : (
+                        <>
+                          {/* Teléfonos compactos */}
+                          {(mobiles.length > 0 || fixeds.length > 0) && (
+                            <div className="space-y-1">
+                              {mobiles.map((mob, idx) =>
+                                renderPhoneRow(mob, `mob-${s.id}-${idx}`, true)
+                              )}
+                              {fixeds.map((fix, idx) =>
+                                renderPhoneRow(fix, `fix-${s.id}-${idx}`, false)
+                              )}
+                            </div>
+                          )}
+
+                          {/* Direcciones */}
+                          {addresses.length > 0 && (
+                            <div className="space-y-1 pt-0.5">
+                              {addresses.map((addr, aIdx) => (
+                                <a
+                                  key={aIdx}
+                                  href={getMapsUrl(addr)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="pressable flex items-start gap-1.5 text-[11px] text-slate-600 hover:text-slate-900 font-medium leading-normal group/addr transition touch-manipulation"
+                                  title="Abrir ubicación en Google Maps"
+                                >
+                                  <MapPin className="w-3.5 h-3.5 text-slate-400 group-hover/addr:text-rose-500 flex-shrink-0 mt-0.5 transition-colors" />
+                                  <span className="underline underline-offset-2 decoration-slate-300 group-hover/addr:decoration-slate-900">
+                                    {addr}
+                                  </span>
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
 
-                      {/* 5. Página Web */}
+                      {/* Horario general (si no se mostró por sucursal) */}
+                      {s.hours && !hasBranchHours && (
+                        <p className="flex items-start gap-1.5 text-[11px] text-slate-600 font-medium pt-0.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                          <span>{s.hours}</span>
+                        </p>
+                      )}
+
+                      {/* Página Web */}
                       {s.website && (
                         <div className="pt-0.5">
                           <a

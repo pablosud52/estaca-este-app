@@ -93,6 +93,14 @@ export interface CashWithdrawalRecord {
   returned_amount: number;
 }
 
+export interface SupplierBranch {
+  name?: string;
+  address: string;
+  phone_fixed?: string[];
+  phone_mobile?: string[];
+  hours?: string;
+}
+
 export interface SupplierRecord {
   id: number;
   commercial_name: string;
@@ -106,6 +114,9 @@ export interface SupplierRecord {
   email?: string;
   website?: string;
   address?: string;
+  hours?: string;
+  branches?: SupplierBranch[];
+  updated_at?: string;
   rut?: string;
   frequency?: number;
   rating: number;

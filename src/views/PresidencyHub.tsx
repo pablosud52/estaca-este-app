@@ -735,46 +735,9 @@ export const PresidencyHub: React.FC = () => {
       >
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-2">
-            {/* Izquierda: Estaca Montevideo Uruguay Este (completo en móvil gracias a Opción B) + Selector de Año [ Año 2026 ▾ ] */}
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm whitespace-nowrap">
-                Estaca Montevideo Uruguay Este
-              </span>
-
-              <div className="relative inline-flex items-center flex-shrink-0">
-                <select
-                  aria-label="Seleccionar año fiscal"
-                  data-testid="year-selector-dropdown"
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 transition"
-                >
-                  {availableYears.map((yr) => (
-                    <option key={yr} value={yr}>
-                      Año {yr}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-600 pointer-events-none absolute right-1.5" />
-              </div>
-            </div>
-
-            {/* Derecha: Usuario Activo (visible en PC; en móvil pasa al Drawer ☰ según Opción B) + Botón Menú Hamburguesa */}
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-              <div className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs">
-                <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
-                <span
-                  data-testid="hub-user-name"
-                  className="font-extrabold text-slate-800"
-                >
-                  {user.full_name}
-                </span>
-                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white">
-                  {user.role}
-                </span>
-              </div>
-
-              {/* Botón Hamburguesa Móvil (☰ que se transforma suavemente en ✕) */}
+            {/* Izquierda: Botón Menú Hamburguesa (siempre a la izquierda en móvil) + Estaca Montevideo Uruguay Este */}
+            <div className="flex items-center gap-2 min-w-0">
+              {/* Botón Hamburguesa Móvil (☰ que se transforma suavemente en ✕) - Siempre a la izquierda */}
               <button
                 type="button"
                 data-testid="mobile-menu-toggle"
@@ -804,6 +767,43 @@ export const PresidencyHub: React.FC = () => {
                   <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
                 )}
               </button>
+
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm whitespace-nowrap truncate">
+                Estaca Montevideo Uruguay Este
+              </span>
+            </div>
+
+            {/* Derecha: Selector de Año [ Año 2026 ▾ ] + Usuario Activo (visible en PC) */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+              <div className="relative inline-flex items-center flex-shrink-0">
+                <select
+                  aria-label="Seleccionar año fiscal"
+                  data-testid="year-selector-dropdown"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 transition"
+                >
+                  {availableYears.map((yr) => (
+                    <option key={yr} value={yr}>
+                      Año {yr}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-600 pointer-events-none absolute right-1.5" />
+              </div>
+
+              <div className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs">
+                <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                <span
+                  data-testid="hub-user-name"
+                  className="font-extrabold text-slate-800"
+                >
+                  {user.full_name}
+                </span>
+                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white">
+                  {user.role}
+                </span>
+              </div>
             </div>
           </div>
 

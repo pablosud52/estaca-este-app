@@ -1,14 +1,39 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { DEV_PROFILES, isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../data/seedData';
+import {
+  buildInitialDirectoryEntries,
+  DEV_PROFILES,
+  isSuperAdminEmail,
+  SUPER_ADMIN_EMAIL,
+} from '../data/seedData';
+import { DIRECTORY_ORG_BY_CODE } from '../data/stakeOrgStructure';
+import { isValidGmail } from '../lib/formatters';
 import { supabase } from '../lib/supabase';
-import { OrganizationCode, UserProfile } from '../types/database';
+import {
+  DirectoryOrgCode,
+  ExtraRoleType,
+  OrganizationCode,
+  StakeDirectoryEntry,
+  UserProfile,
+} from '../types/database';
 
 interface AuthContextValue {
   user: UserProfile;
   profiles: UserProfile[];
+  directoryEntries: StakeDirectoryEntry[];
+  incompleteContactsCount: number;
   switchProfileById: (profileId: string) => void;
   updateUserProfile: (id: string, updates: Partial<UserProfile>) => Promise<void>;
   addUserProfile: (newProfile: Omit<UserProfile, 'id'>) => Promise<void>;
+  updateDirectoryEntry: (id: string, updates: Partial<StakeDirectoryEntry>) => Promise<void>;
+  addExtraDirectoryEntry: (
+    org: DirectoryOrgCode,
+    extraRoleType: ExtraRoleType,
+    callingLabel: string,
+    data: Pick<StakeDirectoryEntry, 'first_name' | 'last_name' | 'phone' | 'email' | 'has_app_access'>
+  ) => Promise<{ ok: boolean; error?: string }>;
+  removeExtraDirectoryEntry: (id: string) => Promise<void>;
+  toggleDirectoryAppAccess: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  linkDirectoryPerson: (targetEntryId: string, sourceEntryId: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   isSimulating: boolean;
@@ -27,11 +52,46 @@ interface AuthContextValue {
 
 const STORAGE_KEY = 'estaca_este_active_profile_id';
 const SWITCHER_VISIBILITY_KEY = 'estaca_este_role_switcher_visible';
+const DIRECTORY_STORAGE_KEY = 'estaca_este_directory_entries_v1';
+
+const loadInitialDirectory = (): StakeDirectoryEntry[] => {
+  if (typeof window === 'undefined') return buildInitialDirectoryEntries();
+  try {
+    const raw = localStorage.getItem(DIRECTORY_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as StakeDirectoryEntry[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // Fallback a semilla
+  }
+  return buildInitialDirectoryEntries();
+};
+
+const saveDirectoryLocal = (entries: StakeDirectoryEntry[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(DIRECTORY_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // Ignorar error de cuota
+  }
+};
+
+export const isEntryPersonLoaded = (entry: StakeDirectoryEntry): boolean =>
+  Boolean(entry.first_name.trim() || entry.last_name.trim());
+
+export const isEntryIncomplete = (entry: StakeDirectoryEntry): boolean => {
+  if (!isEntryPersonLoaded(entry)) return false;
+  const missingPhone = !entry.phone || !entry.phone.trim();
+  const missingEmail = !entry.email || !isValidGmail(entry.email);
+  return missingPhone || missingEmail;
+};
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profiles, setProfiles] = useState<UserProfile[]>(DEV_PROFILES);
+  const [directoryEntries, setDirectoryEntries] = useState<StakeDirectoryEntry[]>(loadInitialDirectory);
   const [user, setUser] = useState<UserProfile>(() => {
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     return DEV_PROFILES.find((p) => p.id === savedId) || DEV_PROFILES.find((p) => p.id === 'lider-mj-01') || DEV_PROFILES[0];
@@ -244,6 +304,231 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     switchProfileById(DEV_PROFILES[0].id);
   };
 
+  const syncEntryToProfiles = async (entry: StakeDirectoryEntry) => {
+    const email = entry.email?.trim().toLowerCase() || '';
+    if (!email || !isValidGmail(email)) return;
+
+    const orgDef = DIRECTORY_ORG_BY_CODE[entry.directory_org];
+    const fullName = `${entry.first_name.trim()} ${entry.last_name.trim()}`.trim() || entry.calling;
+    const isSuper = isSuperAdminEmail(email);
+    const effectiveRole = isSuper ? 'ADMIN' : entry.role;
+    const effectiveActive = isSuper ? true : entry.has_app_access;
+
+    setProfiles((prev) => {
+      const existingIdx = prev.findIndex((p) => p.email.toLowerCase() === email);
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        const curr = next[existingIdx];
+        next[existingIdx] = {
+          ...curr,
+          full_name: fullName,
+          first_name: entry.first_name.trim(),
+          last_name: entry.last_name.trim(),
+          phone: entry.phone?.trim() || undefined,
+          calling: entry.calling,
+          organization: orgDef.budgetOrgCode,
+          role: effectiveRole,
+          can_approve_activities: isSuper ? true : entry.can_approve_activities,
+          is_permanent_admin: isSuper ? true : entry.is_permanent_admin,
+          is_active: effectiveActive,
+        };
+        return next;
+      }
+      return [
+        ...prev,
+        {
+          id: `user-${entry.id}`,
+          email,
+          full_name: fullName,
+          first_name: entry.first_name.trim(),
+          last_name: entry.last_name.trim(),
+          phone: entry.phone?.trim() || undefined,
+          calling: entry.calling,
+          organization: orgDef.budgetOrgCode,
+          role: effectiveRole,
+          can_approve_activities: isSuper ? true : entry.can_approve_activities,
+          is_permanent_admin: isSuper ? true : entry.is_permanent_admin,
+          is_active: effectiveActive,
+        },
+      ];
+    });
+
+    try {
+      await supabase.from('users_profiles').upsert(
+        {
+          email,
+          full_name: fullName,
+          first_name: entry.first_name.trim(),
+          last_name: entry.last_name.trim(),
+          phone: entry.phone?.trim() || null,
+          calling: entry.calling,
+          organization: orgDef.budgetOrgCode,
+          role: effectiveRole,
+          can_approve_activities: isSuper ? true : entry.can_approve_activities,
+          is_permanent_admin: isSuper ? true : entry.is_permanent_admin,
+          is_active: effectiveActive,
+        },
+        { onConflict: 'email' }
+      );
+    } catch {
+      // Estado local ya sincronizado
+    }
+  };
+
+  const updateDirectoryEntry = async (id: string, updates: Partial<StakeDirectoryEntry>) => {
+    let updatedTarget: StakeDirectoryEntry | null = null;
+    setDirectoryEntries((prev) => {
+      const next = prev.map((entry) => {
+        if (entry.id !== id) return entry;
+        const isSuper = isSuperAdminEmail(entry.email);
+        const merged: StakeDirectoryEntry = {
+          ...entry,
+          ...updates,
+          email: updates.email !== undefined ? updates.email.trim().toLowerCase() : entry.email,
+          role: isSuper ? 'ADMIN' : updates.role ?? entry.role,
+          is_permanent_admin: isSuper ? true : updates.is_permanent_admin ?? entry.is_permanent_admin,
+          can_approve_activities: isSuper
+            ? true
+            : updates.can_approve_activities ?? entry.can_approve_activities,
+          has_app_access: isSuper ? true : updates.has_app_access ?? entry.has_app_access,
+        };
+        updatedTarget = merged;
+        return merged;
+      });
+      saveDirectoryLocal(next);
+      return next;
+    });
+
+    if (updatedTarget) {
+      await syncEntryToProfiles(updatedTarget);
+      try {
+        await supabase.from('stake_directory_entries').upsert(updatedTarget);
+      } catch {
+        // Fallback local
+      }
+    }
+  };
+
+  const addExtraDirectoryEntry = async (
+    org: DirectoryOrgCode,
+    extraRoleType: ExtraRoleType,
+    callingLabel: string,
+    data: Pick<StakeDirectoryEntry, 'first_name' | 'last_name' | 'phone' | 'email' | 'has_app_access'>
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const orgDef = DIRECTORY_ORG_BY_CODE[org];
+    const currentExtras = directoryEntries.filter((e) => e.directory_org === org && !e.is_fixed_slot);
+    if (currentExtras.length >= orgDef.maxExtras) {
+      return {
+        ok: false,
+        error: `Máximo de ${orgDef.maxExtras} integrantes adicionales alcanzado en ${orgDef.shortLabel}.`,
+      };
+    }
+
+    const cleanEmail = data.email?.trim().toLowerCase() || '';
+    if (cleanEmail && !isValidGmail(cleanEmail)) {
+      return { ok: false, error: 'Solo se permiten correos @gmail.com.' };
+    }
+    if (data.has_app_access && !cleanEmail) {
+      return { ok: false, error: 'Para activar Acceso App debes ingresar un correo @gmail.com.' };
+    }
+
+    const created: StakeDirectoryEntry = {
+      id: `dir-${org.toLowerCase()}-extra-${Date.now()}`,
+      directory_org: org,
+      slot_key: `${org.toLowerCase()}-extra-${currentExtras.length + 1}`,
+      calling: callingLabel.trim(),
+      is_fixed_slot: false,
+      extra_role_type: extraRoleType,
+      first_name: data.first_name.trim(),
+      last_name: data.last_name.trim(),
+      phone: data.phone?.trim() || '',
+      email: cleanEmail,
+      has_app_access: Boolean(data.has_app_access && cleanEmail),
+      role: orgDef.defaultExtraRole,
+      can_approve_activities: false,
+      is_permanent_admin: false,
+    };
+
+    setDirectoryEntries((prev) => {
+      const next = [...prev, created];
+      saveDirectoryLocal(next);
+      return next;
+    });
+
+    await syncEntryToProfiles(created);
+    try {
+      await supabase.from('stake_directory_entries').upsert(created);
+    } catch {
+      // Fallback local
+    }
+    return { ok: true };
+  };
+
+  const removeExtraDirectoryEntry = async (id: string) => {
+    const target = directoryEntries.find((e) => e.id === id && !e.is_fixed_slot);
+    if (!target) return;
+
+    setDirectoryEntries((prev) => {
+      const next = prev.filter((e) => e.id !== id);
+      saveDirectoryLocal(next);
+      return next;
+    });
+
+    if (target.email) {
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.email.toLowerCase() === target.email?.toLowerCase() ? { ...p, is_active: false } : p
+        )
+      );
+    }
+
+    try {
+      await supabase.from('stake_directory_entries').delete().eq('id', id);
+    } catch {
+      // Fallback local
+    }
+  };
+
+  const toggleDirectoryAppAccess = async (id: string): Promise<{ ok: boolean; error?: string }> => {
+    const target = directoryEntries.find((e) => e.id === id);
+    if (!target) return { ok: false, error: 'Registro no encontrado.' };
+
+    if (target.is_permanent_admin || isSuperAdminEmail(target.email) || target.email === user.email) {
+      return {
+        ok: false,
+        error: 'Por seguridad del sistema, no puedes desactivar a un administrador permanente ni a ti mismo.',
+      };
+    }
+
+    const nextAccess = !target.has_app_access;
+    if (nextAccess && (!target.email || !isValidGmail(target.email))) {
+      return {
+        ok: false,
+        error: 'Ingresa un correo @gmail.com válido antes de activar el Acceso App.',
+      };
+    }
+
+    await updateDirectoryEntry(id, { has_app_access: nextAccess });
+    return { ok: true };
+  };
+
+  const linkDirectoryPerson = async (targetEntryId: string, sourceEntryId: string) => {
+    const source = directoryEntries.find((e) => e.id === sourceEntryId);
+    if (!source) return;
+    await updateDirectoryEntry(targetEntryId, {
+      first_name: source.first_name,
+      last_name: source.last_name,
+      phone: source.phone || '',
+      email: source.email || '',
+      linked_entry_id: source.id,
+    });
+  };
+
+  const incompleteContactsCount = React.useMemo(
+    () => directoryEntries.filter(isEntryIncomplete).length,
+    [directoryEntries]
+  );
+
   const canAccessSeminario =
     user.role === 'ADMIN' ||
     user.role === 'PRESIDENCIA' ||
@@ -256,7 +541,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canUseRoleSwitcher = realAuthEmail ? isSuperAdminEmail(realAuthEmail) : true;
 
   const allowedOrganizations: OrganizationCode[] = React.useMemo(() => {
-    if (!user.is_active || user.role === 'NO_AUTORIZADO') return [];
+    if (!user.is_active || user.role === 'NO_AUTORIZADO' || user.role === 'CONSULTA') return [];
     if (user.role === 'ADMIN' || user.role === 'PRESIDENCIA' || isSuperAdminEmail(user.email)) {
       return ['MJ', 'HJ', 'SEMINARIO', 'SS', 'PRIMARIA', 'JAS', 'AS', 'CFS', 'ESTACA'];
     }
@@ -271,9 +556,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         profiles,
+        directoryEntries,
+        incompleteContactsCount,
         switchProfileById,
         updateUserProfile,
         addUserProfile,
+        updateDirectoryEntry,
+        addExtraDirectoryEntry,
+        removeExtraDirectoryEntry,
+        toggleDirectoryAppAccess,
+        linkDirectoryPerson,
         signInWithGoogle,
         signOut,
         isSimulating,

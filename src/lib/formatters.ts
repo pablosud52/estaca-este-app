@@ -152,3 +152,57 @@ export function buildMmddMontoRef(isoDate: string, amount: number): string {
   if (rounded <= 0) return '';
   return `${month.padStart(2, '0')}${day.padStart(2, '0')}-${rounded}`;
 }
+
+/**
+ * Validación estricta de correo Google (@gmail.com).
+ */
+export function isValidGmail(email: string): boolean {
+  const clean = email.trim().toLowerCase();
+  if (!clean) return false;
+  return /^[a-z0-9._%+-]+@gmail\.com$/.test(clean);
+}
+
+/**
+ * Normaliza un celular uruguayo legado (+598 9X XXX XXX) al formato canónico 09xxxxxxx (9 dígitos).
+ */
+export function normalizeUruguayanMobile(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (/^5989\d{7}$/.test(digits)) {
+    return `0${digits.slice(3)}`;
+  }
+  if (/^009\d{7}$/.test(digits)) {
+    return digits.slice(1);
+  }
+  return digits;
+}
+
+/**
+ * Valida formato estricto de celular uruguayo sin espacios: 09xxxxxxx (9 dígitos).
+ */
+export function isValidUruguayanMobile(raw: string): boolean {
+  const clean = raw.trim();
+  if (!clean) return false;
+  return /^09\d{7}$/.test(clean);
+}
+
+/**
+ * Formatea un celular uruguayo 09xxxxxxx en grupos de 3 dígitos (09X XXX XXX) para lectura en directorio.
+ */
+export function formatUruguayanMobile(raw: string | null | undefined): string {
+  const norm = normalizeUruguayanMobile(raw);
+  if (!norm) return '';
+  if (/^09\d{7}$/.test(norm)) {
+    return `${norm.slice(0, 3)} ${norm.slice(3, 6)} ${norm.slice(6, 9)}`;
+  }
+  return raw?.trim() || norm;
+}
+
+/**
+ * Genera el enlace oficial de WhatsApp (https://wa.me/5989xxxxxxx) a partir de 09xxxxxxx.
+ */
+export function toWhatsAppUrl(raw: string | null | undefined): string | null {
+  const norm = normalizeUruguayanMobile(raw);
+  if (!/^09\d{7}$/.test(norm)) return null;
+  return `https://wa.me/598${norm.slice(1)}`;
+}

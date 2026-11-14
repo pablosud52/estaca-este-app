@@ -1,136 +1,262 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
+  Check,
   CheckCircle2,
+  Link2,
   Lock,
   Mail,
+  Pencil,
   Phone,
+  Plus,
+  Search,
   Shield,
   ShieldAlert,
-  UserCheck,
+  Trash2,
   UserPlus,
   Users,
   X,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import { isSuperAdminEmail, SUPER_ADMIN_EMAIL } from '../data/seedData';
-import { ORGANIZATION_LABELS, ORGANIZATION_SHORT_LABELS } from '../lib/formatters';
-import { OrganizationCode, UserRole } from '../types/database';
+import { isEntryIncomplete, isEntryPersonLoaded, useAuth } from '../context/AuthContext';
+import { isSuperAdminEmail } from '../data/seedData';
+import { STAKE_ORG_STRUCTURE, STAKE_UNITS } from '../data/stakeOrgStructure';
+import {
+  formatUruguayanMobile,
+  isValidGmail,
+  isValidUruguayanMobile,
+} from '../lib/formatters';
+import {
+  DirectoryOrgCode,
+  ExtraRoleType,
+  StakeDirectoryEntry,
+  UserRole,
+} from '../types/database';
 
-const SELECTABLE_ORGS: OrganizationCode[] = [
-  'TODAS',
-  'MJ',
-  'HJ',
-  'PRIMARIA',
-  'SS',
-  'AS',
-  'JAS',
-  'CFS',
-  'ESTACA',
-];
+interface UserManagementPanelProps {
+  initialFilterIncomplete?: boolean;
+}
 
-export const UserManagementPanel: React.FC = () => {
-  const { user: currentUser, profiles, updateUserProfile, addUserProfile } = useAuth();
+const ROLE_BADGES: Record<UserRole, { label: string; className: string }> = {
+  ADMIN: { label: 'ADMIN', className: 'bg-amber-100 text-amber-900 border-amber-300' },
+  PRESIDENCIA: { label: 'PRESIDENCIA', className: 'bg-sky-100 text-sky-900 border-sky-300' },
+  LIDER: { label: 'LÍDER', className: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
+  CONSULTA: { label: 'CONSULTA', className: 'bg-indigo-100 text-indigo-900 border-indigo-300' },
+  NO_AUTORIZADO: { label: 'SIN ACCESO', className: 'bg-slate-100 text-slate-600 border-slate-300' },
+};
 
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [newFullName, setNewFullName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newCalling, setNewCalling] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [newOrg, setNewOrg] = useState<OrganizationCode>('MJ');
-  const [newRole, setNewRole] = useState<UserRole>('LIDER');
-  const [newCanApprove, setNewCanApprove] = useState(false);
+export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
+  initialFilterIncomplete = false,
+}) => {
+  const {
+    user: currentUser,
+    directoryEntries,
+    incompleteContactsCount,
+    updateDirectoryEntry,
+    addExtraDirectoryEntry,
+    removeExtraDirectoryEntry,
+    toggleDirectoryAppAccess,
+    linkDirectoryPerson,
+  } = useAuth();
 
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [editingSuperCalling, setEditingSuperCalling] = useState<boolean>(false);
-  const [superCallingDraft, setSuperCallingDraft] = useState<string>('');
-  const [superOrgDraft, setSuperOrgDraft] = useState<OrganizationCode>('TODAS');
+  const [selectedOrgFilter, setSelectedOrgFilter] = useState<DirectoryOrgCode | 'TODAS'>('TODAS');
+  const [onlyIncomplete, setOnlyIncomplete] = useState<boolean>(initialFilterIncomplete);
 
-  const triggerToast = (msg: string) => {
-    setToastMsg(msg);
+  useEffect(() => {
+    setOnlyIncomplete(initialFilterIncomplete);
+  }, [initialFilterIncomplete]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [toastMsg, setToastMsg] = useState<{ text: string; isError?: boolean } | null>(null);
+
+  // Estado de edición inline de un puesto
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftFirstName, setDraftFirstName] = useState('');
+  const [draftLastName, setDraftLastName] = useState('');
+  const [draftPhone, setDraftPhone] = useState('');
+  const [draftEmail, setDraftEmail] = useState('');
+  const [draftUnit, setDraftUnit] = useState('');
+  const [draftNotes, setDraftNotes] = useState('');
+  const [draftError, setDraftError] = useState<string | null>(null);
+
+  // Estado para vincular persona existente
+  const [linkingEntryId, setLinkingEntryId] = useState<string | null>(null);
+
+  // Estado para formulario de agregar extra por organización
+  const [addingOrg, setAddingOrg] = useState<DirectoryOrgCode | null>(null);
+  const [extraRoleType, setExtraRoleType] = useState<ExtraRoleType>('SECRETARIO_AUXILIAR');
+  const [extraManualCalling, setExtraManualCalling] = useState('');
+  const [extraFirstName, setExtraFirstName] = useState('');
+  const [extraLastName, setExtraLastName] = useState('');
+  const [extraPhone, setExtraPhone] = useState('');
+  const [extraEmail, setExtraEmail] = useState('');
+  const [extraAppAccess, setExtraAppAccess] = useState(false);
+  const [extraError, setExtraError] = useState<string | null>(null);
+
+  const triggerToast = (text: string, isError = false) => {
+    setToastMsg({ text, isError });
     setTimeout(() => setToastMsg(null), 4000);
   };
 
-  // Si en el formulario de alta se elige una organización distinta de TODAS, el rol debe ser LIDER
-  const handleOrgChangeInForm = (org: OrganizationCode) => {
-    setNewOrg(org);
-    if (org !== 'TODAS' && newRole === 'ADMIN') {
-      setNewRole('LIDER');
-      setNewCanApprove(false);
-    }
+  const loadedPeopleForLink = useMemo(
+    () =>
+      directoryEntries.filter(
+        (e) => isEntryPersonLoaded(e) && e.id !== linkingEntryId
+      ),
+    [directoryEntries, linkingEntryId]
+  );
+
+  const startEditing = (entry: StakeDirectoryEntry) => {
+    setEditingId(entry.id);
+    setDraftFirstName(entry.first_name);
+    setDraftLastName(entry.last_name);
+    setDraftPhone(entry.phone || '');
+    setDraftEmail(entry.email || '');
+    setDraftUnit(entry.assigned_unit || '');
+    setDraftNotes(entry.assigned_org_notes || '');
+    setDraftError(null);
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFullName.trim() || !newEmail.trim()) return;
+  const handleSaveEdit = async (entry: StakeDirectoryEntry) => {
+    const cleanPhone = draftPhone.trim();
+    const cleanEmail = draftEmail.trim().toLowerCase();
 
-    const effectiveRole: UserRole =
-      newOrg !== 'TODAS' && newRole === 'ADMIN' ? 'LIDER' : newRole;
-
-    await addUserProfile({
-      full_name: newFullName.trim(),
-      email: newEmail.trim().toLowerCase(),
-      calling: newCalling.trim() || `Líder de ${ORGANIZATION_SHORT_LABELS[newOrg]}`,
-      phone: newPhone.trim() || undefined,
-      organization: newOrg,
-      role: effectiveRole,
-      can_approve_activities: effectiveRole === 'ADMIN' ? true : newCanApprove,
-      is_permanent_admin: false,
-      is_active: true,
-    });
-
-    setNewFullName('');
-    setNewEmail('');
-    setNewCalling('');
-    setNewPhone('');
-    setIsAddOpen(false);
-    triggerToast(`Usuario "${newFullName.trim()}" registrado en ${ORGANIZATION_SHORT_LABELS[newOrg]}.`);
-  };
-
-  const handleRoleChange = async (profileId: string, nextRole: UserRole, org: OrganizationCode) => {
-    // Regla estricta PROJECT_CONTEXT.md §2: El rol ADMIN solo puede asignarse a Presidencia (TODAS)
-    if (nextRole === 'ADMIN' && org !== 'TODAS') {
-      triggerToast('El rol de Administrador es exclusivo para integrantes de la Presidencia de Estaca.');
+    if (cleanPhone && !isValidUruguayanMobile(cleanPhone)) {
+      setDraftError('Celular inválido: debe ingresarse 09xxxxxxx (9 dígitos, todo junto sin espacios).');
       return;
     }
 
-    await updateUserProfile(profileId, {
+    if (cleanEmail && !isValidGmail(cleanEmail)) {
+      setDraftError('Correo inválido: solo se permiten cuentas @gmail.com.');
+      return;
+    }
+
+    await updateDirectoryEntry(entry.id, {
+      first_name: draftFirstName.trim(),
+      last_name: draftLastName.trim(),
+      phone: cleanPhone,
+      email: cleanEmail,
+      assigned_unit: entry.directory_org === 'SUMO_CONSEJO' ? draftUnit.trim() : entry.assigned_unit,
+      assigned_org_notes:
+        entry.directory_org === 'SUMO_CONSEJO' ? draftNotes.trim() : entry.assigned_org_notes,
+      has_app_access: cleanEmail ? entry.has_app_access : false,
+    });
+
+    setEditingId(null);
+    setDraftError(null);
+    triggerToast(`Datos guardados para ${entry.calling}.`);
+  };
+
+  const handleToggleAccess = async (entry: StakeDirectoryEntry) => {
+    const res = await toggleDirectoryAppAccess(entry.id);
+    if (!res.ok && res.error) {
+      triggerToast(res.error, true);
+      return;
+    }
+    triggerToast(
+      entry.has_app_access
+        ? `Acceso App desactivado para ${entry.first_name || entry.calling} (se conservan sus datos).`
+        : `Acceso App activado para ${entry.first_name || entry.calling}.`
+    );
+  };
+
+  const handlePresidencyRoleChange = async (entry: StakeDirectoryEntry, nextRole: UserRole) => {
+    if (entry.is_permanent_admin || isSuperAdminEmail(entry.email)) {
+      triggerToast('Un administrador permanente es inmutable.', true);
+      return;
+    }
+    await updateDirectoryEntry(entry.id, {
       role: nextRole,
-      can_approve_activities: nextRole === 'ADMIN' ? true : undefined,
+      can_approve_activities: nextRole === 'ADMIN' ? true : entry.can_approve_activities,
     });
-    triggerToast('Rol de usuario actualizado.');
+    triggerToast('Rol actualizado.');
   };
 
-  const handleToggleApprovalPermission = async (profileId: string, currentVal: boolean) => {
-    await updateUserProfile(profileId, { can_approve_activities: !currentVal });
-    triggerToast(
-      !currentVal
-        ? 'Permiso para aprobar actividades habilitado.'
-        : 'Permiso para aprobar actividades revocado.'
-    );
+  const openAddExtraForm = (org: DirectoryOrgCode) => {
+    setAddingOrg(org);
+    setExtraRoleType('SECRETARIO_AUXILIAR');
+    setExtraManualCalling('');
+    setExtraFirstName('');
+    setExtraLastName('');
+    setExtraPhone('');
+    setExtraEmail('');
+    setExtraAppAccess(false);
+    setExtraError(null);
   };
 
-  const handleToggleActiveState = async (profileId: string, currentActive: boolean) => {
-    await updateUserProfile(profileId, {
-      is_active: !currentActive,
-      role: !currentActive ? 'LIDER' : 'NO_AUTORIZADO',
+  const handleCreateExtra = async (e: React.FormEvent, org: DirectoryOrgCode) => {
+    e.preventDefault();
+    setExtraError(null);
+
+    if (!extraFirstName.trim() || !extraLastName.trim()) {
+      setExtraError('Nombre y Apellido son obligatorios.');
+      return;
+    }
+
+    const cleanPhone = extraPhone.trim();
+    if (cleanPhone && !isValidUruguayanMobile(cleanPhone)) {
+      setExtraError('Celular inválido: debe ingresarse 09xxxxxxx (9 dígitos, todo junto sin espacios).');
+      return;
+    }
+
+    const cleanEmail = extraEmail.trim().toLowerCase();
+    if (cleanEmail && !isValidGmail(cleanEmail)) {
+      setExtraError('Correo inválido: solo se permiten cuentas @gmail.com.');
+      return;
+    }
+
+    if (extraAppAccess && !cleanEmail) {
+      setExtraError('Para activar Acceso App debes ingresar un correo @gmail.com.');
+      return;
+    }
+
+    const callingLabel =
+      extraRoleType === 'SECRETARIO_AUXILIAR'
+        ? 'Secretario Auxiliar'
+        : extraRoleType === 'ASESOR'
+          ? 'Asesor'
+          : extraManualCalling.trim();
+
+    if (!callingLabel) {
+      setExtraError('Debes ingresar el nombre del rol manual.');
+      return;
+    }
+
+    const res = await addExtraDirectoryEntry(org, extraRoleType, callingLabel, {
+      first_name: extraFirstName.trim(),
+      last_name: extraLastName.trim(),
+      phone: cleanPhone,
+      email: cleanEmail,
+      has_app_access: extraAppAccess,
     });
-    triggerToast(
-      !currentActive
-        ? 'Cuenta de usuario reactivada.'
-        : 'Baja lógica aplicada (se preserva trazabilidad histórica).'
-    );
+
+    if (!res.ok) {
+      setExtraError(res.error || 'No se pudo agregar el integrante.');
+      return;
+    }
+
+    setAddingOrg(null);
+    triggerToast(`${extraFirstName.trim()} ${extraLastName.trim()} agregado como ${callingLabel}.`);
   };
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  const visibleOrgs = useMemo(
+    () =>
+      STAKE_ORG_STRUCTURE.filter((org) =>
+        selectedOrgFilter === 'TODAS' ? true : org.code === selectedOrgFilter
+      ),
+    [selectedOrgFilter]
+  );
 
   return (
     <section
-      aria-label="Gestión de Usuarios y Permisos RBAC"
+      aria-label="Gestión de Usuarios y Organigrama de Estaca"
       data-testid="user-management-panel"
       className="space-y-5"
     >
-      {/* 1. BANNER OFICIAL DE SEGURIDAD E INMUTABILIDAD (PROJECT_CONTEXT.md §4.3) */}
+      {/* 1. BANNER OFICIAL DE SEGURIDAD E INMUTABILIDAD */}
       <div
         data-testid="security-self-protection-banner"
-        className="rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 p-5 sm:p-6 text-white shadow-lg border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        className="rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 p-5 sm:p-6 text-white shadow-lg border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
       >
         <div className="flex items-start gap-3.5">
           <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center flex-shrink-0">
@@ -142,7 +268,7 @@ export const UserManagementPanel: React.FC = () => {
                 Regla Sagrada de Auto-Protección Inmutable
               </span>
               <span className="text-[10px] font-mono bg-slate-800 text-emerald-300 px-2 py-0.5 rounded-full border border-slate-700">
-                RBAC Floor Activo
+                Fuente Única · Directorio + Acceso
               </span>
             </div>
             <p
@@ -154,397 +280,660 @@ export const UserManagementPanel: React.FC = () => {
           </div>
         </div>
 
+        {/* Recordatorio de Contactos Incompletos */}
         <button
           type="button"
-          data-testid="open-add-user-btn"
-          onClick={() => setIsAddOpen((prev) => !prev)}
-          className="pressable inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold whitespace-nowrap self-start sm:self-center shadow-sm"
+          data-testid="incomplete-contacts-filter-btn"
+          onClick={() => setOnlyIncomplete((prev) => !prev)}
+          className={`pressable inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold whitespace-nowrap self-start lg:self-center border transition ${
+            onlyIncomplete
+              ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md'
+              : incompleteContactsCount > 0
+                ? 'bg-amber-500/20 text-amber-200 border-amber-400/50 hover:bg-amber-500/30'
+                : 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
+          }`}
         >
-          <UserPlus className="w-4 h-4" />
-          <span>+ Nuevo Usuario</span>
+          <AlertTriangle className="w-4 h-4" />
+          <span>
+            {incompleteContactsCount > 0
+              ? `${incompleteContactsCount} con datos incompletos`
+              : 'Todos los contactos completos'}
+          </span>
         </button>
       </div>
 
-      {/* Toast de confirmación */}
+      {/* Toast */}
       {toastMsg && (
         <div
           data-testid="user-mgmt-toast"
           role="status"
-          className="p-3.5 rounded-2xl bg-emerald-900 text-white text-xs font-bold shadow-md border border-emerald-700 flex items-center gap-2.5"
+          className={`p-3.5 rounded-2xl text-white text-xs font-bold shadow-md border flex items-center gap-2.5 ${
+            toastMsg.isError
+              ? 'bg-rose-900 border-rose-700'
+              : 'bg-emerald-900 border-emerald-700'
+          }`}
         >
-          <CheckCircle2 className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-          <span>{toastMsg}</span>
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          <span>{toastMsg.text}</span>
         </div>
       )}
 
-      {/* Formulario Desplegable de Alta de Usuario */}
-      {isAddOpen && (
-        <form
-          onSubmit={handleCreateUser}
-          data-testid="add-user-form"
-          className="bg-white rounded-3xl p-5 sm:p-6 shadow-md border-2 border-emerald-600/40 space-y-4"
-        >
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2">
-              <UserPlus className="w-4 h-4 text-emerald-700" />
-              <h3 className="text-sm font-extrabold text-slate-900">
-                Alta de Líder o Integrante de Presidencia
-              </h3>
-            </div>
+      {/* Barra de búsqueda y filtro por organización */}
+      <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-200/90 space-y-3">
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por nombre, apellido, llamamiento, @gmail.com o unidad..."
+            className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setSelectedOrgFilter('TODAS')}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
+              selectedOrgFilter === 'TODAS'
+                ? 'bg-slate-900 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Todas (12)
+          </button>
+          {STAKE_ORG_STRUCTURE.map((org) => (
+            <button
+              key={org.code}
+              type="button"
+              onClick={() => setSelectedOrgFilter(org.code)}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
+                selectedOrgFilter === org.code
+                  ? 'bg-emerald-800 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              {org.shortLabel}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Modal rápido para vincular persona ya cargada */}
+      {linkingEntryId && (
+        <div className="bg-white rounded-3xl p-5 shadow-lg border-2 border-indigo-500/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-indigo-600" />
+              <span>Vincular persona ya registrada en otro llamamiento</span>
+            </h3>
             <button
               type="button"
-              onClick={() => setIsAddOpen(false)}
-              className="text-slate-400 hover:text-slate-700 p-1"
+              onClick={() => setLinkingEntryId(null)}
+              className="p-1 text-slate-400 hover:text-slate-700"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Nombre y Apellido *
-              </label>
-              <input
-                type="text"
-                required
-                data-testid="new-user-name-input"
-                placeholder="Ej: Ana Clara Gómez"
-                value={newFullName}
-                onChange={(e) => setNewFullName(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Correo Google (Gmail) *
-              </label>
-              <input
-                type="email"
-                required
-                data-testid="new-user-email-input"
-                placeholder="ejemplo@gmail.com"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Llamamiento / Cargo
-              </label>
-              <input
-                type="text"
-                data-testid="new-user-calling-input"
-                placeholder="Ej: 1° Consejera Primaria"
-                value={newCalling}
-                onChange={(e) => setNewCalling(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Organización Asignada
-              </label>
-              <select
-                data-testid="new-user-org-select"
-                value={newOrg}
-                onChange={(e) => handleOrgChangeInForm(e.target.value as OrganizationCode)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+          <p className="text-xs text-slate-600">
+            Selecciona a la persona para copiar automáticamente Nombre, Apellido, Celular y Gmail sin volver a escribirlos:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto">
+            {loadedPeopleForLink.map((person) => (
+              <button
+                key={person.id}
+                type="button"
+                onClick={async () => {
+                  await linkDirectoryPerson(linkingEntryId, person.id);
+                  setLinkingEntryId(null);
+                  triggerToast(`Persona vinculada: ${person.first_name} ${person.last_name}.`);
+                }}
+                className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition"
               >
-                {SELECTABLE_ORGS.map((org) => (
-                  <option key={org} value={org}>
-                    {org === 'TODAS' ? 'Presidencia de Estaca (TODAS)' : ORGANIZATION_LABELS[org]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Rol de Acceso
-              </label>
-              <select
-                data-testid="new-user-role-select"
-                value={newRole}
-                onChange={(e) => setNewRole(e.target.value as UserRole)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              >
-                <option value="LIDER">LÍDER (Organización)</option>
-                {newOrg === 'TODAS' && (
-                  <>
-                    <option value="PRESIDENCIA">PRESIDENCIA (Ejecutivo)</option>
-                    <option value="ADMIN">ADMINISTRADOR (Total)</option>
-                  </>
-                )}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Teléfono / WhatsApp
-              </label>
-              <input
-                type="tel"
-                placeholder="+598 99 000 000"
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              />
-            </div>
+                <p className="text-xs font-bold text-slate-900">
+                  {person.first_name} {person.last_name}
+                </p>
+                <p className="text-[11px] text-slate-500 truncate">{person.calling}</p>
+              </button>
+            ))}
           </div>
-
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setIsAddOpen(false)}
-              className="pressable px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              data-testid="submit-new-user-btn"
-              className="pressable px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm"
-            >
-              Guardar Usuario
-            </button>
-          </div>
-        </form>
+        </div>
       )}
 
-      {/* 2. LISTADO / TABLA DE USUARIOS CON PROTECCIÓN INMUTABLE */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200/80 bg-slate-50/70 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-emerald-800" />
-            <h2 className="text-sm font-extrabold text-slate-900">
-              Padrón de Usuarios y Permisos ({profiles.length})
-            </h2>
-          </div>
-          <span className="text-[11px] font-semibold text-slate-500">
-            Conectado como: <strong className="text-slate-800">{currentUser.full_name}</strong>
-          </span>
-        </div>
+      {/* Tarjetas por Organización */}
+      <div className="space-y-4">
+        {visibleOrgs.map((orgDef) => {
+          const orgEntries = directoryEntries.filter((e) => e.directory_org === orgDef.code);
+          const extrasCount = orgEntries.filter((e) => !e.is_fixed_slot).length;
 
-        <div className="divide-y divide-slate-100">
-          {profiles.map((row) => {
-            const isSelf = row.email.toLowerCase() === currentUser.email.toLowerCase();
-            const isSuperOwner = isSuperAdminEmail(row.email);
-            const isPermanent =
-              row.is_permanent_admin ||
-              isSuperOwner ||
-              row.email.toLowerCase() === 'presidente.estaca@gmail.com';
-            const isProtected = isSelf || isPermanent;
+          const filteredEntries = orgEntries.filter((entry) => {
+            if (onlyIncomplete && !isEntryIncomplete(entry)) return false;
+            if (!normalizedSearch) return true;
+            const haystack = [
+              entry.first_name,
+              entry.last_name,
+              entry.calling,
+              entry.email,
+              entry.phone,
+              entry.assigned_unit,
+              entry.assigned_org_notes,
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            return haystack.includes(normalizedSearch);
+          });
 
-            return (
-              <div
-                key={row.id}
-                data-testid={`user-row-${row.id}`}
-                className={`p-4 sm:px-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition ${
-                  !row.is_active ? 'bg-rose-50/40 opacity-80' : 'hover:bg-slate-50/70'
-                }`}
-              >
-                {/* Datos de Identidad */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-extrabold text-slate-900">{row.full_name}</span>
+          if ((onlyIncomplete || normalizedSearch) && filteredEntries.length === 0) {
+            return null;
+          }
 
-                    {isSelf && (
-                      <span
-                        data-testid={`self-session-badge-${row.id}`}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-900 border border-emerald-300"
-                      >
-                        <UserCheck className="w-3 h-3" />
-                        <span>Tu Sesión Activa</span>
-                      </span>
-                    )}
+          return (
+            <div
+              key={orgDef.code}
+              data-testid={`org-card-${orgDef.code}`}
+              className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
+            >
+              {/* Cabecera de Organización */}
+              <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <Users className="w-4 h-4 text-emerald-700" />
+                  <h3 className="text-sm font-extrabold text-slate-900">{orgDef.label}</h3>
+                  <span
+                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                      orgDef.hasBudget
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                    }`}
+                  >
+                    {orgDef.hasBudget ? 'Con Presupuesto' : 'Directorio · Calendario · Proveedores'}
+                  </span>
+                </div>
 
-                    {isPermanent && (
-                      <span
-                        data-testid={`immutable-admin-pill-${row.id}`}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300"
-                      >
-                        <Lock className="w-3 h-3 text-amber-700" />
-                        <span>
-                          {isSuperOwner
-                            ? 'Admin Vitalicio (Propietario del Sistema)'
-                            : 'Admin Permanente Inmutable'}
-                        </span>
-                      </span>
-                    )}
+                <span className="text-xs font-bold text-slate-500">
+                  {orgEntries.filter(isEntryPersonLoaded).length} / {orgEntries.length} cargados
+                </span>
+              </div>
 
-                    {!row.is_active && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200">
-                        Inactivo / Baja Lógica
-                      </span>
-                    )}
-                  </div>
+              {/* Filas de Puestos */}
+              <div className="divide-y divide-slate-100">
+                {filteredEntries.map((entry) => {
+                  const isEditing = editingId === entry.id;
+                  const isLoaded = isEntryPersonLoaded(entry);
+                  const isIncomplete = isEntryIncomplete(entry);
+                  const isSelfOrPerm =
+                    entry.is_permanent_admin ||
+                    isSuperAdminEmail(entry.email) ||
+                    (Boolean(entry.email) && entry.email === currentUser.email);
+                  const roleBadge = ROLE_BADGES[entry.role];
 
-                  <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                    <p className="text-xs font-semibold text-slate-600">
-                      {row.calling} •{' '}
-                      <span className="text-emerald-800 font-bold">
-                        {ORGANIZATION_LABELS[row.organization]}
-                      </span>
-                    </p>
-
-                    {/* Permite a pablosud52@gmail.com actualizar su llamamiento u organización si deja la Presidencia, conservando ADMIN vitalicio */}
-                    {isSuperOwner && isSelf && !editingSuperCalling && (
-                      <button
-                        type="button"
-                        data-testid="edit-superadmin-calling-btn"
-                        onClick={() => {
-                          setSuperCallingDraft(row.calling);
-                          setSuperOrgDraft(row.organization);
-                          setEditingSuperCalling(true);
-                        }}
-                        className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline decoration-emerald-400 underline-offset-2"
-                      >
-                        Cambiar mi llamamiento
-                      </button>
-                    )}
-                  </div>
-
-                  {isSuperOwner && isSelf && editingSuperCalling && (
+                  return (
                     <div
-                      data-testid="superadmin-calling-editor"
-                      className="mt-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-center gap-2"
+                      key={entry.id}
+                      data-testid={`directory-row-${entry.slot_key}`}
+                      className={`p-4 sm:px-5 transition ${
+                        !entry.has_app_access && isLoaded ? 'bg-slate-50/50' : ''
+                      }`}
                     >
-                      <input
-                        type="text"
-                        data-testid="superadmin-calling-input"
-                        value={superCallingDraft}
-                        onChange={(e) => setSuperCallingDraft(e.target.value)}
-                        placeholder="Nuevo llamamiento o rol técnico"
-                        className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                      />
-                      <select
-                        data-testid="superadmin-org-select"
-                        value={superOrgDraft}
-                        onChange={(e) => setSuperOrgDraft(e.target.value as OrganizationCode)}
-                        className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                      >
-                        {SELECTABLE_ORGS.map((org) => (
-                          <option key={org} value={org}>
-                            {ORGANIZATION_LABELS[org]}
-                          </option>
-                        ))}
-                      </select>
+                      {isEditing ? (
+                        <div className="space-y-3 bg-emerald-50/40 p-3.5 rounded-2xl border border-emerald-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-extrabold text-emerald-900">
+                              Editando: {entry.calling}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              className="text-slate-400 hover:text-slate-700"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                Nombre
+                              </label>
+                              <input
+                                type="text"
+                                value={draftFirstName}
+                                onChange={(e) => setDraftFirstName(e.target.value)}
+                                placeholder="Nombre"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                Apellido
+                              </label>
+                              <input
+                                type="text"
+                                value={draftLastName}
+                                onChange={(e) => setDraftLastName(e.target.value)}
+                                placeholder="Apellido"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                Celular (09xxxxxxx)
+                              </label>
+                              <input
+                                type="tel"
+                                maxLength={9}
+                                value={draftPhone}
+                                onChange={(e) => setDraftPhone(e.target.value.replace(/\D/g, ''))}
+                                placeholder="099123456"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                Correo Gmail (@gmail.com)
+                              </label>
+                              <input
+                                type="email"
+                                value={draftEmail}
+                                onChange={(e) => setDraftEmail(e.target.value)}
+                                placeholder="nombre@gmail.com"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                              />
+                            </div>
+                          </div>
+
+                          {entry.directory_org === 'SUMO_CONSEJO' && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                  Unidad asignada
+                                </label>
+                                <input
+                                  type="text"
+                                  list={`units-${entry.id}`}
+                                  value={draftUnit}
+                                  onChange={(e) => setDraftUnit(e.target.value)}
+                                  placeholder="Ej: Paso Carrasco, Aeroparque..."
+                                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                />
+                                <datalist id={`units-${entry.id}`}>
+                                  {STAKE_UNITS.map((u) => (
+                                    <option key={u} value={u} />
+                                  ))}
+                                </datalist>
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                  Organización / Comité asignado
+                                </label>
+                                <input
+                                  type="text"
+                                  value={draftNotes}
+                                  onChange={(e) => setDraftNotes(e.target.value)}
+                                  placeholder="Ej: HJ Pte // acompañar MJ // Obra Misional"
+                                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {draftError && (
+                            <p className="text-xs font-bold text-rose-700">{draftError}</p>
+                          )}
+
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`save-edit-${entry.slot_key}`}
+                              onClick={() => handleSaveEdit(entry)}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Guardar</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                          {/* Info principal */}
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-extrabold text-slate-800">
+                                {entry.calling}
+                              </span>
+                              {!entry.is_fixed_slot && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                  Adicional
+                                </span>
+                              )}
+                              <span
+                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${roleBadge.className}`}
+                              >
+                                {roleBadge.label}
+                              </span>
+                              {isSelfOrPerm && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                  <Lock className="w-3 h-3" />
+                                  Inmutable
+                                </span>
+                              )}
+                              {isIncomplete && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  {!entry.phone && !entry.email
+                                    ? 'Falta celular y Gmail'
+                                    : !entry.phone
+                                      ? 'Falta celular'
+                                      : 'Falta Gmail'}
+                                </span>
+                              )}
+                            </div>
+
+                            {isLoaded ? (
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700">
+                                <span className="font-bold text-slate-900">
+                                  {entry.first_name} {entry.last_name}
+                                </span>
+                                {entry.phone && (
+                                  <span className="inline-flex items-center gap-1 text-slate-600 font-mono">
+                                    <Phone className="w-3 h-3 text-slate-400" />
+                                    {formatUruguayanMobile(entry.phone)}
+                                  </span>
+                                )}
+                                {entry.email && (
+                                  <span className="inline-flex items-center gap-1 text-slate-600">
+                                    <Mail className="w-3 h-3 text-slate-400" />
+                                    {entry.email}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs italic text-slate-400">
+                                Puesto vacante — sin persona asignada
+                              </p>
+                            )}
+
+                            {entry.directory_org === 'SUMO_CONSEJO' &&
+                              (entry.assigned_unit || entry.assigned_org_notes) && (
+                                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                                  {entry.assigned_unit && (
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700">
+                                      Unidad: {entry.assigned_unit}
+                                    </span>
+                                  )}
+                                  {entry.assigned_org_notes && (
+                                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800">
+                                      {entry.assigned_org_notes}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                          </div>
+
+                          {/* Controles de acción */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {orgDef.code === 'PRESIDENCIA' && isLoaded && (
+                              <>
+                                <select
+                                  aria-label={`Rol de ${entry.calling}`}
+                                  disabled={isSelfOrPerm}
+                                  value={entry.role}
+                                  onChange={(e) =>
+                                    handlePresidencyRoleChange(entry, e.target.value as UserRole)
+                                  }
+                                  className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-[11px] font-bold bg-white disabled:bg-slate-100 disabled:text-slate-500"
+                                >
+                                  <option value="PRESIDENCIA">PRESIDENCIA</option>
+                                  <option value="ADMIN">ADMIN</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={isSelfOrPerm}
+                                  onClick={() =>
+                                    updateDirectoryEntry(entry.id, {
+                                      can_approve_activities: !entry.can_approve_activities,
+                                    })
+                                  }
+                                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition ${
+                                    entry.can_approve_activities
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                      : 'bg-slate-50 text-slate-600 border-slate-200'
+                                  }`}
+                                >
+                                  {entry.can_approve_activities ? '✓ Aprueba' : 'No aprueba'}
+                                </button>
+                              </>
+                            )}
+
+                            {/* Switch universal Acceso App */}
+                            <button
+                              type="button"
+                              data-testid={`toggle-access-${entry.slot_key}`}
+                              disabled={isSelfOrPerm}
+                              onClick={() => handleToggleAccess(entry)}
+                              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition ${
+                                isSelfOrPerm
+                                  ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                                  : entry.has_app_access
+                                    ? 'bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-800'
+                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                              }`}
+                            >
+                              <Shield className="w-3.5 h-3.5" />
+                              <span>{entry.has_app_access ? 'Acceso ON' : 'Acceso OFF'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setLinkingEntryId(entry.id)}
+                              title="Vincular persona ya registrada"
+                              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
+                            >
+                              <Link2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              data-testid={`edit-btn-${entry.slot_key}`}
+                              onClick={() => startEditing(entry)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>Editar</span>
+                            </button>
+
+                            {!entry.is_fixed_slot && (
+                              <button
+                                type="button"
+                                onClick={() => removeExtraDirectoryEntry(entry.id)}
+                                title="Eliminar integrante adicional"
+                                className="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Pie de organización: botón para agregar extras (máx 3 / máx 2 en CFS) */}
+              {orgDef.maxExtras > 0 && (
+                <div className="px-5 py-3.5 bg-slate-50/70 border-t border-slate-100">
+                  {addingOrg === orgDef.code ? (
+                    <form
+                      onSubmit={(e) => handleCreateExtra(e, orgDef.code)}
+                      className="bg-white p-4 rounded-2xl border border-emerald-300 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
+                          <UserPlus className="w-4 h-4" />
+                          <span>
+                            {orgDef.extraLabel} ({extrasCount}/{orgDef.maxExtras})
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAddingOrg(null)}
+                          className="text-slate-400 hover:text-slate-700"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Rol a asignar
+                          </label>
+                          <select
+                            value={extraRoleType}
+                            onChange={(e) => setExtraRoleType(e.target.value as ExtraRoleType)}
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                          >
+                            <option value="SECRETARIO_AUXILIAR">Secretario Auxiliar</option>
+                            <option value="ASESOR">Asesor</option>
+                            <option value="MANUAL">Ingresar manualmente</option>
+                          </select>
+                        </div>
+
+                        {extraRoleType === 'MANUAL' && (
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                              Nombre del rol *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={extraManualCalling}
+                              onChange={(e) => setExtraManualCalling(e.target.value)}
+                              placeholder="Ej: Secretario de Comunicación"
+                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
+                            />
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Nombre *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={extraFirstName}
+                            onChange={(e) => setExtraFirstName(e.target.value)}
+                            placeholder="Nombre"
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Apellido *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={extraLastName}
+                            onChange={(e) => setExtraLastName(e.target.value)}
+                            placeholder="Apellido"
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Celular (09xxxxxxx)
+                          </label>
+                          <input
+                            type="tel"
+                            maxLength={9}
+                            value={extraPhone}
+                            onChange={(e) => setExtraPhone(e.target.value.replace(/\D/g, ''))}
+                            placeholder="099123456"
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Correo Gmail (@gmail.com)
+                          </label>
+                          <input
+                            type="email"
+                            value={extraEmail}
+                            onChange={(e) => setExtraEmail(e.target.value)}
+                            placeholder="ejemplo@gmail.com"
+                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={extraAppAccess}
+                            onChange={(e) => setExtraAppAccess(e.target.checked)}
+                            className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+                          />
+                          <span>Activar Acceso App al guardar</span>
+                        </label>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddingOrg(null)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
+                          >
+                            Agregar
+                          </button>
+                        </div>
+                      </div>
+
+                      {extraError && (
+                        <p className="text-xs font-bold text-rose-700">{extraError}</p>
+                      )}
+                    </form>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-500">
+                        Integrantes adicionales: {extrasCount} / {orgDef.maxExtras}
+                      </span>
                       <button
                         type="button"
-                        data-testid="save-superadmin-calling-btn"
-                        onClick={async () => {
-                          await updateUserProfile(row.id, {
-                            calling: superCallingDraft.trim() || 'Administrador del Sistema',
-                            organization: superOrgDraft,
-                          });
-                          setEditingSuperCalling(false);
-                          triggerToast(
-                            `Llamamiento actualizado. Tu cuenta (${SUPER_ADMIN_EMAIL}) conserva el rol ADMIN vitalicio.`
-                          );
-                        }}
-                        className="pressable px-3 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold"
+                        data-testid={`add-extra-btn-${orgDef.code}`}
+                        disabled={extrasCount >= orgDef.maxExtras}
+                        onClick={() => openAddExtraForm(orgDef.code)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50"
                       >
-                        Guardar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingSuperCalling(false)}
-                        className="px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200/70"
-                      >
-                        Cancelar
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{orgDef.extraLabel}</span>
                       </button>
                     </div>
                   )}
-
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 mt-1">
-                    <span className="inline-flex items-center gap-1">
-                      <Mail className="w-3 h-3" />
-                      <span>{row.email}</span>
-                    </span>
-                    {row.phone && (
-                      <span className="inline-flex items-center gap-1 tabular-nums">
-                        <Phone className="w-3 h-3" />
-                        <span>{row.phone}</span>
-                      </span>
-                    )}
-                  </div>
                 </div>
-
-                {/* Controles de Rol, Permiso de Aprobación y Estado */}
-                <div className="flex flex-wrap items-center gap-2.5 lg:justify-end">
-                  {/* Selector de Rol */}
-                  <div className="flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-slate-400" />
-                    <select
-                      aria-label={`Rol de ${row.full_name}`}
-                      data-testid={`role-select-${row.id}`}
-                      disabled={isProtected || !row.is_active}
-                      value={row.role}
-                      onChange={(e) =>
-                        handleRoleChange(row.id, e.target.value as UserRole, row.organization)
-                      }
-                      className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold bg-white text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
-                    >
-                      <option value="LIDER">LÍDER</option>
-                      <option value="PRESIDENCIA">PRESIDENCIA</option>
-                      {(row.organization === 'TODAS' || isSuperOwner) && (
-                        <option value="ADMIN">ADMIN</option>
-                      )}
-                    </select>
-                  </div>
-
-                  {/* Permiso Granular de Aprobación en Presidencia */}
-                  {(row.role === 'PRESIDENCIA' || row.role === 'ADMIN') && (
-                    <button
-                      type="button"
-                      data-testid={`toggle-approve-perm-${row.id}`}
-                      disabled={isProtected || row.role === 'ADMIN'}
-                      onClick={() =>
-                        handleToggleApprovalPermission(row.id, row.can_approve_activities)
-                      }
-                      className={`pressable px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition disabled:opacity-60 disabled:cursor-not-allowed ${
-                        row.can_approve_activities
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}
-                    >
-                      {row.can_approve_activities ? '✓ Aprueba Actividades' : 'Solo Lectura'}
-                    </button>
-                  )}
-
-                  {/* Botón de Baja Lógica / Reactivación */}
-                  <button
-                    type="button"
-                    data-testid={`toggle-active-btn-${row.id}`}
-                    disabled={isProtected}
-                    onClick={() => handleToggleActiveState(row.id, row.is_active)}
-                    className={`pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold border transition disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed ${
-                      row.is_active
-                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
-                    }`}
-                  >
-                    {isProtected ? (
-                      <>
-                        <Lock className="w-3 h-3" />
-                        <span>Protegido</span>
-                      </>
-                    ) : row.is_active ? (
-                      <span>Desactivar</span>
-                    ) : (
-                      <span>Reactivar</span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

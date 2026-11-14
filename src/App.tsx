@@ -4,6 +4,7 @@ import { DevRoleSwitcher } from './components/DevRoleSwitcher';
 import { UnauthorizedView } from './components/UnauthorizedView';
 import { LeaderView } from './views/LeaderView';
 import { PresidencyHub } from './views/PresidencyHub';
+import { ConsultaView } from './views/ConsultaView';
 
 const AppRouter: React.FC = () => {
   const { user } = useAuth();
@@ -13,12 +14,17 @@ const AppRouter: React.FC = () => {
     return <UnauthorizedView />;
   }
 
-  // 2. Perfil Líder -> Ingresa directo a la Vista Móvil de su Organización (Paso 6.2)
+  // 2. Perfil Consulta (sin presupuesto: Sumo Consejo sin HJ, Esc. Dominical, Bienestar, Música)
+  if (user.role === 'CONSULTA') {
+    return <ConsultaView />;
+  }
+
+  // 3. Perfil Líder -> Ingresa directo a la Vista Móvil de su Organización (Paso 6.2)
   if (user.role === 'LIDER') {
     return <LeaderView />;
   }
 
-  // 3. Perfil Presidencia o Administrador -> Ingresa al Hub Ejecutivo de Presidencia (Paso 6.3)
+  // 4. Perfil Presidencia o Administrador -> Ingresa al Hub Ejecutivo de Presidencia (Paso 6.3)
   return <PresidencyHub />;
 };
 

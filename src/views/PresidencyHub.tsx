@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   Bell,
   Building2,
   Calendar,
@@ -45,6 +46,7 @@ import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
 import { SuppliersView } from './SuppliersView';
 import { LeaderView } from './LeaderView';
+import { LeadersDirectoryView } from './LeadersDirectoryView';
 
 const ALL_HUB_ORGS: OrganizationCode[] = [
   'MJ',
@@ -92,12 +94,13 @@ const saveSessionProposals = (list: ActivityRecord[]) => {
 };
 
 export const PresidencyHub: React.FC = () => {
-  const { user, isSimulating } = useAuth();
+  const { user, isSimulating, incompleteContactsCount } = useAuth();
 
-  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | USERS | OPERATIONS
+  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS
   const [activeTab, setActiveTab] = useState<
-    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'USERS' | 'OPERATIONS'
+    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS'
   >('DASHBOARD');
+  const [openUsersWithIncompleteFilter, setOpenUsersWithIncompleteFilter] = useState<boolean>(false);
   // Menú Drawer móvil (hamburguesa ☰ -> cruz ✕)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
 
@@ -706,7 +709,7 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const selectTabAndCloseDrawer = (
-    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'USERS' | 'OPERATIONS'
+    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS'
   ) => {
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
@@ -898,6 +901,21 @@ export const PresidencyHub: React.FC = () => {
                 <Building2 className="w-4 h-4 text-sky-500" />
                 <span>Proveedores</span>
               </button>
+
+              {/* Botón 5: Directorio de Líderes */}
+              <button
+                type="button"
+                data-testid="hub-nav-directory"
+                onClick={() => setActiveTab('DIRECTORY')}
+                className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                  activeTab === 'DIRECTORY'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                }`}
+              >
+                <Users className="w-4 h-4 text-indigo-500" />
+                <span>Directorio</span>
+              </button>
             </div>
 
             {/* Botones Exclusivos de Administrador */}
@@ -906,7 +924,10 @@ export const PresidencyHub: React.FC = () => {
                 <button
                   type="button"
                   data-testid="hub-admin-users-btn"
-                  onClick={() => setActiveTab('USERS')}
+                  onClick={() => {
+                    setOpenUsersWithIncompleteFilter(false);
+                    setActiveTab('USERS');
+                  }}
                   className={`pressable inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                     activeTab === 'USERS'
                       ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
@@ -1046,12 +1067,29 @@ export const PresidencyHub: React.FC = () => {
                   <span>Directorio de Proveedores</span>
                 </button>
 
+                <button
+                  type="button"
+                  data-testid="drawer-nav-directory"
+                  onClick={() => selectTabAndCloseDrawer('DIRECTORY')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'DIRECTORY'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                  <span>Directorio de Líderes</span>
+                </button>
+
                 {user.role === 'ADMIN' && (
                   <>
                     <button
                       type="button"
                       data-testid="drawer-admin-users-btn"
-                      onClick={() => selectTabAndCloseDrawer('USERS')}
+                      onClick={() => {
+                        setOpenUsersWithIncompleteFilter(false);
+                        selectTabAndCloseDrawer('USERS');
+                      }}
                       className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
                         activeTab === 'USERS'
                           ? 'bg-emerald-900 text-white shadow-sm'
@@ -1090,7 +1128,9 @@ export const PresidencyHub: React.FC = () => {
       {/* ==================== CONTENIDO PRINCIPAL ==================== */}
       <main className="max-w-6xl w-full mx-auto px-4 sm:px-6 pt-5 space-y-6 flex-1">
         {activeTab === 'USERS' && user.role === 'ADMIN' ? (
-          <UserManagementPanel />
+          <UserManagementPanel initialFilterIncomplete={openUsersWithIncompleteFilter} />
+        ) : activeTab === 'DIRECTORY' ? (
+          <LeadersDirectoryView />
         ) : activeTab === 'OPERATIONS' && user.role === 'ADMIN' ? (
           <AdminOperationsCenter
             budgets={budgets.filter((b) => Number(b.year) === selectedYear)}
@@ -1132,6 +1172,33 @@ export const PresidencyHub: React.FC = () => {
           />
         ) : (
           <>
+            {/* ALERTA PARPADEANTE DE CONTACTOS INCOMPLETOS EN PRESIDENCIA */}
+            {incompleteContactsCount > 0 && (
+              <div
+                data-testid="presidency-incomplete-contacts-alert"
+                className="rounded-2xl bg-amber-50 border-2 border-amber-400 p-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse"
+              >
+                <div className="flex items-center gap-2.5 text-amber-950">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <p className="text-xs sm:text-sm font-extrabold">
+                    Hay {incompleteContactsCount} {incompleteContactsCount === 1 ? 'contacto' : 'contactos'} en el Directorio de Líderes con datos incompletos (falta celular o Gmail).
+                  </p>
+                </div>
+                {user.role === 'ADMIN' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenUsersWithIncompleteFilter(true);
+                      setActiveTab('USERS');
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold transition"
+                  >
+                    Completar ahora
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* 1. TARJETA MAESTRA DE FONDOS (KPI PRINCIPAL) */}
             <section aria-label="Presupuesto Disponible">
               <div

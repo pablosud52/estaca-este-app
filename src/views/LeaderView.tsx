@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   LayoutDashboard,
   ShieldCheck,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
@@ -39,6 +40,7 @@ import { LcrSyncButton } from '../components/LcrSyncButton';
 import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
 import { SuppliersView } from './SuppliersView';
+import { LeadersDirectoryView } from './LeadersDirectoryView';
 import { SEED_SUPPLIERS } from '../data/seedData';
 
 interface LeaderViewProps {
@@ -111,12 +113,12 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   const [calendarScope, setCalendarScope] = useState<'ORG' | 'ESTACA_ALL'>('ORG');
 
   // Navegación principal (Resumen, Calendario General, Proveedores) y Drawer móvil
-  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'CALENDAR' | 'SUPPLIERS'>('SUMMARY');
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY'>('SUMMARY');
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   const [isProposeOpen, setIsProposeOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const selectTabAndCloseDrawer = (tab: 'SUMMARY' | 'CALENDAR' | 'SUPPLIERS') => {
+  const selectTabAndCloseDrawer = (tab: 'SUMMARY' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY') => {
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
   };
@@ -680,6 +682,20 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               <Building2 className="w-4 h-4 text-sky-500" />
               <span>Proveedores</span>
             </button>
+
+            <button
+              type="button"
+              data-testid="leader-nav-directory"
+              onClick={() => setActiveTab('DIRECTORY')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                activeTab === 'DIRECTORY'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <Users className="w-4 h-4 text-indigo-500" />
+              <span>Directorio</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -766,6 +782,20 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                   <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
                   <span>Directorio de Proveedores</span>
                 </button>
+
+                <button
+                  type="button"
+                  data-testid="drawer-nav-directory"
+                  onClick={() => selectTabAndCloseDrawer('DIRECTORY')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'DIRECTORY'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                  <span>Directorio de Líderes</span>
+                </button>
               </div>
             </div>
 
@@ -794,6 +824,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             onBack={() => setActiveTab('SUMMARY')}
             embedded
           />
+        </main>
+      ) : activeTab === 'DIRECTORY' ? (
+        <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
+          <LeadersDirectoryView />
         </main>
       ) : (
       <main className="max-w-lg w-full mx-auto px-4 pt-4 space-y-4 flex-1">

@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'PRESIDENCIA' | 'LIDER' | 'NO_AUTORIZADO';
+export type UserRole = 'ADMIN' | 'PRESIDENCIA' | 'LIDER' | 'CONSULTA' | 'NO_AUTORIZADO';
 
 export type OrganizationCode =
   | 'MJ'
@@ -12,10 +12,48 @@ export type OrganizationCode =
   | 'ESTACA'
   | 'TODAS';
 
+export type DirectoryOrgCode =
+  | 'PRESIDENCIA'
+  | 'SUMO_CONSEJO'
+  | 'SS'
+  | 'HJ'
+  | 'MJ'
+  | 'ESCUELA_DOMINICAL'
+  | 'PRIMARIA'
+  | 'JAS'
+  | 'AS'
+  | 'BIENESTAR'
+  | 'MUSICA'
+  | 'CFS';
+
+export type ExtraRoleType = 'SECRETARIO_AUXILIAR' | 'ASESOR' | 'MANUAL';
+
+export interface StakeDirectoryEntry {
+  id: string;
+  directory_org: DirectoryOrgCode;
+  slot_key: string;
+  calling: string;
+  is_fixed_slot: boolean;
+  extra_role_type?: ExtraRoleType;
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  email?: string;
+  has_app_access: boolean;
+  role: UserRole;
+  can_approve_activities: boolean;
+  is_permanent_admin: boolean;
+  assigned_unit?: string;
+  assigned_org_notes?: string;
+  linked_entry_id?: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
+  first_name?: string;
+  last_name?: string;
   role: UserRole;
   organization: OrganizationCode;
   calling: string;

@@ -18,9 +18,14 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
     await page.getByTestId('switch-role-lider-primaria-01').click();
     await expect(page.getByTestId('header-user-name')).toHaveText('Lucía Fernández');
 
-    // Abrir acordeón y entrar a la Vista General de Calendario (CalendarView.tsx)
-    await page.getByTestId('accordion-calendar-trigger').click();
-    await page.getByTestId('open-full-calendar-view-btn').click();
+    // Entrar a la Vista General de Calendario (CalendarView.tsx) desde el menú hamburguesa (móvil) o barra superior (escritorio)
+    const isMobile = (testInfo.project.name || '').toLowerCase().includes('mobile');
+    if (isMobile) {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await page.getByTestId('drawer-nav-calendar').click();
+    } else {
+      await page.getByTestId('leader-nav-calendar').click();
+    }
     await expect(page.getByTestId('calendar-general-view')).toBeVisible();
     await expect(page.getByTestId('calendar-rbac-confidentiality-banner')).toBeVisible();
 

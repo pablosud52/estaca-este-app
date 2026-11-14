@@ -12,6 +12,8 @@ import {
   EyeOff,
   Building2,
   ArrowLeft,
+  LayoutDashboard,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
@@ -108,11 +110,16 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   const [quarterFilter, setQuarterFilter] = useState<'TODOS' | QuarterCode>('TODOS');
   const [calendarScope, setCalendarScope] = useState<'ORG' | 'ESTACA_ALL'>('ORG');
 
-  // Modal de propuesta de actividad, Vistas embebidas (Calendario y Proveedores) y banner de confirmación
+  // Navegación principal (Resumen, Calendario General, Proveedores) y Drawer móvil
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'CALENDAR' | 'SUPPLIERS'>('SUMMARY');
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   const [isProposeOpen, setIsProposeOpen] = useState<boolean>(false);
-  const [isFullCalendarViewOpen, setIsFullCalendarViewOpen] = useState<boolean>(false);
-  const [isSuppliersViewOpen, setIsSuppliersViewOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const selectTabAndCloseDrawer = (tab: 'SUMMARY' | 'CALENDAR' | 'SUPPLIERS') => {
+    setActiveTab(tab);
+    setIsMobileDrawerOpen(false);
+  };
 
   const handleManualCalendarSync = async () => {
     const syncRes = await syncLcrCalendarWithShield({
@@ -540,81 +547,251 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
         className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-2">
-          <div className="flex flex-col space-y-1 min-w-0">
-            <div className="flex items-center gap-2">
-              {onBackToHub && (
-                <button
-                  type="button"
-                  data-testid="back-to-hub-btn"
-                  onClick={onBackToHub}
-                  className="pressable inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Panel</span>
-                </button>
-              )}
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm truncate">
-                Estaca Montevideo Uruguay Este
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-extrabold text-slate-900 tracking-tight truncate">
-                {ORGANIZATION_LABELS[baseOrg]}
-              </h1>
-            </div>
-          </div>
-
-          {/* Usuario Activo Badge + Selector de Año Dinámico */}
-          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            <div className="flex items-center gap-1.5 bg-slate-100 py-1 px-2.5 rounded-full border border-slate-200/90 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span
-                data-testid="header-user-name"
-                className="font-bold text-slate-800 max-w-[115px] truncate"
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3">
+          <div className="flex items-center justify-between gap-2">
+            {/* Izquierda: Menú Hamburguesa (móvil) + Botón Panel (espejo) + Organización */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                data-testid="mobile-menu-toggle"
+                aria-label={isMobileDrawerOpen ? 'Cerrar menú' : 'Abrir menú de navegación'}
+                aria-expanded={isMobileDrawerOpen}
+                onClick={() => setIsMobileDrawerOpen((prev) => !prev)}
+                className="pressable md:hidden relative w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm flex-shrink-0"
               >
-                {user.full_name}
-              </span>
+                <div className="w-4 h-4 relative flex items-center justify-center">
+                  <span
+                    className={`absolute h-0.5 w-4 bg-white rounded-full transition-all duration-200 ${
+                      isMobileDrawerOpen ? 'rotate-45 translate-y-0' : '-translate-y-1.5'
+                    }`}
+                  />
+                  <span
+                    className={`absolute h-0.5 w-4 bg-white rounded-full transition-all duration-200 ${
+                      isMobileDrawerOpen ? 'opacity-0' : 'opacity-100'
+                    }`}
+                  />
+                  <span
+                    className={`absolute h-0.5 w-4 bg-white rounded-full transition-all duration-200 ${
+                      isMobileDrawerOpen ? '-rotate-45 translate-y-0' : 'translate-y-1.5'
+                    }`}
+                  />
+                </div>
+              </button>
+
+              <div className="flex flex-col space-y-0.5 min-w-0">
+                <div className="flex items-center gap-2">
+                  {onBackToHub && (
+                    <button
+                      type="button"
+                      data-testid="back-to-hub-btn"
+                      onClick={onBackToHub}
+                      className="pressable inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex-shrink-0"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Panel</span>
+                    </button>
+                  )}
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm truncate">
+                    Estaca Montevideo Uruguay Este
+                  </span>
+                </div>
+                <h1 className="text-sm font-extrabold text-slate-900 tracking-tight truncate">
+                  {ORGANIZATION_LABELS[baseOrg]}
+                </h1>
+              </div>
             </div>
 
-            {!isSuppliersViewOpen && (
-              <div className="relative inline-flex items-center">
-                <select
-                  aria-label="Seleccionar año fiscal"
-                  data-testid="year-selector-dropdown"
-                  value={activeYear}
-                  onChange={(e) => handleYearSelect(Number(e.target.value))}
-                  className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-0.5 text-[11px] font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600"
+            {/* Derecha: Selector de Año Dinámico + Usuario Activo (PC) */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {activeTab !== 'SUPPLIERS' && (
+                <div className="relative inline-flex items-center">
+                  <select
+                    aria-label="Seleccionar año fiscal"
+                    data-testid="year-selector-dropdown"
+                    value={activeYear}
+                    onChange={(e) => handleYearSelect(Number(e.target.value))}
+                    className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 transition"
+                  >
+                    {availableYears.map((yr) => (
+                      <option key={yr} value={yr}>
+                        Año {yr}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 pointer-events-none absolute right-1.5" />
+                </div>
+              )}
+
+              <div className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                <span
+                  data-testid="header-user-name"
+                  className="font-bold text-slate-800 max-w-[140px] truncate"
                 >
-                  {availableYears.map((yr) => (
-                    <option key={yr} value={yr}>
-                      Año {yr}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3 h-3 text-slate-500 pointer-events-none absolute right-1.5" />
+                  {user.full_name}
+                </span>
               </div>
-            )}
+            </div>
           </div>
+
+          {/* Barra de Navegación Escritorio (md:flex) */}
+          <nav
+            aria-label="Navegación principal del líder"
+            className="hidden md:flex mt-3 pt-2.5 border-t border-slate-100 items-center gap-2"
+          >
+            <button
+              type="button"
+              data-testid="leader-nav-summary"
+              onClick={() => setActiveTab('SUMMARY')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                activeTab === 'SUMMARY'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4 text-emerald-400" />
+              <span>Mi Organización</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="leader-nav-calendar"
+              onClick={() => setActiveTab('CALENDAR')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                activeTab === 'CALENDAR'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-emerald-500" />
+              <span>Calendario</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="leader-nav-suppliers"
+              onClick={() => setActiveTab('SUPPLIERS')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                activeTab === 'SUPPLIERS'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-sky-500" />
+              <span>Proveedores</span>
+            </button>
+          </nav>
         </div>
       </header>
 
+      {/* ==================== DRAWER LATERAL MÓVIL (CON BACKDROP BLUR) ==================== */}
+      {isMobileDrawerOpen && (
+        <div
+          data-testid="mobile-nav-drawer-backdrop"
+          className="fixed inset-0 z-40 md:hidden bg-slate-950/40 backdrop-blur-sm transition-opacity"
+          onClick={() => setIsMobileDrawerOpen(false)}
+        >
+          <aside
+            data-testid="mobile-nav-drawer"
+            onClick={(e) => e.stopPropagation()}
+            className="w-72 max-w-[82vw] h-full bg-white shadow-2xl border-r border-slate-200 p-5 flex flex-col justify-between"
+          >
+            <div className="space-y-4">
+              {/* Identidad del usuario conectado en el Drawer móvil */}
+              <div className="p-3.5 rounded-2xl bg-slate-100/90 border border-slate-200/90 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 min-w-0">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <span
+                      data-testid="drawer-user-name"
+                      className="text-xs font-extrabold text-slate-900 truncate"
+                    >
+                      {user.full_name}
+                    </span>
+                  </span>
+                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white flex-shrink-0">
+                    {ORGANIZATION_SHORT_LABELS[baseOrg]}
+                  </span>
+                </div>
+                <p className="text-[11px] font-medium text-slate-500 truncate pl-5">
+                  {user.calling}
+                </p>
+              </div>
+
+              <div className="pb-2 border-b border-slate-100">
+                <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+                  Secciones
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  data-testid="drawer-nav-summary"
+                  onClick={() => selectTabAndCloseDrawer('SUMMARY')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'SUMMARY'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <LayoutDashboard className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <span>Mi Organización</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="drawer-nav-calendar"
+                  onClick={() => selectTabAndCloseDrawer('CALENDAR')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'CALENDAR'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  <span>Calendario</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="drawer-nav-suppliers"
+                  onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'SUPPLIERS'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  <span>Directorio de Proveedores</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 text-[11px] text-slate-400 font-semibold">
+              Estaca Montevideo Uruguay Este • {activeYear}
+            </div>
+          </aside>
+        </div>
+      )}
+
       {/* ==================== CONTENIDO MÓVIL DEL LÍDER ==================== */}
-      {isFullCalendarViewOpen ? (
+      {activeTab === 'CALENDAR' ? (
         <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
           <CalendarView
             selectedYear={activeYear}
             activitiesProp={activities}
             onActivitiesUpdate={setActivities}
-            onBack={() => setIsFullCalendarViewOpen(false)}
+            onBack={() => setActiveTab('SUMMARY')}
             embedded
           />
         </main>
-      ) : isSuppliersViewOpen ? (
+      ) : activeTab === 'SUPPLIERS' ? (
         <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
           <SuppliersView
             suppliers={SEED_SUPPLIERS}
-            onBack={() => setIsSuppliersViewOpen(false)}
+            onBack={() => setActiveTab('SUMMARY')}
             embedded
           />
         </main>
@@ -773,28 +950,15 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               </div>
             </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  data-testid="open-suppliers-view-btn"
-                  onClick={() => setIsSuppliersViewOpen(true)}
-                  className="pressable inline-flex items-center gap-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/80 text-xs font-extrabold px-3 py-2 rounded-xl transition"
-                  title="Directorio de proveedores recomendados"
-                >
-                  <Building2 className="w-3.5 h-3.5 text-sky-600" />
-                  <span className="hidden xs:inline">Proveedores</span>
-                </button>
-
-                <button
-                  type="button"
-                  data-testid="open-propose-modal-btn"
-                  onClick={() => setIsProposeOpen(true)}
-                  className="pressable inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm whitespace-nowrap flex-shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Proponer Actividad</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                data-testid="open-propose-modal-btn"
+                onClick={() => setIsProposeOpen(true)}
+                className="pressable inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm whitespace-nowrap flex-shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Proponer Actividad</span>
+              </button>
           </div>
 
           {nextUpcomingActivity ? (
@@ -1035,18 +1199,8 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           >
             <div className="accordion-inner">
               <div className="px-5 pb-5 pt-1 border-t border-slate-100 space-y-3">
-                {/* Barra de Sincronización con LCR + Botón a Vista General Completa */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                  <button
-                    type="button"
-                    data-testid="open-full-calendar-view-btn"
-                    onClick={() => setIsFullCalendarViewOpen(true)}
-                    className="pressable inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-xs font-extrabold transition"
-                  >
-                    <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Ver Calendario General y Filtros</span>
-                  </button>
-
+                {/* Barra de Sincronización con LCR */}
+                <div className="flex items-center justify-end pt-2">
                   <LcrSyncButton onSync={handleManualCalendarSync} />
                 </div>
 

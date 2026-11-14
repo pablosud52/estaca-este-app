@@ -221,7 +221,46 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await expect(menu).toContainText('Selector de Rol');
 
     // Clic fuera del menú desplegable para comprobar que se cierra
-    await page.getByTestId('header-user-name').click({ force: true });
+    await page.getByTestId('balance-card-title').click({ force: true });
     await expect(menu).not.toBeVisible();
+  });
+
+  test('6. Navegación por menú hamburguesa (móvil) y barra superior (escritorio) hacia Calendario y Proveedores', async ({
+    page,
+  }, testInfo) => {
+    const isMobile = (testInfo.project.name || '').toLowerCase().includes('mobile');
+
+    // Verificar que los botones antiguos ya no están en las tarjetas/acordeones
+    await expect(page.getByTestId('open-suppliers-view-btn')).toHaveCount(0);
+    await expect(page.getByTestId('open-full-calendar-view-btn')).toHaveCount(0);
+
+    if (isMobile) {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await expect(page.getByTestId('mobile-nav-drawer')).toBeVisible();
+      await expect(page.getByTestId('drawer-user-name')).toHaveText('Carolina Méndez');
+      await page.getByTestId('drawer-nav-suppliers').click();
+    } else {
+      await page.getByTestId('leader-nav-suppliers').click();
+    }
+
+    await expect(page.getByText('Directorio de Proveedores')).toBeVisible();
+
+    if (isMobile) {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await page.getByTestId('drawer-nav-calendar').click();
+    } else {
+      await page.getByTestId('leader-nav-calendar').click();
+    }
+
+    await expect(page.getByTestId('calendar-general-view')).toBeVisible();
+
+    if (isMobile) {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await page.getByTestId('drawer-nav-summary').click();
+    } else {
+      await page.getByTestId('leader-nav-summary').click();
+    }
+
+    await expect(page.getByTestId('balance-card')).toBeVisible();
   });
 });

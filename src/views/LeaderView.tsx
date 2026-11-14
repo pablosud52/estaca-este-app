@@ -603,9 +603,9 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               </div>
             </div>
 
-            {/* Derecha: Selector de Año Dinámico + Usuario Activo (PC) */}
+            {/* Derecha: Selector de Año Dinámico (solo Resumen financiero y Calendario) + Usuario Activo (PC) */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              {activeTab !== 'SUPPLIERS' && (
+              {(activeTab === 'SUMMARY' || activeTab === 'CALENDAR') && (
                 <div className="relative inline-flex items-center">
                   <select
                     aria-label="Seleccionar año fiscal"

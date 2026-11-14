@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eraser,
+  Info,
   Link2,
   Lock,
   Mail,
@@ -117,6 +118,9 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
 
   // Modal de confirmación de relevo de Presidente/a
   const [presidentModal, setPresidentModal] = useState<PendingPresidentModal | null>(null);
+
+  // Modal de información de Seguridad de administradores
+  const [isSecurityInfoOpen, setIsSecurityInfoOpen] = useState<boolean>(false);
 
   // Vincular persona existente
   const [linkingEntryId, setLinkingEntryId] = useState<string | null>(null);
@@ -402,31 +406,15 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
       data-testid="user-management-panel"
       className="space-y-4"
     >
-      {/* 1. BANNER OFICIAL DE SEGURIDAD E INMUTABILIDAD */}
-      <div
-        data-testid="security-self-protection-banner"
-        className="rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950 p-5 sm:p-6 text-white shadow-lg border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div className="flex items-start gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center flex-shrink-0">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-300">
-                Regla Sagrada de Auto-Protección Inmutable
-              </span>
-              <span className="text-[10px] font-mono bg-slate-800 text-emerald-300 px-2 py-0.5 rounded-full border border-slate-700">
-                Admins Permanentes: Presidente & Secretario
-              </span>
-            </div>
-            <p
-              data-testid="security-banner-official-text"
-              className="text-xs sm:text-sm text-slate-200 mt-1.5 leading-relaxed"
-            >
-              Por seguridad del sistema, ningún administrador puede revocar sus propios permisos ni eliminarse a sí mismo. Las modificaciones de administradores deben ser realizadas por otro administrador activo.
-            </p>
-          </div>
+      {/* 1. CABECERA COMPACTA CON FILTRO DE CONTACTOS INCOMPLETOS */}
+      <div className="bg-white rounded-3xl px-5 py-4 shadow-sm border border-slate-200/90 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
+            Organigrama y Gestión de Usuarios
+          </h2>
+          <p className="text-xs text-slate-500">
+            Administra los llamamientos por organización y habilita el acceso a la aplicación.
+          </p>
         </div>
 
         {/* Recordatorio de Contactos Incompletos */}
@@ -434,15 +422,15 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
           type="button"
           data-testid="incomplete-contacts-filter-btn"
           onClick={handleToggleOnlyIncomplete}
-          className={`pressable inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold whitespace-nowrap self-start lg:self-center border transition ${
+          className={`pressable inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap border transition ${
             onlyIncomplete
-              ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md'
+              ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
               : incompleteContactsCount > 0
-                ? 'bg-amber-500/20 text-amber-200 border-amber-400/50 hover:bg-amber-500/30'
-                : 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
+                ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
           }`}
         >
-          <AlertTriangle className="w-4 h-4" />
+          <AlertTriangle className="w-4 h-4 text-amber-600" />
           <span>
             {incompleteContactsCount > 0
               ? `${incompleteContactsCount} con datos incompletos`
@@ -450,6 +438,60 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
           </span>
         </button>
       </div>
+
+      {/* Modal de Información: Seguridad de administradores */}
+      {isSecurityInfoOpen && (
+        <div
+          data-testid="admin-security-info-modal"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setIsSecurityInfoOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Seguridad de administradores
+                  </h3>
+                  <p className="text-[11px] font-bold text-slate-500">
+                    Admins Permanentes: Presidente & Secretario de Estaca
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSecurityInfoOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p
+              data-testid="security-banner-official-text"
+              className="text-xs sm:text-sm text-slate-700 leading-relaxed"
+            >
+              Por seguridad del sistema, ningún administrador puede revocar sus propios permisos ni eliminarse a sí mismo. Las modificaciones de administradores deben ser realizadas por otro administrador activo.
+            </p>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setIsSecurityInfoOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toastMsg && (
@@ -669,6 +711,23 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
               {/* Contenido Desplegable */}
               {isExpanded && (
                 <>
+                  {orgDef.code === 'PRESIDENCIA' && (
+                    <div className="px-5 py-2.5 bg-amber-50/70 border-t border-amber-200/70 flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-amber-900">
+                        Administradores permanentes: Presidente y Secretario de Estaca
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="admin-security-info-btn"
+                        onClick={() => setIsSecurityInfoOpen(true)}
+                        aria-label="Seguridad de administradores"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 text-[11px] font-extrabold transition"
+                      >
+                        <Info className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Info seguridad</span>
+                      </button>
+                    </div>
+                  )}
                   <div className="divide-y divide-slate-100 border-t border-slate-200">
                     {visibleEntries.map((entry) => {
                       const isEditing = editingId === entry.id;

@@ -777,9 +777,12 @@ export const PresidencyHub: React.FC = () => {
               </span>
             </div>
 
-            {/* Derecha: Selector de Año (oculto en pestaña Proveedores) + Usuario Activo (visible en PC) */}
+            {/* Derecha: Selector de Año (solo secciones con datos financieros o calendario) + Usuario Activo */}
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-              {activeTab !== 'SUPPLIERS' && (
+              {(activeTab === 'DASHBOARD' ||
+                activeTab === 'OPERATIONS' ||
+                activeTab === 'APPROVALS' ||
+                activeTab === 'CALENDAR') && (
                 <div className="relative inline-flex items-center flex-shrink-0">
                   <select
                     aria-label="Seleccionar año fiscal"

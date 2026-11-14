@@ -42,6 +42,8 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
       'aria-expanded',
       'false'
     );
+    await expect(page.getByTestId('admin-security-info-btn')).toBeHidden();
+    await expect(page.getByTestId('year-selector-dropdown')).toBeHidden();
     await expect(page.getByTestId('org-accordion-toggle-MJ')).toHaveAttribute(
       'aria-expanded',
       'false'
@@ -51,8 +53,14 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
       'false'
     );
 
-    // Desplegar Presidencia y verificar auto-protección (Presidente, Secretario de Estaca y Pablo)
+    // Desplegar Presidencia -> aparece icono de info de seguridad y abre modal
     await page.getByTestId('org-accordion-toggle-PRESIDENCIA').click();
+    await expect(page.getByTestId('admin-security-info-btn')).toBeVisible();
+    await page.getByTestId('admin-security-info-btn').click();
+    await expect(page.getByTestId('admin-security-info-modal')).toContainText(
+      'Seguridad de administradores'
+    );
+    await page.getByRole('button', { name: 'Entendido' }).click();
     await expect(page.getByTestId('toggle-access-pres-presidente')).toBeDisabled();
     await expect(page.getByTestId('toggle-access-pres-secretario')).toBeDisabled();
     await expect(page.getByTestId('toggle-access-pres-secretario-financiero')).toBeDisabled();
@@ -158,10 +166,12 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     await expect(page.getByTestId('add-extra-btn-MJ')).toBeDisabled();
   });
 
-  test('4. Directorio de Líderes muestra celular en grupos de 3 dígitos con Copiar y WhatsApp', async ({
+  test('4. Directorio de Líderes muestra celular en grupos de 3 dígitos con Copiar y WhatsApp (sin selector de año)', async ({
     page,
   }) => {
+    await expect(page.getByTestId('year-selector-dropdown')).toBeVisible();
     await openDirectoryView(page);
+    await expect(page.getByTestId('year-selector-dropdown')).toBeHidden();
 
     const pabloCopyBtn = page.getByTestId('copy-phone-pres-secretario-financiero');
     const pabloWaBtn = page.getByTestId('whatsapp-btn-pres-secretario-financiero');

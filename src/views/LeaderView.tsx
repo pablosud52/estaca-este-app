@@ -896,23 +896,151 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
               <div className="accordion-content" data-open={isQuartersOpen}>
                 <div className="accordion-inner">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2.5">
-                    {financialSummary.quarters.map((q) => (
-                      <div
-                        key={q.quarter}
-                        data-testid={`leader-quarter-card-${q.quarter}`}
-                        className="bg-slate-950/60 border border-slate-800 rounded-xl p-2.5 text-xs flex items-center justify-between gap-2"
-                      >
-                        <span className="font-extrabold text-emerald-400">{q.quarter}</span>
-                        <span
-                          data-testid={`leader-quarter-summary-${q.quarter}`}
-                          className="text-[11px] text-slate-200 font-semibold tabular-nums"
-                        >
-                          Asignado: {formatCurrency(q.assigned)} | Gastos:{' '}
-                          {formatCurrency(q.spent)}
-                        </span>
+                  <div className="mt-2.5 rounded-xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                          <th className="py-2 px-3">Trim.</th>
+                          <th className="py-2 px-3 text-right">Asignado</th>
+                          <th className="py-2 px-3 text-right">Gastos</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80 text-xs tabular-nums">
+                        {financialSummary.quarters.map((q) => (
+                          <tr
+                            key={q.quarter}
+                            data-testid={`leader-quarter-card-${q.quarter}`}
+                            className="hover:bg-slate-900/50 transition-colors"
+                          >
+                            <td className="py-2 px-3 font-extrabold text-emerald-400">
+                              {q.quarter}
+                            </td>
+                            <td
+                              data-testid={`leader-quarter-assigned-${q.quarter}`}
+                              className="py-2 px-3 text-right text-[11px] text-slate-200 font-semibold"
+                            >
+                              {formatCurrency(q.assigned)}
+                            </td>
+                            <td
+                              data-testid={`leader-quarter-spent-${q.quarter}`}
+                              className="py-2 px-3 text-right text-[11px] text-slate-200 font-semibold"
+                            >
+                              {formatCurrency(q.spent)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Historial Anual de Gastos integrado en el bloque financiero */}
+            <div className="mt-2">
+              <button
+                type="button"
+                data-testid="accordion-expenses-trigger"
+                aria-expanded={isExpensesOpen}
+                onClick={() => setIsExpensesOpen((prev) => !prev)}
+                className="pressable w-full py-1.5 px-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 flex items-center justify-between text-[11px] font-semibold text-slate-300"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Receipt className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Historial Anual de Gastos</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-700/90 text-slate-200 tabular-nums">
+                    {financialSummary.orgExpenses.length}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ease-out-expo ${
+                    isExpensesOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              <div
+                data-testid="accordion-expenses-content"
+                className="accordion-content"
+                data-open={isExpensesOpen}
+              >
+                <div className="accordion-inner">
+                  <div className="mt-2.5 rounded-2xl bg-white text-slate-900 p-3 shadow-sm border border-slate-200/90">
+                    {/* Filtro rápido por trimestre */}
+                    <div className="flex items-center justify-between gap-2 pb-2.5">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Trimestre:
+                      </span>
+                      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+                        {(['TODOS', 'T1', 'T2', 'T3', 'T4'] as const).map((q) => (
+                          <button
+                            key={q}
+                            type="button"
+                            data-testid={`filter-expense-${q}`}
+                            onClick={() => setQuarterFilter(q)}
+                            className={`pressable px-2 py-0.5 rounded-lg text-[11px] font-bold transition ${
+                              quarterFilter === q
+                                ? 'bg-white text-slate-900 shadow-sm'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            {q === 'TODOS' ? 'Todos' : q}
+                          </button>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+
+                    {filteredExpenses.length === 0 ? (
+                      <div className="py-5 text-center text-xs text-slate-400">
+                        No se registran gastos en este período.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                        {filteredExpenses.map((exp) => (
+                          <div
+                            key={exp.id}
+                            data-testid="expense-row"
+                            className="p-3 bg-white hover:bg-slate-50/70 flex items-center justify-between gap-3"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[11px] font-bold text-slate-500 tabular-nums">
+                                  {formatDate(exp.expense_date)}
+                                </span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                  {getQuarterFromDate(exp.expense_date)}
+                                </span>
+                                {exp.external_reimbursement > 0 && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
+                                    Multiestaca (Neto)
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs font-bold text-slate-900 mt-1 leading-snug">
+                                {exp.concept}
+                              </p>
+                              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                {exp.supplier_name}
+                              </p>
+                            </div>
+
+                            <div className="text-right flex-shrink-0">
+                              <p
+                                data-testid="expense-row-amount"
+                                className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums"
+                              >
+                                {formatCurrency(exp.net_amount)}
+                              </p>
+                              {exp.external_reimbursement > 0 && (
+                                <p className="text-[10px] text-slate-400 tabular-nums">
+                                  Factura: {formatCurrency(exp.gross_amount)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -943,7 +1071,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 <Calendar className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 whitespace-nowrap">
                   Próxima Actividad
                 </h2>
                 <p className="text-[11px] text-slate-400 truncate">Agenda oficial aprobada</p>
@@ -954,10 +1082,13 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 type="button"
                 data-testid="open-propose-modal-btn"
                 onClick={() => setIsProposeOpen(true)}
-                className="pressable inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm whitespace-nowrap flex-shrink-0"
+                className="pressable inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm flex-shrink-0"
               >
-                <Plus className="w-4 h-4" />
-                <span>Proponer Actividad</span>
+                <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="flex flex-col sm:flex-row sm:gap-1 items-start sm:items-center leading-tight text-left">
+                  <span>Proponer</span>
+                  <span>Actividad</span>
+                </span>
               </button>
           </div>
 
@@ -1029,132 +1160,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           )}
         </section>
 
-        {/* 3. HISTORIAL ANUAL DE GASTOS (ACORDEÓN COLAPSABLE) */}
-        <section
-          aria-label="Historial Anual de Gastos"
-          className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
-        >
-          <button
-            type="button"
-            data-testid="accordion-expenses-trigger"
-            aria-expanded={isExpensesOpen}
-            onClick={() => setIsExpensesOpen((prev) => !prev)}
-            className="pressable w-full p-5 flex items-center justify-between gap-3 text-left hover:bg-slate-50/70"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-100 text-amber-700 flex items-center justify-center flex-shrink-0">
-                <Receipt className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-extrabold text-slate-900">
-                    Historial Anual de Gastos
-                  </h2>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 tabular-nums">
-                    {financialSummary.orgExpenses.length}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Toca para {isExpensesOpen ? 'ocultar' : 'desplegar'} comprobantes y deducciones
-                </p>
-              </div>
-            </div>
-
-            <ChevronDown
-              className={`w-5 h-5 text-slate-400 transition-transform duration-200 ease-out-expo ${
-                isExpensesOpen ? 'rotate-180 text-slate-700' : ''
-              }`}
-            />
-          </button>
-
-          <div
-            data-testid="accordion-expenses-content"
-            className="accordion-content"
-            data-open={isExpensesOpen}
-          >
-            <div className="accordion-inner">
-              <div className="px-5 pb-5 pt-1 border-t border-slate-100">
-                {/* Filtro rápido por trimestre */}
-                <div className="flex items-center justify-between gap-2 py-2.5">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Trimestre:
-                  </span>
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
-                    {(['TODOS', 'T1', 'T2', 'T3', 'T4'] as const).map((q) => (
-                      <button
-                        key={q}
-                        type="button"
-                        data-testid={`filter-expense-${q}`}
-                        onClick={() => setQuarterFilter(q)}
-                        className={`pressable px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                          quarterFilter === q
-                            ? 'bg-white text-slate-900 shadow-sm'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        {q === 'TODOS' ? 'Todos' : q}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {filteredExpenses.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400">
-                    No se registran gastos en este período.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden">
-                    {filteredExpenses.map((exp) => (
-                      <div
-                        key={exp.id}
-                        data-testid="expense-row"
-                        className="p-3.5 bg-white hover:bg-slate-50/70 flex items-center justify-between gap-3"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[11px] font-bold text-slate-500 tabular-nums">
-                              {formatDate(exp.expense_date)}
-                            </span>
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                              {getQuarterFromDate(exp.expense_date)}
-                            </span>
-                            {exp.external_reimbursement > 0 && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
-                                Multiestaca (Neto)
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs font-bold text-slate-900 mt-1 leading-snug">
-                            {exp.concept}
-                          </p>
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                            {exp.supplier_name}
-                          </p>
-                        </div>
-
-                        <div className="text-right flex-shrink-0">
-                          <p
-                            data-testid="expense-row-amount"
-                            className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums"
-                          >
-                            {formatCurrency(exp.net_amount)}
-                          </p>
-                          {exp.external_reimbursement > 0 && (
-                            <p className="text-[10px] text-slate-400 tabular-nums">
-                              Factura: {formatCurrency(exp.gross_amount)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 4. CALENDARIO ANUAL DE ACTIVIDADES (ACORDEÓN COLAPSABLE CON REGLA DE CONFIDENCIALIDAD #9) */}
+        {/* 3. CALENDARIO ANUAL DE ACTIVIDADES (ACORDEÓN COLAPSABLE CON REGLA DE CONFIDENCIALIDAD #9) */}
         <section
           aria-label="Calendario Anual de Actividades"
           className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"

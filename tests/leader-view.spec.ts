@@ -27,12 +27,11 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
       '🏛️ Fondo Seminario: $ 26.000,00 (Fondo conjunto, no incluido en este presupuesto)'
     );
 
-    // Verificar Desglose Trimestral (solo "Asignado: $ ... | Gastos: $ ...", sin "Disp:")
+    // Verificar Desglose Trimestral en tabla de 3 columnas (Trim., Asignado, Gastos; sin "Disp:")
     await page.getByTestId('toggle-quarters-btn').click();
-    await expect(page.getByTestId('leader-quarter-summary-T1')).toHaveText(
-      'Asignado: $ 30.000,00 | Gastos: $ 33.908,00'
-    );
-    await expect(page.getByTestId('leader-quarter-summary-T1')).not.toContainText('Disp:');
+    await expect(page.getByTestId('leader-quarter-assigned-T1')).toHaveText('$ 30.000,00');
+    await expect(page.getByTestId('leader-quarter-spent-T1')).toHaveText('$ 33.908,00');
+    await expect(page.getByTestId('leader-quarter-card-T1')).not.toContainText('Disp:');
 
     // Abrir también el calendario en MJ para capturar la vista completa (Tarjeta + Trimestres + Calendario con auto-enfoque)
     await page.getByTestId('accordion-calendar-trigger').click();

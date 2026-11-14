@@ -3,13 +3,15 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Eraser,
   Link2,
   Lock,
   Mail,
   Pencil,
   Phone,
   Plus,
-  Search,
   Shield,
   ShieldAlert,
   Trash2,
@@ -19,7 +21,12 @@ import {
 } from 'lucide-react';
 import { isEntryIncomplete, isEntryPersonLoaded, useAuth } from '../context/AuthContext';
 import { isSuperAdminEmail } from '../data/seedData';
-import { STAKE_ORG_STRUCTURE, STAKE_UNITS } from '../data/stakeOrgStructure';
+import {
+  DIRECTORY_ORG_BY_CODE,
+  PRESIDENCY_COUNSELOR_SLOTS,
+  STAKE_ORG_STRUCTURE,
+  STAKE_UNITS,
+} from '../data/stakeOrgStructure';
 import {
   formatUruguayanMobile,
   isValidGmail,
@@ -44,6 +51,13 @@ const ROLE_BADGES: Record<UserRole, { label: string; className: string }> = {
   NO_AUTORIZADO: { label: 'SIN ACCESO', className: 'bg-slate-100 text-slate-600 border-slate-300' },
 };
 
+interface PendingPresidentModal {
+  mode: 'REPLACE_OR_CORRECT' | 'CONFIRM_CLEAR';
+  entry: StakeDirectoryEntry;
+  cleanPhone: string;
+  cleanEmail: string;
+}
+
 export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
   initialFilterIncomplete = false,
 }) => {
@@ -56,18 +70,41 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     removeExtraDirectoryEntry,
     toggleDirectoryAppAccess,
     linkDirectoryPerson,
+    clearDirectoryEntryWithCascade,
+    releasePresidencyCounselors,
   } = useAuth();
 
-  const [selectedOrgFilter, setSelectedOrgFilter] = useState<DirectoryOrgCode | 'TODAS'>('TODAS');
+  // Todas las organizaciones inician plegadas por defecto
+  const [expandedOrgs, setExpandedOrgs] = useState<Partial<Record<DirectoryOrgCode, boolean>>>(
+    () => {
+      if (!initialFilterIncomplete) return {};
+      const initial: Partial<Record<DirectoryOrgCode, boolean>> = {};
+      for (const org of STAKE_ORG_STRUCTURE) {
+        if (directoryEntries.some((e) => e.directory_org === org.code && isEntryIncomplete(e))) {
+          initial[org.code] = true;
+        }
+      }
+      return initial;
+    }
+  );
   const [onlyIncomplete, setOnlyIncomplete] = useState<boolean>(initialFilterIncomplete);
 
   useEffect(() => {
     setOnlyIncomplete(initialFilterIncomplete);
-  }, [initialFilterIncomplete]);
-  const [searchTerm, setSearchTerm] = useState<string>('');
+    if (initialFilterIncomplete) {
+      const next: Partial<Record<DirectoryOrgCode, boolean>> = {};
+      for (const org of STAKE_ORG_STRUCTURE) {
+        if (directoryEntries.some((e) => e.directory_org === org.code && isEntryIncomplete(e))) {
+          next[org.code] = true;
+        }
+      }
+      setExpandedOrgs(next);
+    }
+  }, [initialFilterIncomplete, directoryEntries]);
+
   const [toastMsg, setToastMsg] = useState<{ text: string; isError?: boolean } | null>(null);
 
-  // Estado de edición inline de un puesto
+  // Edición inline de un puesto
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftFirstName, setDraftFirstName] = useState('');
   const [draftLastName, setDraftLastName] = useState('');
@@ -75,12 +112,16 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
   const [draftEmail, setDraftEmail] = useState('');
   const [draftUnit, setDraftUnit] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
+  const [draftCleared, setDraftCleared] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
 
-  // Estado para vincular persona existente
+  // Modal de confirmación de relevo de Presidente/a
+  const [presidentModal, setPresidentModal] = useState<PendingPresidentModal | null>(null);
+
+  // Vincular persona existente
   const [linkingEntryId, setLinkingEntryId] = useState<string | null>(null);
 
-  // Estado para formulario de agregar extra por organización
+  // Formulario de agregar extra por organización
   const [addingOrg, setAddingOrg] = useState<DirectoryOrgCode | null>(null);
   const [extraRoleType, setExtraRoleType] = useState<ExtraRoleType>('SECRETARIO_AUXILIAR');
   const [extraManualCalling, setExtraManualCalling] = useState('');
@@ -93,16 +134,40 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
 
   const triggerToast = (text: string, isError = false) => {
     setToastMsg({ text, isError });
-    setTimeout(() => setToastMsg(null), 4000);
+    setTimeout(() => setToastMsg(null), 4500);
+  };
+
+  const toggleOrgAccordion = (code: DirectoryOrgCode) => {
+    setExpandedOrgs((prev) => ({ ...prev, [code]: !prev[code] }));
+  };
+
+  const handleToggleOnlyIncomplete = () => {
+    setOnlyIncomplete((prev) => {
+      const nextVal = !prev;
+      if (nextVal) {
+        const nextExpanded: Partial<Record<DirectoryOrgCode, boolean>> = {};
+        for (const org of STAKE_ORG_STRUCTURE) {
+          if (directoryEntries.some((e) => e.directory_org === org.code && isEntryIncomplete(e))) {
+            nextExpanded[org.code] = true;
+          }
+        }
+        setExpandedOrgs(nextExpanded);
+      } else {
+        setExpandedOrgs({});
+      }
+      return nextVal;
+    });
   };
 
   const loadedPeopleForLink = useMemo(
-    () =>
-      directoryEntries.filter(
-        (e) => isEntryPersonLoaded(e) && e.id !== linkingEntryId
-      ),
+    () => directoryEntries.filter((e) => isEntryPersonLoaded(e) && e.id !== linkingEntryId),
     [directoryEntries, linkingEntryId]
   );
+
+  const getLinkedTargetsForSumo = (sumoEntryId: string): string[] =>
+    directoryEntries
+      .filter((e) => e.linked_entry_id === sumoEntryId)
+      .map((e) => `${DIRECTORY_ORG_BY_CODE[e.directory_org].shortLabel} · ${e.calling}`);
 
   const startEditing = (entry: StakeDirectoryEntry) => {
     setEditingId(entry.id);
@@ -112,23 +177,40 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     setDraftEmail(entry.email || '');
     setDraftUnit(entry.assigned_unit || '');
     setDraftNotes(entry.assigned_org_notes || '');
+    setDraftCleared(false);
     setDraftError(null);
   };
 
-  const handleSaveEdit = async (entry: StakeDirectoryEntry) => {
-    const cleanPhone = draftPhone.trim();
-    const cleanEmail = draftEmail.trim().toLowerCase();
+  const canClearEntryFields = (entry: StakeDirectoryEntry): boolean => {
+    const isSelf =
+      Boolean(entry.email) &&
+      entry.email?.trim().toLowerCase() === currentUser.email.trim().toLowerCase();
+    if (isSelf) return false;
 
-    if (cleanPhone && !isValidUruguayanMobile(cleanPhone)) {
-      setDraftError('Celular inválido: debe ingresarse 09xxxxxxx (9 dígitos, todo junto sin espacios).');
-      return;
-    }
+    const isTargetPermanent = entry.is_permanent_admin || isSuperAdminEmail(entry.email);
+    const isCurrentPermanent =
+      currentUser.is_permanent_admin || isSuperAdminEmail(currentUser.email);
+    if (isTargetPermanent && !isCurrentPermanent) return false;
 
-    if (cleanEmail && !isValidGmail(cleanEmail)) {
-      setDraftError('Correo inválido: solo se permiten cuentas @gmail.com.');
-      return;
-    }
+    return true;
+  };
 
+  const handleClearFieldsInDraft = () => {
+    setDraftFirstName('');
+    setDraftLastName('');
+    setDraftPhone('');
+    setDraftEmail('');
+    setDraftUnit('');
+    setDraftNotes('');
+    setDraftCleared(true);
+    setDraftError(null);
+  };
+
+  const commitStandardSave = async (
+    entry: StakeDirectoryEntry,
+    cleanPhone: string,
+    cleanEmail: string
+  ) => {
     await updateDirectoryEntry(entry.id, {
       first_name: draftFirstName.trim(),
       last_name: draftLastName.trim(),
@@ -141,7 +223,82 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     });
 
     setEditingId(null);
+    setDraftCleared(false);
     setDraftError(null);
+  };
+
+  const handleSaveEdit = async (entry: StakeDirectoryEntry) => {
+    const cleanPhone = draftPhone.trim();
+    const cleanEmail = draftEmail.trim().toLowerCase();
+    const isSelf =
+      Boolean(entry.email) &&
+      entry.email?.trim().toLowerCase() === currentUser.email.trim().toLowerCase();
+
+    if (isSelf && !cleanEmail) {
+      setDraftError('Por seguridad, no puedes dejar vacío tu propio correo de administrador.');
+      return;
+    }
+
+    if (cleanPhone && !isValidUruguayanMobile(cleanPhone)) {
+      setDraftError(
+        'Celular inválido: debe ingresarse 09xxxxxxx (9 dígitos, todo junto sin espacios).'
+      );
+      return;
+    }
+
+    if (cleanEmail && !isValidGmail(cleanEmail)) {
+      setDraftError('Correo inválido: solo se permiten cuentas @gmail.com.');
+      return;
+    }
+
+    const isNowEmpty =
+      !draftFirstName.trim() &&
+      !draftLastName.trim() &&
+      !cleanPhone &&
+      !cleanEmail &&
+      (entry.directory_org !== 'SUMO_CONSEJO' || (!draftUnit.trim() && !draftNotes.trim()));
+
+    const wasLoaded = isEntryPersonLoaded(entry);
+    const hasCounselors = Boolean(PRESIDENCY_COUNSELOR_SLOTS[entry.slot_key]);
+
+    // Caso 1: Se vaciaron todos los campos de un puesto que tenía datos
+    if (isNowEmpty && wasLoaded) {
+      if (hasCounselors) {
+        setPresidentModal({
+          mode: 'CONFIRM_CLEAR',
+          entry,
+          cleanPhone,
+          cleanEmail,
+        });
+        return;
+      }
+
+      const { clearedLinkedCallings } = await clearDirectoryEntryWithCascade(entry.id, {
+        clearCounselors: true,
+      });
+      setEditingId(null);
+      setDraftCleared(false);
+      triggerToast(
+        clearedLinkedCallings.length > 0
+          ? `Puesto vaciado junto con su vínculo (${clearedLinkedCallings.join(', ')}).`
+          : `Puesto ${entry.calling} vaciado.`
+      );
+      return;
+    }
+
+    // Caso 2: Es Presidente/a con consejeros y ya tenía una persona cargada -> preguntar si es corrección o relevo
+    if (hasCounselors && wasLoaded && (draftFirstName.trim() || draftLastName.trim())) {
+      setPresidentModal({
+        mode: 'REPLACE_OR_CORRECT',
+        entry,
+        cleanPhone,
+        cleanEmail,
+      });
+      return;
+    }
+
+    // Caso 3: Guardado normal (incluye primera carga de un Presidente que estaba vacío)
+    await commitStandardSave(entry, cleanPhone, cleanEmail);
     triggerToast(`Datos guardados para ${entry.calling}.`);
   };
 
@@ -193,7 +350,9 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
 
     const cleanPhone = extraPhone.trim();
     if (cleanPhone && !isValidUruguayanMobile(cleanPhone)) {
-      setExtraError('Celular inválido: debe ingresarse 09xxxxxxx (9 dígitos, todo junto sin espacios).');
+      setExtraError(
+        'Celular inválido: debe ingresarse 09xxxxxxx (9 dígitos, todo junto sin espacios).'
+      );
       return;
     }
 
@@ -237,21 +396,11 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     triggerToast(`${extraFirstName.trim()} ${extraLastName.trim()} agregado como ${callingLabel}.`);
   };
 
-  const normalizedSearch = searchTerm.trim().toLowerCase();
-
-  const visibleOrgs = useMemo(
-    () =>
-      STAKE_ORG_STRUCTURE.filter((org) =>
-        selectedOrgFilter === 'TODAS' ? true : org.code === selectedOrgFilter
-      ),
-    [selectedOrgFilter]
-  );
-
   return (
     <section
       aria-label="Gestión de Usuarios y Organigrama de Estaca"
       data-testid="user-management-panel"
-      className="space-y-5"
+      className="space-y-4"
     >
       {/* 1. BANNER OFICIAL DE SEGURIDAD E INMUTABILIDAD */}
       <div
@@ -268,7 +417,7 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                 Regla Sagrada de Auto-Protección Inmutable
               </span>
               <span className="text-[10px] font-mono bg-slate-800 text-emerald-300 px-2 py-0.5 rounded-full border border-slate-700">
-                Fuente Única · Directorio + Acceso
+                Admins Permanentes: Presidente & Secretario
               </span>
             </div>
             <p
@@ -284,7 +433,7 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
         <button
           type="button"
           data-testid="incomplete-contacts-filter-btn"
-          onClick={() => setOnlyIncomplete((prev) => !prev)}
+          onClick={handleToggleOnlyIncomplete}
           className={`pressable inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold whitespace-nowrap self-start lg:self-center border transition ${
             onlyIncomplete
               ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md'
@@ -318,47 +467,97 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
         </div>
       )}
 
-      {/* Barra de búsqueda y filtro por organización */}
-      <div className="bg-white rounded-3xl p-4 shadow-sm border border-slate-200/90 space-y-3">
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nombre, apellido, llamamiento, @gmail.com o unidad..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
-          />
-        </div>
+      {/* Modal de Relevo de Presidente/a (Corrección vs Nuevo Presidente / Vaciar) */}
+      {presidentModal && (
+        <div
+          data-testid="presidency-release-modal"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  {presidentModal.mode === 'CONFIRM_CLEAR'
+                    ? 'Confirmar vaciado de Presidente/a'
+                    : 'Cambio en Presidente/a de Organización'}
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {presidentModal.mode === 'CONFIRM_CLEAR'
+                    ? 'Al vaciar al Presidente/a se vaciarán también automáticamente 1° y 2° Consejero/a (sin afectar a Secretarios ni Auxiliares). ¿Confirmar?'
+                    : '¿Esta modificación es solo una corrección de datos o se trata de un relevo (nuevo Presidente/a)? Si es un nuevo Presidente/a, se vaciarán automáticamente 1° y 2° Consejero/a (no afecta a Secretarios).'}
+                </p>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          <button
-            type="button"
-            onClick={() => setSelectedOrgFilter('TODAS')}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
-              selectedOrgFilter === 'TODAS'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Todas (12)
-          </button>
-          {STAKE_ORG_STRUCTURE.map((org) => (
-            <button
-              key={org.code}
-              type="button"
-              onClick={() => setSelectedOrgFilter(org.code)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
-                selectedOrgFilter === org.code
-                  ? 'bg-emerald-800 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {org.shortLabel}
-            </button>
-          ))}
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPresidentModal(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+
+              {presidentModal.mode === 'CONFIRM_CLEAR' ? (
+                <button
+                  type="button"
+                  data-testid="confirm-clear-president-btn"
+                  onClick={async () => {
+                    const { entry } = presidentModal;
+                    setPresidentModal(null);
+                    const { clearedCounselors } = await clearDirectoryEntryWithCascade(entry.id, {
+                      clearCounselors: true,
+                    });
+                    setEditingId(null);
+                    setDraftCleared(false);
+                    triggerToast(
+                      `Presidente/a vaciado junto con: ${clearedCounselors.join(', ')}.`
+                    );
+                  }}
+                  className="px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-extrabold"
+                >
+                  Confirmar vaciado en cascada
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    data-testid="president-correction-only-btn"
+                    onClick={async () => {
+                      const { entry, cleanPhone, cleanEmail } = presidentModal;
+                      setPresidentModal(null);
+                      await commitStandardSave(entry, cleanPhone, cleanEmail);
+                      triggerToast('Corrección guardada (consejeros sin cambios).');
+                    }}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold"
+                  >
+                    Solo corrección de datos
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="president-new-release-btn"
+                    onClick={async () => {
+                      const { entry, cleanPhone, cleanEmail } = presidentModal;
+                      setPresidentModal(null);
+                      await commitStandardSave(entry, cleanPhone, cleanEmail);
+                      const cleared = await releasePresidencyCounselors(entry.slot_key);
+                      triggerToast(
+                        `Nuevo Presidente/a guardado. Se vaciaron: ${cleared.join(', ')}.`
+                      );
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold"
+                  >
+                    Nuevo Presidente/a (relevo)
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal rápido para vincular persona ya cargada */}
       {linkingEntryId && (
@@ -401,33 +600,22 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
         </div>
       )}
 
-      {/* Tarjetas por Organización */}
-      <div className="space-y-4">
-        {visibleOrgs.map((orgDef) => {
+      {/* Tarjetas Acordeón por Organización (todas plegadas al entrar) */}
+      <div className="space-y-3">
+        {STAKE_ORG_STRUCTURE.map((orgDef) => {
           const orgEntries = directoryEntries.filter((e) => e.directory_org === orgDef.code);
           const extrasCount = orgEntries.filter((e) => !e.is_fixed_slot).length;
+          const incompleteInOrg = orgEntries.filter(isEntryIncomplete).length;
+          const loadedInOrg = orgEntries.filter(isEntryPersonLoaded).length;
+          const isExpanded = Boolean(expandedOrgs[orgDef.code]);
 
-          const filteredEntries = orgEntries.filter((entry) => {
-            if (onlyIncomplete && !isEntryIncomplete(entry)) return false;
-            if (!normalizedSearch) return true;
-            const haystack = [
-              entry.first_name,
-              entry.last_name,
-              entry.calling,
-              entry.email,
-              entry.phone,
-              entry.assigned_unit,
-              entry.assigned_org_notes,
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLowerCase();
-            return haystack.includes(normalizedSearch);
-          });
-
-          if ((onlyIncomplete || normalizedSearch) && filteredEntries.length === 0) {
+          if (onlyIncomplete && incompleteInOrg === 0) {
             return null;
           }
+
+          const visibleEntries = onlyIncomplete
+            ? orgEntries.filter(isEntryIncomplete)
+            : orgEntries;
 
           return (
             <div
@@ -435,10 +623,16 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
               data-testid={`org-card-${orgDef.code}`}
               className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
             >
-              {/* Cabecera de Organización */}
-              <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              {/* Cabecera Acordeón */}
+              <button
+                type="button"
+                data-testid={`org-accordion-toggle-${orgDef.code}`}
+                aria-expanded={isExpanded}
+                onClick={() => toggleOrgAccordion(orgDef.code)}
+                className="w-full px-5 py-4 bg-slate-50 hover:bg-slate-100/80 transition flex flex-wrap items-center justify-between gap-2 text-left"
+              >
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <Users className="w-4 h-4 text-emerald-700" />
+                  <Users className="w-4 h-4 text-emerald-700 flex-shrink-0" />
                   <h3 className="text-sm font-extrabold text-slate-900">{orgDef.label}</h3>
                   <span
                     className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
@@ -451,71 +645,457 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                   </span>
                 </div>
 
-                <span className="text-xs font-bold text-slate-500">
-                  {orgEntries.filter(isEntryPersonLoaded).length} / {orgEntries.length} cargados
-                </span>
-              </div>
-
-              {/* Filas de Puestos */}
-              <div className="divide-y divide-slate-100">
-                {filteredEntries.map((entry) => {
-                  const isEditing = editingId === entry.id;
-                  const isLoaded = isEntryPersonLoaded(entry);
-                  const isIncomplete = isEntryIncomplete(entry);
-                  const isSelfOrPerm =
-                    entry.is_permanent_admin ||
-                    isSuperAdminEmail(entry.email) ||
-                    (Boolean(entry.email) && entry.email === currentUser.email);
-                  const roleBadge = ROLE_BADGES[entry.role];
-
-                  return (
-                    <div
-                      key={entry.id}
-                      data-testid={`directory-row-${entry.slot_key}`}
-                      className={`p-4 sm:px-5 transition ${
-                        !entry.has_app_access && isLoaded ? 'bg-slate-50/50' : ''
-                      }`}
+                <div className="flex items-center gap-2.5">
+                  {incompleteInOrg > 0 && (
+                    <span
+                      data-testid={`org-incomplete-badge-${orgDef.code}`}
+                      className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300"
                     >
-                      {isEditing ? (
-                        <div className="space-y-3 bg-emerald-50/40 p-3.5 rounded-2xl border border-emerald-200">
+                      <AlertTriangle className="w-3 h-3" />
+                      {incompleteInOrg} {incompleteInOrg === 1 ? 'incompleto' : 'incompletos'}
+                    </span>
+                  )}
+                  <span className="text-xs font-bold text-slate-500">
+                    {loadedInOrg} / {orgEntries.length} cargados
+                  </span>
+                  {isExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-slate-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-500" />
+                  )}
+                </div>
+              </button>
+
+              {/* Contenido Desplegable */}
+              {isExpanded && (
+                <>
+                  <div className="divide-y divide-slate-100 border-t border-slate-200">
+                    {visibleEntries.map((entry) => {
+                      const isEditing = editingId === entry.id;
+                      const isLoaded = isEntryPersonLoaded(entry);
+                      const isIncomplete = isEntryIncomplete(entry);
+                      const isSelfOrPerm =
+                        entry.is_permanent_admin ||
+                        isSuperAdminEmail(entry.email) ||
+                        (Boolean(entry.email) &&
+                          entry.email?.toLowerCase() === currentUser.email.toLowerCase());
+                      const roleBadge = ROLE_BADGES[entry.role];
+                      const canClear = canClearEntryFields(entry);
+                      const linkedTargets =
+                        entry.directory_org === 'SUMO_CONSEJO'
+                          ? getLinkedTargetsForSumo(entry.id)
+                          : [];
+
+                      return (
+                        <div
+                          key={entry.id}
+                          data-testid={`directory-row-${entry.slot_key}`}
+                          className={`p-4 sm:px-5 transition ${
+                            !entry.has_app_access && isLoaded ? 'bg-slate-50/50' : ''
+                          }`}
+                        >
+                          {isEditing ? (
+                            <div className="space-y-3 bg-emerald-50/40 p-3.5 rounded-2xl border border-emerald-200">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-xs font-extrabold text-emerald-900">
+                                  Editando: {entry.calling}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    data-testid={`clear-fields-${entry.slot_key}`}
+                                    disabled={!canClear}
+                                    onClick={handleClearFieldsInDraft}
+                                    title={
+                                      canClear
+                                        ? 'Vaciar todos los campos de este puesto'
+                                        : 'Bloqueado por regla de auto-protección de administrador'
+                                    }
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    <Eraser className="w-3.5 h-3.5" />
+                                    <span>Limpiar campos</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingId(null)}
+                                    className="text-slate-400 hover:text-slate-700"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {draftCleared && linkedTargets.length > 0 && (
+                                <p className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5">
+                                  Al guardar también se vaciará el puesto vinculado:{' '}
+                                  {linkedTargets.join(', ')}.
+                                </p>
+                              )}
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                    Nombre
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={draftFirstName}
+                                    onChange={(e) => setDraftFirstName(e.target.value)}
+                                    placeholder="Nombre"
+                                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                    Apellido
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={draftLastName}
+                                    onChange={(e) => setDraftLastName(e.target.value)}
+                                    placeholder="Apellido"
+                                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                    Celular (09xxxxxxx)
+                                  </label>
+                                  <input
+                                    type="tel"
+                                    maxLength={9}
+                                    value={draftPhone}
+                                    onChange={(e) =>
+                                      setDraftPhone(e.target.value.replace(/\D/g, ''))
+                                    }
+                                    placeholder="099123456"
+                                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white font-mono"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                    Correo Gmail (@gmail.com)
+                                  </label>
+                                  <input
+                                    type="email"
+                                    value={draftEmail}
+                                    onChange={(e) => setDraftEmail(e.target.value)}
+                                    placeholder="nombre@gmail.com"
+                                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                  />
+                                </div>
+                              </div>
+
+                              {entry.directory_org === 'SUMO_CONSEJO' && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                      Unidad asignada
+                                    </label>
+                                    <input
+                                      type="text"
+                                      list={`units-${entry.id}`}
+                                      value={draftUnit}
+                                      onChange={(e) => setDraftUnit(e.target.value)}
+                                      placeholder="Ej: Paso Carrasco, Aeroparque..."
+                                      className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                    />
+                                    <datalist id={`units-${entry.id}`}>
+                                      {STAKE_UNITS.map((u) => (
+                                        <option key={u} value={u} />
+                                      ))}
+                                    </datalist>
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                      Organización / Comité asignado
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={draftNotes}
+                                      onChange={(e) => setDraftNotes(e.target.value)}
+                                      placeholder="Ej: HJ Pte // acompañar MJ // Obra Misional"
+                                      className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {draftError && (
+                                <p className="text-xs font-bold text-rose-700">{draftError}</p>
+                              )}
+
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(null)}
+                                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  type="button"
+                                  data-testid={`save-edit-${entry.slot_key}`}
+                                  onClick={() => handleSaveEdit(entry)}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Guardar</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                              {/* Info principal */}
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-extrabold text-slate-800">
+                                    {entry.calling}
+                                  </span>
+                                  {!entry.is_fixed_slot && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                      Adicional
+                                    </span>
+                                  )}
+                                  <span
+                                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${roleBadge.className}`}
+                                  >
+                                    {roleBadge.label}
+                                  </span>
+                                  {isSelfOrPerm && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                      <Lock className="w-3 h-3" />
+                                      Inmutable
+                                    </span>
+                                  )}
+                                  {isIncomplete && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                                      <AlertTriangle className="w-3 h-3" />
+                                      {!entry.phone && !entry.email
+                                        ? 'Falta celular y Gmail'
+                                        : !entry.phone
+                                          ? 'Falta celular'
+                                          : 'Falta Gmail'}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {isLoaded ? (
+                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700">
+                                    <span className="font-bold text-slate-900">
+                                      {entry.first_name} {entry.last_name}
+                                    </span>
+                                    {entry.phone && (
+                                      <span className="inline-flex items-center gap-1 text-slate-600 font-mono">
+                                        <Phone className="w-3 h-3 text-slate-400" />
+                                        {formatUruguayanMobile(entry.phone)}
+                                      </span>
+                                    )}
+                                    {entry.email && (
+                                      <span className="inline-flex items-center gap-1 text-slate-600">
+                                        <Mail className="w-3 h-3 text-slate-400" />
+                                        {entry.email}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs italic text-slate-400">
+                                    Puesto vacante — sin persona asignada
+                                  </p>
+                                )}
+
+                                {entry.directory_org === 'SUMO_CONSEJO' &&
+                                  (entry.assigned_unit || entry.assigned_org_notes) && (
+                                    <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                                      {entry.assigned_unit && (
+                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700">
+                                          Unidad: {entry.assigned_unit}
+                                        </span>
+                                      )}
+                                      {entry.assigned_org_notes && (
+                                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800">
+                                          {entry.assigned_org_notes}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                              </div>
+
+                              {/* Controles de acción */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                {orgDef.code === 'PRESIDENCIA' && isLoaded && (
+                                  <>
+                                    <select
+                                      aria-label={`Rol de ${entry.calling}`}
+                                      disabled={isSelfOrPerm}
+                                      value={entry.role}
+                                      onChange={(e) =>
+                                        handlePresidencyRoleChange(entry, e.target.value as UserRole)
+                                      }
+                                      className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-[11px] font-bold bg-white disabled:bg-slate-100 disabled:text-slate-500"
+                                    >
+                                      <option value="PRESIDENCIA">PRESIDENCIA</option>
+                                      <option value="ADMIN">ADMIN</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      disabled={isSelfOrPerm}
+                                      onClick={() =>
+                                        updateDirectoryEntry(entry.id, {
+                                          can_approve_activities: !entry.can_approve_activities,
+                                        })
+                                      }
+                                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition ${
+                                        entry.can_approve_activities
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                          : 'bg-slate-50 text-slate-600 border-slate-200'
+                                      }`}
+                                    >
+                                      {entry.can_approve_activities ? '✓ Aprueba' : 'No aprueba'}
+                                    </button>
+                                  </>
+                                )}
+
+                                {/* Switch universal Acceso App */}
+                                <button
+                                  type="button"
+                                  data-testid={`toggle-access-${entry.slot_key}`}
+                                  disabled={isSelfOrPerm}
+                                  onClick={() => handleToggleAccess(entry)}
+                                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition ${
+                                    isSelfOrPerm
+                                      ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                                      : entry.has_app_access
+                                        ? 'bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-800'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <Shield className="w-3.5 h-3.5" />
+                                  <span>{entry.has_app_access ? 'Acceso ON' : 'Acceso OFF'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setLinkingEntryId(entry.id)}
+                                  title="Vincular persona ya registrada"
+                                  className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
+                                >
+                                  <Link2 className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  data-testid={`edit-btn-${entry.slot_key}`}
+                                  onClick={() => startEditing(entry)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                  <span>Editar</span>
+                                </button>
+
+                                {!entry.is_fixed_slot && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeExtraDirectoryEntry(entry.id)}
+                                    title="Eliminar integrante adicional"
+                                    className="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pie de organización: botón para agregar extras (máx 3 / máx 2 en CFS) */}
+                  {orgDef.maxExtras > 0 && (
+                    <div className="px-5 py-3.5 bg-slate-50/70 border-t border-slate-100">
+                      {addingOrg === orgDef.code ? (
+                        <form
+                          onSubmit={(e) => handleCreateExtra(e, orgDef.code)}
+                          className="bg-white p-4 rounded-2xl border border-emerald-300 space-y-3"
+                        >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-extrabold text-emerald-900">
-                              Editando: {entry.calling}
+                            <span className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
+                              <UserPlus className="w-4 h-4" />
+                              <span>
+                                {orgDef.extraLabel} ({extrasCount}/{orgDef.maxExtras})
+                              </span>
                             </span>
                             <button
                               type="button"
-                              onClick={() => setEditingId(null)}
+                              onClick={() => setAddingOrg(null)}
                               className="text-slate-400 hover:text-slate-700"
                             >
                               <X className="w-4 h-4" />
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                Nombre
+                                Rol a asignar
+                              </label>
+                              <select
+                                value={extraRoleType}
+                                onChange={(e) => setExtraRoleType(e.target.value as ExtraRoleType)}
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                              >
+                                <option value="SECRETARIO_AUXILIAR">Secretario Auxiliar</option>
+                                <option value="ASESOR">Asesor</option>
+                                <option value="MANUAL">Ingresar manualmente</option>
+                              </select>
+                            </div>
+
+                            {extraRoleType === 'MANUAL' && (
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                  Nombre del rol *
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={extraManualCalling}
+                                  onChange={(e) => setExtraManualCalling(e.target.value)}
+                                  placeholder="Ej: Secretario de Comunicación"
+                                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
+                                />
+                              </div>
+                            )}
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                Nombre *
                               </label>
                               <input
                                 type="text"
-                                value={draftFirstName}
-                                onChange={(e) => setDraftFirstName(e.target.value)}
+                                required
+                                value={extraFirstName}
+                                onChange={(e) => setExtraFirstName(e.target.value)}
                                 placeholder="Nombre"
-                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
                               />
                             </div>
+
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                Apellido
+                                Apellido *
                               </label>
                               <input
                                 type="text"
-                                value={draftLastName}
-                                onChange={(e) => setDraftLastName(e.target.value)}
+                                required
+                                value={extraLastName}
+                                onChange={(e) => setExtraLastName(e.target.value)}
                                 placeholder="Apellido"
-                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
                               />
                             </div>
+
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">
                                 Celular (09xxxxxxx)
@@ -523,413 +1103,79 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                               <input
                                 type="tel"
                                 maxLength={9}
-                                value={draftPhone}
-                                onChange={(e) => setDraftPhone(e.target.value.replace(/\D/g, ''))}
+                                value={extraPhone}
+                                onChange={(e) => setExtraPhone(e.target.value.replace(/\D/g, ''))}
                                 placeholder="099123456"
-                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white font-mono"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono"
                               />
                             </div>
+
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">
                                 Correo Gmail (@gmail.com)
                               </label>
                               <input
                                 type="email"
-                                value={draftEmail}
-                                onChange={(e) => setDraftEmail(e.target.value)}
-                                placeholder="nombre@gmail.com"
-                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                                value={extraEmail}
+                                onChange={(e) => setExtraEmail(e.target.value)}
+                                placeholder="ejemplo@gmail.com"
+                                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
                               />
                             </div>
                           </div>
 
-                          {entry.directory_org === 'SUMO_CONSEJO' && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                  Unidad asignada
-                                </label>
-                                <input
-                                  type="text"
-                                  list={`units-${entry.id}`}
-                                  value={draftUnit}
-                                  onChange={(e) => setDraftUnit(e.target.value)}
-                                  placeholder="Ej: Paso Carrasco, Aeroparque..."
-                                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-                                />
-                                <datalist id={`units-${entry.id}`}>
-                                  {STAKE_UNITS.map((u) => (
-                                    <option key={u} value={u} />
-                                  ))}
-                                </datalist>
-                              </div>
-                              <div>
-                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                  Organización / Comité asignado
-                                </label>
-                                <input
-                                  type="text"
-                                  value={draftNotes}
-                                  onChange={(e) => setDraftNotes(e.target.value)}
-                                  placeholder="Ej: HJ Pte // acompañar MJ // Obra Misional"
-                                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-                                />
-                              </div>
-                            </div>
-                          )}
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                            <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={extraAppAccess}
+                                onChange={(e) => setExtraAppAccess(e.target.checked)}
+                                className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+                              />
+                              <span>Activar Acceso App al guardar</span>
+                            </label>
 
-                          {draftError && (
-                            <p className="text-xs font-bold text-rose-700">{draftError}</p>
-                          )}
-
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditingId(null)}
-                              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              type="button"
-                              data-testid={`save-edit-${entry.slot_key}`}
-                              onClick={() => handleSaveEdit(entry)}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Guardar</span>
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                          {/* Info principal */}
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-extrabold text-slate-800">
-                                {entry.calling}
-                              </span>
-                              {!entry.is_fixed_slot && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                                  Adicional
-                                </span>
-                              )}
-                              <span
-                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${roleBadge.className}`}
-                              >
-                                {roleBadge.label}
-                              </span>
-                              {isSelfOrPerm && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                  <Lock className="w-3 h-3" />
-                                  Inmutable
-                                </span>
-                              )}
-                              {isIncomplete && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
-                                  <AlertTriangle className="w-3 h-3" />
-                                  {!entry.phone && !entry.email
-                                    ? 'Falta celular y Gmail'
-                                    : !entry.phone
-                                      ? 'Falta celular'
-                                      : 'Falta Gmail'}
-                                </span>
-                              )}
-                            </div>
-
-                            {isLoaded ? (
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700">
-                                <span className="font-bold text-slate-900">
-                                  {entry.first_name} {entry.last_name}
-                                </span>
-                                {entry.phone && (
-                                  <span className="inline-flex items-center gap-1 text-slate-600 font-mono">
-                                    <Phone className="w-3 h-3 text-slate-400" />
-                                    {formatUruguayanMobile(entry.phone)}
-                                  </span>
-                                )}
-                                {entry.email && (
-                                  <span className="inline-flex items-center gap-1 text-slate-600">
-                                    <Mail className="w-3 h-3 text-slate-400" />
-                                    {entry.email}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <p className="text-xs italic text-slate-400">
-                                Puesto vacante — sin persona asignada
-                              </p>
-                            )}
-
-                            {entry.directory_org === 'SUMO_CONSEJO' &&
-                              (entry.assigned_unit || entry.assigned_org_notes) && (
-                                <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                                  {entry.assigned_unit && (
-                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700">
-                                      Unidad: {entry.assigned_unit}
-                                    </span>
-                                  )}
-                                  {entry.assigned_org_notes && (
-                                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800">
-                                      {entry.assigned_org_notes}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                          </div>
-
-                          {/* Controles de acción */}
-                          <div className="flex flex-wrap items-center gap-2">
-                            {orgDef.code === 'PRESIDENCIA' && isLoaded && (
-                              <>
-                                <select
-                                  aria-label={`Rol de ${entry.calling}`}
-                                  disabled={isSelfOrPerm}
-                                  value={entry.role}
-                                  onChange={(e) =>
-                                    handlePresidencyRoleChange(entry, e.target.value as UserRole)
-                                  }
-                                  className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-[11px] font-bold bg-white disabled:bg-slate-100 disabled:text-slate-500"
-                                >
-                                  <option value="PRESIDENCIA">PRESIDENCIA</option>
-                                  <option value="ADMIN">ADMIN</option>
-                                </select>
-                                <button
-                                  type="button"
-                                  disabled={isSelfOrPerm}
-                                  onClick={() =>
-                                    updateDirectoryEntry(entry.id, {
-                                      can_approve_activities: !entry.can_approve_activities,
-                                    })
-                                  }
-                                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition ${
-                                    entry.can_approve_activities
-                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                      : 'bg-slate-50 text-slate-600 border-slate-200'
-                                  }`}
-                                >
-                                  {entry.can_approve_activities ? '✓ Aprueba' : 'No aprueba'}
-                                </button>
-                              </>
-                            )}
-
-                            {/* Switch universal Acceso App */}
-                            <button
-                              type="button"
-                              data-testid={`toggle-access-${entry.slot_key}`}
-                              disabled={isSelfOrPerm}
-                              onClick={() => handleToggleAccess(entry)}
-                              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition ${
-                                isSelfOrPerm
-                                  ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
-                                  : entry.has_app_access
-                                    ? 'bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-800'
-                                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                              }`}
-                            >
-                              <Shield className="w-3.5 h-3.5" />
-                              <span>{entry.has_app_access ? 'Acceso ON' : 'Acceso OFF'}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setLinkingEntryId(entry.id)}
-                              title="Vincular persona ya registrada"
-                              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
-                            >
-                              <Link2 className="w-3.5 h-3.5" />
-                            </button>
-
-                            <button
-                              type="button"
-                              data-testid={`edit-btn-${entry.slot_key}`}
-                              onClick={() => startEditing(entry)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                              <span>Editar</span>
-                            </button>
-
-                            {!entry.is_fixed_slot && (
+                            <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => removeExtraDirectoryEntry(entry.id)}
-                                title="Eliminar integrante adicional"
-                                className="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                onClick={() => setAddingOrg(null)}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                Cancelar
                               </button>
-                            )}
+                              <button
+                                type="submit"
+                                className="px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
+                              >
+                                Agregar
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
 
-              {/* Pie de organización: botón para agregar extras (máx 3 / máx 2 en CFS) */}
-              {orgDef.maxExtras > 0 && (
-                <div className="px-5 py-3.5 bg-slate-50/70 border-t border-slate-100">
-                  {addingOrg === orgDef.code ? (
-                    <form
-                      onSubmit={(e) => handleCreateExtra(e, orgDef.code)}
-                      className="bg-white p-4 rounded-2xl border border-emerald-300 space-y-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
-                          <UserPlus className="w-4 h-4" />
-                          <span>
-                            {orgDef.extraLabel} ({extrasCount}/{orgDef.maxExtras})
+                          {extraError && (
+                            <p className="text-xs font-bold text-rose-700">{extraError}</p>
+                          )}
+                        </form>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-500">
+                            Integrantes adicionales: {extrasCount} / {orgDef.maxExtras}
                           </span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setAddingOrg(null)}
-                          className="text-slate-400 hover:text-slate-700"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Rol a asignar
-                          </label>
-                          <select
-                            value={extraRoleType}
-                            onChange={(e) => setExtraRoleType(e.target.value as ExtraRoleType)}
-                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-                          >
-                            <option value="SECRETARIO_AUXILIAR">Secretario Auxiliar</option>
-                            <option value="ASESOR">Asesor</option>
-                            <option value="MANUAL">Ingresar manualmente</option>
-                          </select>
-                        </div>
-
-                        {extraRoleType === 'MANUAL' && (
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Nombre del rol *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={extraManualCalling}
-                              onChange={(e) => setExtraManualCalling(e.target.value)}
-                              placeholder="Ej: Secretario de Comunicación"
-                              className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
-                            />
-                          </div>
-                        )}
-
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Nombre *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={extraFirstName}
-                            onChange={(e) => setExtraFirstName(e.target.value)}
-                            placeholder="Nombre"
-                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Apellido *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={extraLastName}
-                            onChange={(e) => setExtraLastName(e.target.value)}
-                            placeholder="Apellido"
-                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Celular (09xxxxxxx)
-                          </label>
-                          <input
-                            type="tel"
-                            maxLength={9}
-                            value={extraPhone}
-                            onChange={(e) => setExtraPhone(e.target.value.replace(/\D/g, ''))}
-                            placeholder="099123456"
-                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Correo Gmail (@gmail.com)
-                          </label>
-                          <input
-                            type="email"
-                            value={extraEmail}
-                            onChange={(e) => setExtraEmail(e.target.value)}
-                            placeholder="ejemplo@gmail.com"
-                            className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                        <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={extraAppAccess}
-                            onChange={(e) => setExtraAppAccess(e.target.checked)}
-                            className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
-                          />
-                          <span>Activar Acceso App al guardar</span>
-                        </label>
-
-                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setAddingOrg(null)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                            data-testid={`add-extra-btn-${orgDef.code}`}
+                            disabled={extrasCount >= orgDef.maxExtras}
+                            onClick={() => openAddExtraForm(orgDef.code)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50"
                           >
-                            Cancelar
-                          </button>
-                          <button
-                            type="submit"
-                            className="px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
-                          >
-                            Agregar
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>{orgDef.extraLabel}</span>
                           </button>
                         </div>
-                      </div>
-
-                      {extraError && (
-                        <p className="text-xs font-bold text-rose-700">{extraError}</p>
                       )}
-                    </form>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-500">
-                        Integrantes adicionales: {extrasCount} / {orgDef.maxExtras}
-                      </span>
-                      <button
-                        type="button"
-                        data-testid={`add-extra-btn-${orgDef.code}`}
-                        disabled={extrasCount >= orgDef.maxExtras}
-                        onClick={() => openAddExtraForm(orgDef.code)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed bg-white border-emerald-300 text-emerald-800 hover:bg-emerald-50"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>{orgDef.extraLabel}</span>
-                      </button>
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           );

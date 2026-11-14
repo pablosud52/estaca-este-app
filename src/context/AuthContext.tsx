@@ -5,7 +5,7 @@ import {
   isSuperAdminEmail,
   SUPER_ADMIN_EMAIL,
 } from '../data/seedData';
-import { DIRECTORY_ORG_BY_CODE } from '../data/stakeOrgStructure';
+import { DIRECTORY_ORG_BY_CODE, PRESIDENCY_COUNSELOR_SLOTS } from '../data/stakeOrgStructure';
 import { isValidGmail } from '../lib/formatters';
 import { supabase } from '../lib/supabase';
 import {
@@ -34,6 +34,11 @@ interface AuthContextValue {
   removeExtraDirectoryEntry: (id: string) => Promise<void>;
   toggleDirectoryAppAccess: (id: string) => Promise<{ ok: boolean; error?: string }>;
   linkDirectoryPerson: (targetEntryId: string, sourceEntryId: string) => Promise<void>;
+  clearDirectoryEntryWithCascade: (
+    id: string,
+    options?: { clearCounselors?: boolean }
+  ) => Promise<{ clearedLinkedCallings: string[]; clearedCounselors: string[] }>;
+  releasePresidencyCounselors: (presidentSlotKey: string) => Promise<string[]>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   isSimulating: boolean;
@@ -524,6 +529,158 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const clearDirectoryEntryWithCascade = async (
+    id: string,
+    options?: { clearCounselors?: boolean }
+  ): Promise<{ clearedLinkedCallings: string[]; clearedCounselors: string[] }> => {
+    const target = directoryEntries.find((e) => e.id === id);
+    if (!target) return { clearedLinkedCallings: [], clearedCounselors: [] };
+
+    const idsToClear = new Set<string>([id]);
+    const clearedLinkedCallings: string[] = [];
+    const clearedCounselors: string[] = [];
+    const emailsToDeactivate = new Set<string>();
+
+    // Si se limpia un miembro del Sumo Consejo, limpiar también cualquier puesto vinculado a él
+    if (target.directory_org === 'SUMO_CONSEJO') {
+      for (const entry of directoryEntries) {
+        if (entry.linked_entry_id === target.id) {
+          idsToClear.add(entry.id);
+          clearedLinkedCallings.push(
+            `${DIRECTORY_ORG_BY_CODE[entry.directory_org].shortLabel} · ${entry.calling}`
+          );
+        }
+      }
+    }
+
+    // Si algún puesto limpiado es Presidente/a con consejeros y aplica cascada, limpiar sus 2 consejeros
+    const shouldClearCounselors = options?.clearCounselors ?? true;
+    if (shouldClearCounselors) {
+      for (const clearId of Array.from(idsToClear)) {
+        const clearedEntry = directoryEntries.find((e) => e.id === clearId);
+        if (!clearedEntry) continue;
+        const counselorKeys = PRESIDENCY_COUNSELOR_SLOTS[clearedEntry.slot_key];
+        if (counselorKeys) {
+          for (const cKey of counselorKeys) {
+            const counselorEntry = directoryEntries.find((e) => e.slot_key === cKey);
+            if (counselorEntry) {
+              idsToClear.add(counselorEntry.id);
+              clearedCounselors.push(counselorEntry.calling);
+            }
+          }
+        }
+      }
+    }
+
+    const updatedRows: StakeDirectoryEntry[] = [];
+    setDirectoryEntries((prev) => {
+      const next = prev.map((entry) => {
+        if (!idsToClear.has(entry.id)) return entry;
+        if (entry.email && !isSuperAdminEmail(entry.email)) {
+          emailsToDeactivate.add(entry.email.toLowerCase());
+        }
+        const cleared: StakeDirectoryEntry = {
+          ...entry,
+          first_name: '',
+          last_name: '',
+          phone: '',
+          email: '',
+          has_app_access: false,
+          linked_entry_id: undefined,
+          assigned_unit: entry.directory_org === 'SUMO_CONSEJO' ? '' : entry.assigned_unit,
+          assigned_org_notes:
+            entry.directory_org === 'SUMO_CONSEJO' ? '' : entry.assigned_org_notes,
+        };
+        updatedRows.push(cleared);
+        return cleared;
+      });
+      saveDirectoryLocal(next);
+      return next;
+    });
+
+    if (emailsToDeactivate.size > 0) {
+      setProfiles((prev) =>
+        prev.map((p) =>
+          emailsToDeactivate.has(p.email.toLowerCase()) ? { ...p, is_active: false } : p
+        )
+      );
+      try {
+        for (const em of emailsToDeactivate) {
+          await supabase.from('users_profiles').update({ is_active: false }).eq('email', em);
+        }
+      } catch {
+        // Fallback local
+      }
+    }
+
+    try {
+      if (updatedRows.length > 0) {
+        await supabase.from('stake_directory_entries').upsert(updatedRows);
+      }
+    } catch {
+      // Fallback local
+    }
+
+    return { clearedLinkedCallings, clearedCounselors };
+  };
+
+  const releasePresidencyCounselors = async (presidentSlotKey: string): Promise<string[]> => {
+    const counselorKeys = PRESIDENCY_COUNSELOR_SLOTS[presidentSlotKey];
+    if (!counselorKeys || counselorKeys.length === 0) return [];
+
+    const clearedCounselors: string[] = [];
+    const emailsToDeactivate = new Set<string>();
+    const updatedRows: StakeDirectoryEntry[] = [];
+
+    setDirectoryEntries((prev) => {
+      const next = prev.map((entry) => {
+        if (!counselorKeys.includes(entry.slot_key)) return entry;
+        if (entry.email && !isSuperAdminEmail(entry.email)) {
+          emailsToDeactivate.add(entry.email.toLowerCase());
+        }
+        clearedCounselors.push(entry.calling);
+        const cleared: StakeDirectoryEntry = {
+          ...entry,
+          first_name: '',
+          last_name: '',
+          phone: '',
+          email: '',
+          has_app_access: false,
+          linked_entry_id: undefined,
+        };
+        updatedRows.push(cleared);
+        return cleared;
+      });
+      saveDirectoryLocal(next);
+      return next;
+    });
+
+    if (emailsToDeactivate.size > 0) {
+      setProfiles((prev) =>
+        prev.map((p) =>
+          emailsToDeactivate.has(p.email.toLowerCase()) ? { ...p, is_active: false } : p
+        )
+      );
+      try {
+        for (const em of emailsToDeactivate) {
+          await supabase.from('users_profiles').update({ is_active: false }).eq('email', em);
+        }
+      } catch {
+        // Fallback local
+      }
+    }
+
+    try {
+      if (updatedRows.length > 0) {
+        await supabase.from('stake_directory_entries').upsert(updatedRows);
+      }
+    } catch {
+      // Fallback local
+    }
+
+    return clearedCounselors;
+  };
+
   const incompleteContactsCount = React.useMemo(
     () => directoryEntries.filter(isEntryIncomplete).length,
     [directoryEntries]
@@ -566,6 +723,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         removeExtraDirectoryEntry,
         toggleDirectoryAppAccess,
         linkDirectoryPerson,
+        clearDirectoryEntryWithCascade,
+        releasePresidencyCounselors,
         signInWithGoogle,
         signOut,
         isSimulating,

@@ -32,51 +32,112 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     await expect(page.getByTestId('presidency-hub-view')).toBeVisible();
   });
 
-  test('1. Organizaciones separadas, validación Gmail/celular 09xxxxxxx y protección inmutable', async ({
+  test('1. Acordeones plegados por defecto, validación Gmail/09xxxxxxx y regla de Admins permanentes', async ({
     page,
   }) => {
     await openUsersPanel(page);
 
-    // Verificar organizaciones principales y nuevas (Sumo Consejo, Escuela Dominical, Bienestar, Música, CFS)
-    await expect(page.getByTestId('org-card-PRESIDENCIA')).toBeVisible();
-    await expect(page.getByTestId('org-card-SUMO_CONSEJO')).toBeVisible();
-    await expect(page.getByTestId('org-card-CFS')).toBeVisible();
-    await expect(page.getByTestId('org-card-BIENESTAR')).toBeVisible();
-    await expect(page.getByTestId('org-card-MUSICA')).toBeVisible();
+    // Verificar organizaciones principales plegadas por defecto
+    await expect(page.getByTestId('org-accordion-toggle-PRESIDENCIA')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    await expect(page.getByTestId('org-accordion-toggle-MJ')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
+    await expect(page.getByTestId('org-accordion-toggle-SUMO_CONSEJO')).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    );
 
-    // Auto-protección inmutable en Pablo Lamela y Presidente
-    await expect(page.getByTestId('toggle-access-pres-secretario-financiero')).toBeDisabled();
+    // Desplegar Presidencia y verificar auto-protección (Presidente, Secretario de Estaca y Pablo)
+    await page.getByTestId('org-accordion-toggle-PRESIDENCIA').click();
     await expect(page.getByTestId('toggle-access-pres-presidente')).toBeDisabled();
+    await expect(page.getByTestId('toggle-access-pres-secretario')).toBeDisabled();
+    await expect(page.getByTestId('toggle-access-pres-secretario-financiero')).toBeDisabled();
 
-    // Editar 1ª Consejera de MJ y probar validación estricta de celular y @gmail.com
+    // Regla combinada de Limpiar campos: bloqueado en sí mismo, habilitado en Presidente
+    await page.getByTestId('edit-btn-pres-secretario-financiero').click();
+    await expect(page.getByTestId('clear-fields-pres-secretario-financiero')).toBeDisabled();
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+
+    await page.getByTestId('edit-btn-pres-presidente').click();
+    await expect(page.getByTestId('clear-fields-pres-presidente')).toBeEnabled();
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+
+    // Desplegar MJ y probar validación estricta de celular y @gmail.com
+    await page.getByTestId('org-accordion-toggle-MJ').click();
     await page.getByTestId('edit-btn-mj-consejera-1').click();
     const row = page.getByTestId('directory-row-mj-consejera-1');
 
     await row.getByPlaceholder('Nombre', { exact: true }).fill('Sofía');
     await row.getByPlaceholder('Apellido', { exact: true }).fill('Gómez');
-    await row.getByPlaceholder('099123456').fill('091234'); // inválido (< 9 dígitos)
+    await row.getByPlaceholder('099123456').fill('091234');
     await page.getByTestId('save-edit-mj-consejera-1').click();
     await expect(row).toContainText('Celular inválido: debe ingresarse 09xxxxxxx');
 
     await row.getByPlaceholder('099123456').fill('099888777');
-    await row.getByPlaceholder('nombre@gmail.com').fill('sofia@hotmail.com'); // no Gmail
+    await row.getByPlaceholder('nombre@gmail.com').fill('sofia@hotmail.com');
     await page.getByTestId('save-edit-mj-consejera-1').click();
     await expect(row).toContainText('solo se permiten cuentas @gmail.com');
 
-    // Guardar válido sin Gmail para disparar alerta de datos incompletos
+    // Guardar válido sin Gmail para disparar badge de incompleto y alerta parpadeante en Hub
     await row.getByPlaceholder('nombre@gmail.com').fill('');
     await page.getByTestId('save-edit-mj-consejera-1').click();
-    await expect(page.getByTestId('incomplete-contacts-filter-btn')).toContainText('con datos incompletos');
+    await expect(page.getByTestId('org-incomplete-badge-MJ')).toContainText('1 incompleto');
 
-    // Volver al Dashboard de Presidencia y verificar alerta parpadeante
     await page.getByRole('button', { name: 'Panel' }).first().click();
     await expect(page.getByTestId('presidency-incomplete-contacts-alert')).toBeVisible();
   });
 
-  test('2. Límite de 3 extras en MJ y 2 auxiliares en CFS', async ({ page }) => {
+  test('2. Regla de relevo de Presidente/a (corrección conserva consejeros; relevo los vacía sin tocar Secretaria)', async ({
+    page,
+  }) => {
+    await openUsersPanel(page);
+    await page.getByTestId('org-accordion-toggle-MJ').click();
+
+    // Cargar 1ª Consejera y Secretaria en MJ
+    await page.getByTestId('edit-btn-mj-consejera-1').click();
+    const c1Row = page.getByTestId('directory-row-mj-consejera-1');
+    await c1Row.getByPlaceholder('Nombre', { exact: true }).fill('Elena');
+    await c1Row.getByPlaceholder('Apellido', { exact: true }).fill('Pérez');
+    await page.getByTestId('save-edit-mj-consejera-1').click();
+    await expect(c1Row).toContainText('Elena Pérez');
+
+    await page.getByTestId('edit-btn-mj-secretaria').click();
+    const secRow = page.getByTestId('directory-row-mj-secretaria');
+    await secRow.getByPlaceholder('Nombre', { exact: true }).fill('Marta');
+    await secRow.getByPlaceholder('Apellido', { exact: true }).fill('López');
+    await page.getByTestId('save-edit-mj-secretaria').click();
+    await expect(secRow).toContainText('Marta López');
+
+    // Editar Presidenta -> Solo corrección de datos: consejera y secretaria permanecen
+    await page.getByTestId('edit-btn-mj-presidenta').click();
+    const presRow = page.getByTestId('directory-row-mj-presidenta');
+    await presRow.getByPlaceholder('099123456').fill('099201102');
+    await page.getByTestId('save-edit-mj-presidenta').click();
+    await expect(page.getByTestId('presidency-release-modal')).toBeVisible();
+    await page.getByTestId('president-correction-only-btn').click();
+    await expect(c1Row).toContainText('Elena Pérez');
+    await expect(secRow).toContainText('Marta López');
+
+    // Editar Presidenta -> Nuevo Presidente/a (relevo): borra consejeras, conserva secretaria
+    await page.getByTestId('edit-btn-mj-presidenta').click();
+    await presRow.getByPlaceholder('Nombre', { exact: true }).fill('Ana');
+    await presRow.getByPlaceholder('Apellido', { exact: true }).fill('Silva');
+    await page.getByTestId('save-edit-mj-presidenta').click();
+    await expect(page.getByTestId('presidency-release-modal')).toBeVisible();
+    await page.getByTestId('president-new-release-btn').click();
+
+    await expect(c1Row).toContainText('Puesto vacante');
+    await expect(secRow).toContainText('Marta López');
+  });
+
+  test('3. Límite de 3 extras en MJ y 2 auxiliares en CFS', async ({ page }) => {
     await openUsersPanel(page);
 
-    // Agregar 2 auxiliares en CFS (máximo 2)
+    await page.getByTestId('org-accordion-toggle-CFS').click();
     for (let i = 1; i <= 2; i++) {
       await page.getByTestId('add-extra-btn-CFS').click();
       const cfsCard = page.getByTestId('org-card-CFS');
@@ -86,7 +147,7 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     }
     await expect(page.getByTestId('add-extra-btn-CFS')).toBeDisabled();
 
-    // Agregar 3 extras en MJ (máximo 3)
+    await page.getByTestId('org-accordion-toggle-MJ').click();
     for (let i = 1; i <= 3; i++) {
       await page.getByTestId('add-extra-btn-MJ').click();
       const mjCard = page.getByTestId('org-card-MJ');
@@ -97,7 +158,7 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     await expect(page.getByTestId('add-extra-btn-MJ')).toBeDisabled();
   });
 
-  test('3. Directorio de Líderes muestra celular en grupos de 3 dígitos con Copiar y WhatsApp', async ({
+  test('4. Directorio de Líderes muestra celular en grupos de 3 dígitos con Copiar y WhatsApp', async ({
     page,
   }) => {
     await openDirectoryView(page);

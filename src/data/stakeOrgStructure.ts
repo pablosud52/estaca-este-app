@@ -62,8 +62,9 @@ export const STAKE_ORG_STRUCTURE: DirectoryOrgDefinition[] = [
       {
         slot_key: 'pres-secretario',
         calling: 'Secretario de Estaca',
-        defaultRole: 'PRESIDENCIA',
-        defaultCanApprove: false,
+        defaultRole: 'ADMIN',
+        defaultCanApprove: true,
+        isPermanentAdmin: true,
       },
       {
         slot_key: 'pres-secretario-ejecutivo',
@@ -74,9 +75,9 @@ export const STAKE_ORG_STRUCTURE: DirectoryOrgDefinition[] = [
       {
         slot_key: 'pres-secretario-financiero',
         calling: 'Secretario Financiero',
-        defaultRole: 'ADMIN',
+        defaultRole: 'PRESIDENCIA',
         defaultCanApprove: true,
-        isPermanentAdmin: true,
+        isPermanentAdmin: false,
       },
     ],
   },
@@ -277,3 +278,16 @@ export const DIRECTORY_ORG_BY_CODE: Record<DirectoryOrgCode, DirectoryOrgDefinit
     acc[item.code] = item;
     return acc;
   }, {} as Record<DirectoryOrgCode, DirectoryOrgDefinition>);
+
+/**
+ * Mapa de relevo en cascada: al relevar/vaciar al Presidente/a de estas organizaciones,
+ * se vacían automáticamente sus dos consejeros (sin tocar secretarios ni auxiliares).
+ */
+export const PRESIDENCY_COUNSELOR_SLOTS: Record<string, string[]> = {
+  'pres-presidente': ['pres-consejero-1', 'pres-consejero-2'],
+  'ss-presidenta': ['ss-consejera-1', 'ss-consejera-2'],
+  'hj-presidente': ['hj-consejero-1', 'hj-consejero-2'],
+  'mj-presidenta': ['mj-consejera-1', 'mj-consejera-2'],
+  'ed-presidente': ['ed-consejero-1', 'ed-consejero-2'],
+  'prim-presidenta': ['prim-consejera-1', 'prim-consejera-2'],
+};

@@ -43,7 +43,9 @@ Mantener la tabla plana actual de usuarios y gestionar el Directorio de Líderes
 
 ## What the user can do
 - **Administrador en Gestión de Usuarios:**
-  - Ver las organizaciones separadas en tarjetas/bloques según el organigrama oficial: Presidencia (6 fijos), Sumo Consejo (12 fijos), Sociedad de Socorro (4 fijos), Hombres Jóvenes (4 fijos), Mujeres Jóvenes (4 fijos), Escuela Dominical (4 fijos), Primaria (4 fijos), JAS (2 fijos), AS (2 fijos: varón y mujer), Bienestar y Autosuficiencia (3 fijos), Música (3 fijos) y Centro FamilySearch / CFS (1 fijo: Director/a CFS).
+  - Ver las organizaciones separadas en tarjetas/acordeones colapsables (todas plegadas por defecto al ingresar, sin buscador en esta vista de administración) mostrando en cada cabecera cuántos cargados tiene y cuántos tienen datos incompletos.
+  - Al editar un puesto, usar el botón **`Limpiar campos`** (reversible con Cancelar antes de guardar). En **Sumo Consejo**, limpiar una persona borra también su puesto vinculado en otra organización.
+  - Al vaciar o reemplazar al **Presidente/a** de una organización con consejeros (`Presidencia`, `SS`, `HJ`, `MJ`, `Escuela Dominical`, `Primaria`), el sistema confirma si es corrección o relevo; si es relevo o vaciado, borra automáticamente a **1° y 2° Consejero/a** (sin tocar Secretarios ni Auxiliares, y conservando la fila en Sumo Consejo si un consejero estaba vinculado desde allí).
   - Cargar y editar por cada puesto: **Nombre**, **Apellido**, **Teléfono móvil** (opcional; al ingresarse debe validarse como `09xxxxxxx` todo junto sin espacios, 9 dígitos) y **Correo Gmail** (opcional hasta habilitar acceso, obligatorio formato `@gmail.com` si se ingresa).
   - En **Sumo Consejo**, registrar además **Unidad asignada** y **Organización / Comité asignado**, y vincular a una persona ya cargada en otro puesto (por ejemplo, Presidente o Consejero de HJ o ED) sin duplicar sus datos personales.
   - Al final de cada organización (excepto Sumo Consejo), usar el botón para agregar integrantes adicionales con rol seleccionable (`Secretario Auxiliar`, `Asesor` o `Ingresar manualmente`) hasta un máximo de **3** por organización (y máximo **2** auxiliares en **CFS**).
@@ -59,7 +61,7 @@ Mantener la tabla plana actual de usuarios y gestionar el Directorio de Líderes
 - Cuando existen contactos sin teléfono móvil o sin correo Gmail, tanto la cabecera de Gestión de Usuarios como el Hub de Presidencia muestran un aviso visible con indicador parpadeante.
 
 ## What it must respect
-- **Regla de Administradores Permanentes:** El Presidente de Estaca y el Propietario del Sistema (`pablosud52@gmail.com`) son administradores inmutables; ningún administrador puede revocarse sus propios permisos ni desactivarse a sí mismo.
+- **Regla de Administradores Permanentes:** El **Presidente de Estaca** y el **Secretario de Estaca** son los dos administradores permanentes del organigrama, y `pablosud52@gmail.com` es el Propietario / Super-Admin vitalicio por correo. Ningún administrador puede limpiarse o desactivarse a sí mismo; entre los administradores permanentes sí pueden limpiarse mutuamente en caso de relevo.
 - **Exclusividad de Rol Administrador:** Solo integrantes de la Presidencia de Estaca (y `pablosud52@gmail.com`) pueden recibir el rol `ADMIN`.
 - **Aislamiento Organizacional y Confidencialidad:** Quienes tengan rol de consulta (Sumo Consejo sin HJ, Escuela Dominical, Bienestar, Música) nunca ven presupuestos, saldos, gastos ni costos estimados de actividades. Quienes pertenezcan a la presidencia de Hombres Jóvenes mantienen acceso inherente a Seminario.
 - **Trazabilidad histórica:** Las desactivaciones son bajas lógicas; no se borran registros históricos.

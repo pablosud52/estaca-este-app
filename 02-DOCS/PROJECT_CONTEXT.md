@@ -21,8 +21,8 @@ El **Sistema de Finanzas y Calendario de la Estaca** es una solución web modern
   - **Pablo Lamela (`pablosud52@gmail.com`)**: Administrador permanente inmutable vinculado directamente a su identidad de correo (`pablosud52@gmail.com`), **independientemente de su llamamiento u organización actual o futura** (incluso si en el futuro deja de ser Secretario Financiero o miembro de la Presidencia). Es además el **único usuario con acceso exclusivo al Selector Rápido de Cambio de Rol (Simulador RBAC)** en producción.
 - **Presidencia de Estaca (6 integrantes)**:
   - Presidente *(Administrador permanente no revocable)*
-  - Secretario Financiero - Usuario principal *(Administrador permanente no revocable)*
-  - Secretario de Estaca *(Administrador por defecto, gestionable)*
+  - Secretario de Estaca *(Administrador permanente no revocable)*
+  - Secretario Financiero *(Lectura ejecutiva / Dashboard; Pablo Lamela mantiene rango Super-Admin vitalicio por su correo `pablosud52@gmail.com`)*
   - Primer Consejero *(Lectura ejecutiva / Dashboard / Aprobación de actividades)*
   - Segundo Consejero *(Lectura ejecutiva / Dashboard / Aprobación de actividades)*
   - Secretario Ejecutivo *(Lectura ejecutiva / Dashboard)*

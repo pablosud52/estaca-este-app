@@ -103,6 +103,12 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     }
   }, [initialFilterIncomplete, directoryEntries]);
 
+  useEffect(() => {
+    if (incompleteContactsCount === 0 && onlyIncomplete) {
+      setOnlyIncomplete(false);
+    }
+  }, [incompleteContactsCount, onlyIncomplete]);
+
   const [toastMsg, setToastMsg] = useState<{ text: string; isError?: boolean } | null>(null);
 
   // Edición inline de un puesto
@@ -406,38 +412,38 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
       data-testid="user-management-panel"
       className="space-y-4"
     >
-      {/* 1. CABECERA COMPACTA CON FILTRO DE CONTACTOS INCOMPLETOS */}
-      <div className="bg-white rounded-3xl px-5 py-4 shadow-sm border border-slate-200/90 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
-            Organigrama y Gestión de Usuarios
-          </h2>
-          <p className="text-xs text-slate-500">
-            Administra los llamamientos por organización y habilita el acceso a la aplicación.
-          </p>
-        </div>
+      {/* 1. TÍTULO DE SECCIÓN */}
+      <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
+        Gestión de Usuarios
+      </h2>
 
-        {/* Recordatorio de Contactos Incompletos */}
+      {/* Aviso parpadeante de datos incompletos (solo visible cuando faltan datos) */}
+      {incompleteContactsCount > 0 && (
         <button
           type="button"
           data-testid="incomplete-contacts-filter-btn"
           onClick={handleToggleOnlyIncomplete}
-          className={`pressable inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap border transition ${
+          className={`w-full rounded-2xl px-4 py-3 border-2 flex items-center justify-between gap-3 text-left transition animate-pulse ${
             onlyIncomplete
-              ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
-              : incompleteContactsCount > 0
-                ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
-                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-md'
+              : 'bg-amber-50 text-amber-950 border-amber-400 hover:bg-amber-100'
           }`}
         >
-          <AlertTriangle className="w-4 h-4 text-amber-600" />
-          <span>
-            {incompleteContactsCount > 0
-              ? `${incompleteContactsCount} con datos incompletos`
-              : 'Todos los contactos completos'}
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <span className="text-xs sm:text-sm font-extrabold">
+              {incompleteContactsCount}{' '}
+              {incompleteContactsCount === 1
+                ? 'contacto con datos incompletos'
+                : 'contactos con datos incompletos'}{' '}
+              (falta celular o Gmail)
+            </span>
+          </div>
+          <span className="text-xs font-extrabold underline whitespace-nowrap">
+            {onlyIncomplete ? 'Ver todas' : 'Filtrar'}
           </span>
         </button>
-      </div>
+      )}
 
       {/* Modal de Información: Seguridad de administradores */}
       {isSecurityInfoOpen && (
@@ -666,68 +672,66 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
               className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
             >
               {/* Cabecera Acordeón */}
-              <button
-                type="button"
-                data-testid={`org-accordion-toggle-${orgDef.code}`}
-                aria-expanded={isExpanded}
-                onClick={() => toggleOrgAccordion(orgDef.code)}
-                className="w-full px-5 py-4 bg-slate-50 hover:bg-slate-100/80 transition flex flex-wrap items-center justify-between gap-2 text-left"
-              >
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <Users className="w-4 h-4 text-emerald-700 flex-shrink-0" />
-                  <h3 className="text-sm font-extrabold text-slate-900">{orgDef.label}</h3>
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                      orgDef.hasBudget
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                    }`}
-                  >
-                    {orgDef.hasBudget ? 'Con Presupuesto' : 'Directorio · Calendario · Proveedores'}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2.5">
-                  {incompleteInOrg > 0 && (
+              <div className="w-full px-5 py-4 bg-slate-50 hover:bg-slate-100/80 transition flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  data-testid={`org-accordion-toggle-${orgDef.code}`}
+                  aria-expanded={isExpanded}
+                  onClick={() => toggleOrgAccordion(orgDef.code)}
+                  className="flex-1 flex flex-wrap items-center justify-between gap-2 text-left"
+                >
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <Users className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <h3 className="text-sm font-extrabold text-slate-900">{orgDef.label}</h3>
                     <span
-                      data-testid={`org-incomplete-badge-${orgDef.code}`}
-                      className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300"
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                        orgDef.hasBudget
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                      }`}
                     >
-                      <AlertTriangle className="w-3 h-3" />
-                      {incompleteInOrg} {incompleteInOrg === 1 ? 'incompleto' : 'incompletos'}
+                      {orgDef.hasBudget ? 'Con Presupuesto' : 'Directorio · Calendario · Proveedores'}
                     </span>
-                  )}
-                  <span className="text-xs font-bold text-slate-500">
-                    {loadedInOrg} / {orgEntries.length} cargados
-                  </span>
-                  {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-slate-500" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-500" />
-                  )}
-                </div>
-              </button>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    {incompleteInOrg > 0 && (
+                      <span
+                        data-testid={`org-incomplete-badge-${orgDef.code}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300"
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                        {incompleteInOrg} {incompleteInOrg === 1 ? 'incompleto' : 'incompletos'}
+                      </span>
+                    )}
+                    <span className="text-xs font-bold text-slate-500">
+                      {loadedInOrg} / {orgEntries.length} cargados
+                    </span>
+                    {isExpanded ? (
+                      <ChevronUp className="w-4 h-4 text-slate-500" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-slate-500" />
+                    )}
+                  </div>
+                </button>
+
+                {orgDef.code === 'PRESIDENCIA' && isExpanded && (
+                  <button
+                    type="button"
+                    data-testid="admin-security-info-btn"
+                    onClick={() => setIsSecurityInfoOpen(true)}
+                    aria-label="Seguridad de administradores"
+                    title="Seguridad de administradores"
+                    className="p-1.5 rounded-full text-sky-600 hover:bg-sky-100 transition flex-shrink-0"
+                  >
+                    <Info className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
 
               {/* Contenido Desplegable */}
               {isExpanded && (
                 <>
-                  {orgDef.code === 'PRESIDENCIA' && (
-                    <div className="px-5 py-2.5 bg-amber-50/70 border-t border-amber-200/70 flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-bold text-amber-900">
-                        Administradores permanentes: Presidente y Secretario de Estaca
-                      </span>
-                      <button
-                        type="button"
-                        data-testid="admin-security-info-btn"
-                        onClick={() => setIsSecurityInfoOpen(true)}
-                        aria-label="Seguridad de administradores"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 text-[11px] font-extrabold transition"
-                      >
-                        <Info className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Info seguridad</span>
-                      </button>
-                    </div>
-                  )}
                   <div className="divide-y divide-slate-100 border-t border-slate-200">
                     {visibleEntries.map((entry) => {
                       const isEditing = editingId === entry.id;

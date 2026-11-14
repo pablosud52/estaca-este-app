@@ -37,7 +37,8 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
   }) => {
     await openUsersPanel(page);
 
-    // Verificar organizaciones principales plegadas por defecto
+    // Verificar organizaciones principales plegadas por defecto y aviso de incompletos oculto al estar todo completo
+    await expect(page.getByTestId('incomplete-contacts-filter-btn')).toBeHidden();
     await expect(page.getByTestId('org-accordion-toggle-PRESIDENCIA')).toHaveAttribute(
       'aria-expanded',
       'false'

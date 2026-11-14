@@ -59,18 +59,42 @@ const STORAGE_KEY = 'estaca_este_active_profile_id';
 const SWITCHER_VISIBILITY_KEY = 'estaca_este_role_switcher_visible';
 const DIRECTORY_STORAGE_KEY = 'estaca_este_directory_entries_v1';
 
+const normalizeDirectoryEntries = (entries: StakeDirectoryEntry[]): StakeDirectoryEntry[] =>
+  entries.map((entry) => {
+    const isSuper = isSuperAdminEmail(entry.email);
+    if (entry.slot_key === 'pres-presidente' || entry.slot_key === 'pres-secretario') {
+      return {
+        ...entry,
+        role: 'ADMIN',
+        is_permanent_admin: true,
+        can_approve_activities: true,
+      };
+    }
+    if (entry.slot_key === 'pres-secretario-financiero') {
+      return {
+        ...entry,
+        role: isSuper ? 'ADMIN' : entry.role === 'ADMIN' ? 'PRESIDENCIA' : entry.role,
+        is_permanent_admin: isSuper,
+        can_approve_activities: isSuper ? true : entry.can_approve_activities,
+      };
+    }
+    return entry;
+  });
+
 const loadInitialDirectory = (): StakeDirectoryEntry[] => {
   if (typeof window === 'undefined') return buildInitialDirectoryEntries();
   try {
     const raw = localStorage.getItem(DIRECTORY_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as StakeDirectoryEntry[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return normalizeDirectoryEntries(parsed);
+      }
     }
   } catch {
     // Fallback a semilla
   }
-  return buildInitialDirectoryEntries();
+  return normalizeDirectoryEntries(buildInitialDirectoryEntries());
 };
 
 const saveDirectoryLocal = (entries: StakeDirectoryEntry[]) => {

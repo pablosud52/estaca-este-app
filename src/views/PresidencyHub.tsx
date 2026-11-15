@@ -5,6 +5,7 @@ import {
   Building2,
   Calendar,
   ChevronDown,
+  ChevronRight,
   FileEdit,
   LayoutDashboard,
   Shield,
@@ -1304,31 +1305,27 @@ export const PresidencyHub: React.FC = () => {
           />
         ) : (
           <>
-            {/* ALERTA PARPADEANTE DE CONTACTOS INCOMPLETOS EN PRESIDENCIA */}
+            {/* ALERTA ACCIONABLE DE CONTACTOS INCOMPLETOS EN PRESIDENCIA */}
             {incompleteContactsCount > 0 && (
-              <div
+              <button
+                type="button"
                 data-testid="presidency-incomplete-contacts-alert"
-                className="rounded-2xl bg-amber-50 border-2 border-amber-400 p-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-pulse"
+                onClick={() => {
+                  setOpenUsersWithIncompleteFilter(true);
+                  setActiveTab('USERS');
+                }}
+                className="pressable w-full text-left rounded-2xl bg-amber-50 border-2 border-amber-400 p-3.5 sm:px-5 flex items-center justify-between gap-3 shadow-sm animate-pulse hover:bg-amber-100/80 transition group cursor-pointer"
               >
-                <div className="flex items-center gap-2.5 text-amber-950">
+                <div className="flex items-center gap-2.5 text-amber-950 min-w-0">
                   <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                  <p className="text-xs sm:text-sm font-extrabold">
-                    Hay {incompleteContactsCount} {incompleteContactsCount === 1 ? 'contacto' : 'contactos'} en el Directorio de Líderes con datos incompletos (falta celular o Gmail).
+                  <p className="text-xs sm:text-sm font-extrabold truncate sm:whitespace-normal">
+                    {incompleteContactsCount === 1
+                      ? '1 contacto en el Directorio incompleto.'
+                      : `${incompleteContactsCount} contactos en el Directorio incompletos.`}
                   </p>
                 </div>
-                {user.role === 'ADMIN' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpenUsersWithIncompleteFilter(true);
-                      setActiveTab('USERS');
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-extrabold transition"
-                  >
-                    Completar ahora
-                  </button>
-                )}
-              </div>
+                <ChevronRight className="w-4 h-4 text-amber-700 flex-shrink-0 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition" />
+              </button>
             )}
 
             {/* 1. TARJETA MAESTRA DE FONDOS (KPI PRINCIPAL) */}

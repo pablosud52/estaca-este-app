@@ -160,12 +160,12 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
         ) : isInCooldown ? (
           <>
             <Check className="w-3.5 h-3.5 text-emerald-700" />
-            <span>✓ Calendario al día</span>
+            <span>Calendario al día</span>
           </>
         ) : (
           <>
             <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
-            <span>🔄 Sincronizar</span>
+            <span>Sincronizar</span>
           </>
         )}
       </button>
@@ -177,7 +177,7 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
         >
           <Clock className="w-3 h-3 text-slate-400 flex-shrink-0" />
           <span>
-            ⏱️ Próxima sincronización manual disponible en{' '}
+            Próxima sincronización manual disponible en{' '}
             <strong
               data-testid="lcr-sync-countdown-value"
               className="font-extrabold text-slate-700"

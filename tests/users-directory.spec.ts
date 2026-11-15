@@ -107,7 +107,13 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     } else {
       await page.getByTestId('hub-nav-dashboard').click();
     }
-    await expect(page.getByTestId('presidency-incomplete-contacts-alert')).toBeVisible();
+    const incompleteAlert = page.getByTestId('presidency-incomplete-contacts-alert');
+    await expect(incompleteAlert).toBeVisible();
+    await expect(incompleteAlert).toContainText('1 contacto en el Directorio incompleto.');
+
+    // Probar que al tocar todo el cartel se ingresa directamente a Gestión de Usuarios
+    await incompleteAlert.click();
+    await expect(page.getByTestId('user-management-panel')).toBeVisible();
   });
 
   test('2. Regla de relevo de Presidente/a (corrección conserva consejeros; relevo los vacía sin tocar Secretaria)', async ({

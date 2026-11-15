@@ -116,19 +116,19 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
 
     await expect(page.getByTestId('calendar-general-view')).toBeVisible();
 
-    // 2.1 Verificar estado inicial del botón: "🔄 Sincronizar" habilitado
+    // 2.1 Verificar estado inicial del botón: "Sincronizar" habilitado
     const syncBtn = page.getByTestId('lcr-sync-button');
     await expect(syncBtn).toBeEnabled();
-    await expect(syncBtn).toContainText('🔄 Sincronizar');
+    await expect(syncBtn).toContainText('Sincronizar');
 
-    // 1ª Pulsación: pasa a Sincronizando... y luego a "✓ Calendario al día" (deshabilitado) con cuenta regresiva de 30s
+    // 1ª Pulsación: pasa a Sincronizando... y luego a "Calendario al día" (deshabilitado) con cuenta regresiva de 30s
     await syncBtn.click();
     await expect(syncBtn).toBeDisabled();
-    await expect(syncBtn).toContainText('✓ Calendario al día');
+    await expect(syncBtn).toContainText('Calendario al día');
 
     const cooldownHint = page.getByTestId('lcr-sync-cooldown-hint');
     await expect(cooldownHint).toBeVisible();
-    await expect(cooldownHint).toContainText('⏱️ Próxima sincronización manual disponible en');
+    await expect(cooldownHint).toContainText('Próxima sincronización manual disponible en');
     await expect(page.getByTestId('lcr-sync-countdown-value')).toContainText('s');
 
     const artifactDir =

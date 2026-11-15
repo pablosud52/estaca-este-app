@@ -140,30 +140,31 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
         data-click-count={consecutiveClicks}
         disabled={isSyncing || isInCooldown}
         onClick={handleManualClick}
-        className={`pressable inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold transition shadow-sm ${
+        title="Sincronización automática activa. Úsalo solo si cargaste cambios recientes en LCR."
+        className={`pressable inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
           isSyncing
             ? 'bg-slate-800 text-white cursor-wait opacity-90'
             : isInCooldown
-            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 cursor-not-allowed'
-            : 'bg-emerald-800 hover:bg-emerald-900 text-white'
+            ? 'bg-slate-100 text-slate-600 border border-slate-200 cursor-not-allowed'
+            : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/90'
         }`}
       >
         {isSyncing ? (
           <>
             <Loader2
               data-testid="lcr-sync-spinner"
-              className="w-4 h-4 animate-spin text-emerald-300"
+              className="w-3.5 h-3.5 animate-spin text-slate-300"
             />
             <span>Sincronizando...</span>
           </>
         ) : isInCooldown ? (
           <>
-            <Check className="w-4 h-4 text-emerald-700" />
+            <Check className="w-3.5 h-3.5 text-emerald-700" />
             <span>✓ Calendario al día</span>
           </>
         ) : (
           <>
-            <RefreshCw className="w-4 h-4 text-emerald-200" />
+            <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
             <span>🔄 Sincronizar</span>
           </>
         )}

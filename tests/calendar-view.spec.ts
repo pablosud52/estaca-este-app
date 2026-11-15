@@ -31,24 +31,33 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
 
     const scrollContainer = page.getByTestId('calendar-view-scroll-container');
 
-    // Verificar auto-enfoque hacia la próxima actividad futura (scrollTop > 0)
+    // Al entrar como Líder de Primaria, el filtro arranca automáticamente en su organización (Primaria) y SÍ ve su costo ($ 12.394,00)
+    await expect(
+      scrollContainer.getByText('Viaje al Templo niños que avanzan a HJ/MJ')
+    ).toBeVisible();
+    await expect(scrollContainer.getByText('$ 12.394,00')).toBeVisible();
+
+    // Cambiar filtro a [ Todas ] para verificar auto-enfoque hacia la próxima actividad futura (scrollTop > 0)
+    await page.getByTestId('calendar-org-filter-trigger').click();
+    await page.getByTestId('calendar-filter-all').click();
     await expect
       .poll(async () => {
         return await scrollContainer.evaluate((el) => el.scrollTop);
       })
       .toBeGreaterThan(0);
 
-    // Filtrar por píldora [ Jóvenes ]: Líder de Primaria ve el Campeonato de Vóley HHJJ y MMJJ ($ 10.000,00) y Campamento Anual HJ y MJ ($ 63.976,00), pero SIN distintivo 💰 Con Presupuesto ni monto
-    await page.getByTestId('calendar-pill-JOVENES').click();
+    // Filtrar por [ Jóvenes (HJ + MJ) ]: Líder de Primaria ve el Campeonato de Vóley HHJJ y MMJJ ($ 10.000,00) y Campamento Anual HJ y MJ ($ 63.976,00), pero SIN monto de costo
+    await page.getByTestId('calendar-org-filter-trigger').click();
+    await page.getByTestId('calendar-filter-jovenes').click();
     await expect(scrollContainer.getByText('Campeonato de Vóley HHJJ y MMJJ')).toBeVisible();
     await expect(scrollContainer.getByText('Campamento Anual HJ y MJ')).toBeVisible();
-    await expect(page.getByTestId('calendar-confidential-budget-badge')).toHaveCount(0);
     await expect(page.getByTestId('calendar-confidential-budget-amount')).toHaveCount(0);
     await expect(scrollContainer.getByText('$ 10.000,00')).toHaveCount(0);
     await expect(scrollContainer.getByText('$ 63.976,00')).toHaveCount(0);
 
-    // Filtrar por píldora [ Primaria ]: Líder de Primaria SÍ ve el costo de su propia organización (Viaje al Templo $ 12.394,00)
-    await page.getByTestId('calendar-pill-PRIMARIA').click();
+    // Volver a [ Solo mi org ] (Primaria): Líder de Primaria SÍ ve el costo de su propia organización (Viaje al Templo $ 12.394,00)
+    await page.getByTestId('calendar-org-filter-trigger').click();
+    await page.getByTestId('calendar-filter-mine').click();
     await expect(
       scrollContainer.getByText('Viaje al Templo niños que avanzan a HJ/MJ')
     ).toBeVisible();
@@ -79,14 +88,15 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
 
     await expect(page.getByTestId('calendar-general-view')).toBeVisible();
 
-    // En la píldora [ Jóvenes ], Presidencia SÍ ve el badge "💰 Con Presupuesto" y los montos "$ 10.000,00" y "$ 63.976,00"
-    await page.getByTestId('calendar-pill-JOVENES').click();
+    // En el filtro [ Jóvenes (HJ + MJ) ], Presidencia SÍ ve el bloque de Costo Estimado y los montos "$ 10.000,00" y "$ 63.976,00"
+    await page.getByTestId('calendar-org-filter-trigger').click();
+    await page.getByTestId('calendar-filter-jovenes').click();
     const presScroll = page.getByTestId('calendar-view-scroll-container');
     await expect(presScroll.getByText('Campeonato de Vóley HHJJ y MMJJ')).toBeVisible();
     await expect(presScroll.getByText('Campamento Anual HJ y MJ')).toBeVisible();
     await expect(presScroll.getByText('$ 10.000,00')).toBeVisible();
     await expect(presScroll.getByText('$ 63.976,00')).toBeVisible();
-    await expect(page.getByTestId('calendar-confidential-budget-badge').first()).toBeVisible();
+    await expect(page.getByTestId('calendar-confidential-budget-amount').first()).toBeVisible();
   });
 
   test('2. Escudo en el Botón Manual ("🔄 Sincronizar"), cuenta regresiva de 30s, escalado a 10m en la 4ª pulsación, filtros por píldoras y buscador en tiempo real', async ({
@@ -161,9 +171,10 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
       scrollContainer.getByRole('heading', { name: 'Consejo de Estaca' })
     ).toHaveCount(0);
 
-    // Limpiar búsqueda y verificar píldora [ Estaca General ]
+    // Limpiar búsqueda y verificar filtro [ Estaca General ]
     await page.getByTestId('calendar-search-clear').click();
-    await page.getByTestId('calendar-pill-ESTACA_GENERAL').click();
+    await page.getByTestId('calendar-org-filter-trigger').click();
+    await page.getByTestId('calendar-filter-org-ESTACA').click();
     await expect(
       scrollContainer.getByRole('heading', { name: 'Consejo de Estaca' })
     ).toBeVisible();

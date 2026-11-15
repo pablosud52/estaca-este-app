@@ -78,7 +78,10 @@ export interface BudgetAllocation {
 export interface ExpenseRecord {
   id: number;
   ref_number: string | null;
-  expense_date: string; // YYYY-MM-DD
+  expense_date: string; // YYYY-MM-DD (Fecha contable / rendición LCR — uso interno admin)
+  activity_date?: string; // YYYY-MM-DD (Fecha en que se hace la actividad — visible al líder y define el trimestre)
+  activity_id?: number | null; // Vínculo opcional con una actividad del calendario
+  shared_group_id?: string | null; // Agrupa las cuotas de un mismo movimiento LCR compartido entre 2+ organizaciones
   organization: OrganizationCode;
   supplier_name: string;
   concept: string;

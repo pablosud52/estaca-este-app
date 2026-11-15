@@ -27,6 +27,7 @@ import {
 import {
   formatCurrency,
   formatDate,
+  getExpenseEffectiveDate,
   getQuarterFromDate,
   ORGANIZATION_LABELS,
 } from '../lib/formatters';
@@ -324,7 +325,7 @@ export const PresidencyHub: React.FC = () => {
   const executiveMetrics = useMemo(() => {
     const yearBudgets = budgets.filter((b) => Number(b.year) === selectedYear);
     const yearExpenses = expenses.filter((e) =>
-      e.expense_date.startsWith(String(selectedYear))
+      getExpenseEffectiveDate(e).startsWith(String(selectedYear))
     );
 
     const nonReimbursableExpenses = yearExpenses.filter((e) => !e.is_reimbursable_oai);
@@ -366,7 +367,7 @@ export const PresidencyHub: React.FC = () => {
 
     const qSpent: Record<QuarterCode, number> = { T1: 0, T2: 0, T3: 0, T4: 0 };
     nonReimbursableExpenses.forEach((e) => {
-      const q = getQuarterFromDate(e.expense_date);
+      const q = getQuarterFromDate(getExpenseEffectiveDate(e));
       qSpent[q] += Number(e.net_amount);
     });
 
@@ -437,25 +438,25 @@ export const PresidencyHub: React.FC = () => {
 
       const t1_spent = Number(
         orgExpenses
-          .filter((e) => getQuarterFromDate(e.expense_date) === 'T1')
+          .filter((e) => getQuarterFromDate(getExpenseEffectiveDate(e)) === 'T1')
           .reduce((acc, e) => acc + Number(e.net_amount), 0)
           .toFixed(2)
       );
       const t2_spent = Number(
         orgExpenses
-          .filter((e) => getQuarterFromDate(e.expense_date) === 'T2')
+          .filter((e) => getQuarterFromDate(getExpenseEffectiveDate(e)) === 'T2')
           .reduce((acc, e) => acc + Number(e.net_amount), 0)
           .toFixed(2)
       );
       const t3_spent = Number(
         orgExpenses
-          .filter((e) => getQuarterFromDate(e.expense_date) === 'T3')
+          .filter((e) => getQuarterFromDate(getExpenseEffectiveDate(e)) === 'T3')
           .reduce((acc, e) => acc + Number(e.net_amount), 0)
           .toFixed(2)
       );
       const t4_spent = Number(
         orgExpenses
-          .filter((e) => getQuarterFromDate(e.expense_date) === 'T4')
+          .filter((e) => getQuarterFromDate(getExpenseEffectiveDate(e)) === 'T4')
           .reduce((acc, e) => acc + Number(e.net_amount), 0)
           .toFixed(2)
       );
@@ -508,8 +509,8 @@ export const PresidencyHub: React.FC = () => {
   const selectedQuarterExpenses = useMemo(() => {
     if (!selectedQuarterModal) return [];
     return executiveMetrics.nonReimbursableExpenses
-      .filter((e) => getQuarterFromDate(e.expense_date) === selectedQuarterModal)
-      .sort((a, b) => b.expense_date.localeCompare(a.expense_date));
+      .filter((e) => getQuarterFromDate(getExpenseEffectiveDate(e)) === selectedQuarterModal)
+      .sort((a, b) => getExpenseEffectiveDate(b).localeCompare(getExpenseEffectiveDate(a)));
   }, [executiveMetrics.nonReimbursableExpenses, selectedQuarterModal]);
 
   const selectedQuarterSummary = useMemo(
@@ -663,6 +664,166 @@ export const PresidencyHub: React.FC = () => {
         await supabase.from('expenses').update({ status: 'REGISTRADO_LCR' }).eq('id', id);
       } catch {
         // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleReconcileLcrExpenseGroup = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    setExpenses((prev) =>
+      prev.map((e) => (ids.includes(e.id) ? { ...e, status: 'REGISTRADO_LCR' } : e))
+    );
+    if (!isSimulating) {
+      try {
+        await supabase.from('expenses').update({ status: 'REGISTRADO_LCR' }).in('id', ids);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleSaveExpenseGroup = async (
+    records: Array<Omit<ExpenseRecord, 'id'>>,
+    existingIds?: number[]
+  ) => {
+    const baseId = Date.now();
+    const localRecords: ExpenseRecord[] = records.map((item, idx) => ({
+      ...item,
+      id: baseId + idx,
+    }));
+
+    setExpenses((prev) => {
+      const remaining = existingIds?.length
+        ? prev.filter((e) => !existingIds.includes(e.id))
+        : prev;
+      return [...localRecords, ...remaining];
+    });
+
+    if (!isSimulating) {
+      try {
+        if (existingIds && existingIds.length > 0) {
+          await supabase.from('expenses').delete().in('id', existingIds);
+        }
+        const dbPayloads = records.map(({ net_amount: _ignored, ...rest }) => rest);
+        const { data } = await supabase.from('expenses').insert(dbPayloads).select();
+        if (data && data.length > 0) {
+          const inserted = data.map((e) => ({
+            ...e,
+            gross_amount: Number(e.gross_amount),
+            external_reimbursement: Number(e.external_reimbursement),
+            net_amount: Number(e.net_amount),
+          })) as ExpenseRecord[];
+          const tempIds = new Set(localRecords.map((r) => r.id));
+          setExpenses((prev) => [
+            ...inserted,
+            ...prev.filter((e) => !tempIds.has(e.id)),
+          ]);
+        }
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleDeleteExpenseGroup = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    setExpenses((prev) => prev.filter((e) => !ids.includes(e.id)));
+    if (!isSimulating) {
+      try {
+        await supabase.from('expenses').delete().in('id', ids);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleSaveBudgetAllocation = async (
+    allocation: Omit<BudgetAllocation, 'id' | 'total_assigned'> & { id?: number }
+  ) => {
+    const total = Number(
+      (
+        Number(allocation.t1_assigned) +
+        Number(allocation.t2_assigned) +
+        Number(allocation.t3_assigned) +
+        Number(allocation.t4_assigned)
+      ).toFixed(2)
+    );
+
+    const existing = budgets.find(
+      (b) =>
+        (allocation.id && b.id === allocation.id) ||
+        (Number(b.year) === Number(allocation.year) && b.organization === allocation.organization)
+    );
+
+    if (existing) {
+      const updated: BudgetAllocation = {
+        ...existing,
+        ...allocation,
+        total_assigned: total,
+      };
+      setBudgets((prev) => prev.map((b) => (b.id === existing.id ? updated : b)));
+
+      if (!isSimulating) {
+        try {
+          await supabase
+            .from('budget_allocations')
+            .update({
+              t1_assigned: allocation.t1_assigned,
+              t2_assigned: allocation.t2_assigned,
+              t3_assigned: allocation.t3_assigned,
+              t4_assigned: allocation.t4_assigned,
+              notes: allocation.notes ?? null,
+            })
+            .eq('id', existing.id);
+        } catch {
+          // Estado local ya actualizado
+        }
+      }
+    } else {
+      const tempId = Date.now();
+      const created: BudgetAllocation = {
+        id: tempId,
+        year: allocation.year,
+        organization: allocation.organization,
+        t1_assigned: allocation.t1_assigned,
+        t2_assigned: allocation.t2_assigned,
+        t3_assigned: allocation.t3_assigned,
+        t4_assigned: allocation.t4_assigned,
+        total_assigned: total,
+        notes: allocation.notes,
+      };
+      setBudgets((prev) => [...prev, created]);
+
+      if (!isSimulating) {
+        try {
+          const { data } = await supabase
+            .from('budget_allocations')
+            .insert([
+              {
+                year: allocation.year,
+                organization: allocation.organization,
+                t1_assigned: allocation.t1_assigned,
+                t2_assigned: allocation.t2_assigned,
+                t3_assigned: allocation.t3_assigned,
+                t4_assigned: allocation.t4_assigned,
+                notes: allocation.notes ?? null,
+              },
+            ])
+            .select();
+          if (data && data[0]) {
+            const realRow = {
+              ...data[0],
+              t1_assigned: Number(data[0].t1_assigned),
+              t2_assigned: Number(data[0].t2_assigned),
+              t3_assigned: Number(data[0].t3_assigned),
+              t4_assigned: Number(data[0].t4_assigned),
+              total_assigned: Number(data[0].total_assigned),
+            } as BudgetAllocation;
+            setBudgets((prev) => prev.map((b) => (b.id === tempId ? realRow : b)));
+          }
+        } catch {
+          // Estado local ya actualizado
+        }
       }
     }
   };
@@ -1259,26 +1420,39 @@ export const PresidencyHub: React.FC = () => {
       )}
 
       {/* ==================== CONTENIDO PRINCIPAL ==================== */}
-      <main className="max-w-6xl w-full mx-auto px-4 sm:px-6 pt-5 space-y-6 flex-1">
+      <main
+        className={`max-w-6xl w-full mx-auto px-4 sm:px-6 flex-1 ${
+          activeTab === 'CALENDAR' || activeTab === 'SUPPLIERS' || activeTab === 'DIRECTORY'
+            ? 'pt-2 pb-2'
+            : 'pt-5 space-y-6'
+        }`}
+      >
         {activeTab === 'USERS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <UserManagementPanel initialFilterIncomplete={openUsersWithIncompleteFilter} />
         ) : activeTab === 'DIRECTORY' ? (
           <LeadersDirectoryView />
         ) : activeTab === 'OPERATIONS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <AdminOperationsCenter
+            selectedYear={selectedYear}
             budgets={budgets.filter((b) => Number(b.year) === selectedYear)}
-            expenses={expenses.filter((e) =>
-              e.expense_date.startsWith(String(selectedYear))
+            expenses={expenses.filter(
+              (e) =>
+                getExpenseEffectiveDate(e).startsWith(String(selectedYear)) ||
+                e.expense_date.startsWith(String(selectedYear))
             )}
             withdrawals={withdrawals}
             activities={activities}
             suppliers={suppliers}
             onCreateExpense={handleCreateExpense}
             onCreateMultipleExpenses={handleCreateMultipleExpenses}
+            onSaveExpenseGroup={handleSaveExpenseGroup}
+            onDeleteExpenseGroup={handleDeleteExpenseGroup}
             onReconcileLcrExpense={handleReconcileLcrExpense}
+            onReconcileLcrExpenseGroup={handleReconcileLcrExpenseGroup}
             onCreateWithdrawal={handleCreateWithdrawal}
             onCloseWithdrawalInZero={handleCloseWithdrawalInZero}
             onCreateSupplier={handleCreateSupplier}
+            onSaveBudgetAllocation={handleSaveBudgetAllocation}
           />
         ) : activeTab === 'APPROVALS' ? (
           <ActivityApprovalTray

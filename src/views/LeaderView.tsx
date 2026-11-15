@@ -22,6 +22,7 @@ import {
   canViewActivityBudget,
   formatCurrency,
   formatDate,
+  getExpenseEffectiveDate,
   getQuarterFromDate,
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
@@ -263,7 +264,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
         (e) =>
           e.organization === 'SEMINARIO' &&
           !e.is_reimbursable_oai &&
-          e.expense_date.startsWith(String(activeYear))
+          getExpenseEffectiveDate(e).startsWith(String(activeYear))
       )
       .reduce((acc, e) => acc + Number(e.net_amount), 0);
     return Number((assigned - spent).toFixed(2));
@@ -278,7 +279,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       (e) =>
         e.organization === baseOrg &&
         !e.is_reimbursable_oai &&
-        e.expense_date.startsWith(String(activeYear))
+        getExpenseEffectiveDate(e).startsWith(String(activeYear))
     );
 
     const t1Assigned = matchingBudgets.reduce((acc, b) => acc + Number(b.t1_assigned), 0);
@@ -295,7 +296,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     };
 
     matchingExpenses.forEach((exp) => {
-      const q = getQuarterFromDate(exp.expense_date);
+      const q = getQuarterFromDate(getExpenseEffectiveDate(exp));
       spentByQuarter[q] += Number(exp.net_amount);
     });
 
@@ -355,7 +356,9 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       availableBalance,
       usagePercent,
       quarters,
-      orgExpenses: matchingExpenses.sort((a, b) => b.expense_date.localeCompare(a.expense_date)),
+      orgExpenses: matchingExpenses.sort((a, b) =>
+        getExpenseEffectiveDate(b).localeCompare(getExpenseEffectiveDate(a))
+      ),
     };
   }, [budgets, expenses, baseOrg, activeYear]);
 
@@ -363,7 +366,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   const filteredExpenses = useMemo(() => {
     if (quarterFilter === 'TODOS') return financialSummary.orgExpenses;
     return financialSummary.orgExpenses.filter(
-      (exp) => getQuarterFromDate(exp.expense_date) === quarterFilter
+      (exp) => getQuarterFromDate(getExpenseEffectiveDate(exp)) === quarterFilter
     );
   }, [financialSummary.orgExpenses, quarterFilter]);
 
@@ -542,7 +545,9 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   return (
     <div
       data-testid="leader-view"
-      className="min-h-[100dvh] bg-slate-100/80 flex flex-col justify-between pb-24"
+      className={`min-h-[100dvh] bg-slate-100/80 flex flex-col justify-between ${
+        activeTab === 'SUMMARY' ? 'pb-24' : 'pb-2'
+      }`}
     >
       {/* ==================== CABECERA INSTITUCIONAL ==================== */}
       <header
@@ -808,7 +813,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
       {/* ==================== CONTENIDO MÓVIL DEL LÍDER ==================== */}
       {activeTab === 'CALENDAR' ? (
-        <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
+        <main className="max-w-4xl w-full mx-auto px-4 pt-2 pb-2 flex-1">
           <CalendarView
             selectedYear={activeYear}
             activitiesProp={activities}
@@ -818,7 +823,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           />
         </main>
       ) : activeTab === 'SUPPLIERS' ? (
-        <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
+        <main className="max-w-4xl w-full mx-auto px-4 pt-2 pb-2 flex-1">
           <SuppliersView
             suppliers={SEED_SUPPLIERS}
             onBack={() => setActiveTab('SUMMARY')}
@@ -826,7 +831,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           />
         </main>
       ) : activeTab === 'DIRECTORY' ? (
-        <main className="max-w-4xl w-full mx-auto px-4 pt-4 pb-12 flex-1">
+        <main className="max-w-4xl w-full mx-auto px-4 pt-2 pb-2 flex-1">
           <LeadersDirectoryView />
         </main>
       ) : (
@@ -1039,10 +1044,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="text-[11px] font-bold text-slate-500 tabular-nums">
-                                  {formatDate(exp.expense_date)}
+                                  {formatDate(getExpenseEffectiveDate(exp))}
                                 </span>
                                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                                  {getQuarterFromDate(exp.expense_date)}
+                                  {getQuarterFromDate(getExpenseEffectiveDate(exp))}
                                 </span>
                                 {exp.external_reimbursement > 0 && (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">

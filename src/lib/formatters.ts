@@ -56,6 +56,17 @@ export function getQuarterFromDate(dateString: string): QuarterCode {
   return 'T4';
 }
 
+/**
+ * Devuelve la fecha efectiva del gasto para líderes y cálculo trimestral:
+ * siempre prioriza la fecha de la actividad (`activity_date`) sobre la fecha contable (`expense_date`).
+ */
+export function getExpenseEffectiveDate(exp: {
+  activity_date?: string | null;
+  expense_date: string;
+}): string {
+  return (exp.activity_date && exp.activity_date.trim()) || exp.expense_date;
+}
+
 export const ORGANIZATION_LABELS: Record<OrganizationCode, string> = {
   MJ: 'Mujeres Jóvenes',
   HJ: 'Hombres Jóvenes',

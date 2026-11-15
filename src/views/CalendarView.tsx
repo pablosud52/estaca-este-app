@@ -35,17 +35,20 @@ const SELECTABLE_ORGS: Array<{ code: SelectableOrg; label: string; dotClass: str
   { code: 'CFS', label: ORGANIZATION_LABELS.CFS, dotClass: 'bg-yellow-500' },
 ];
 
-const ORG_BADGE_STYLES: Record<OrganizationCode, string> = {
-  ESTACA: 'bg-slate-200 text-slate-800',
-  MJ: 'bg-rose-100 text-rose-800',
-  HJ: 'bg-blue-100 text-blue-800',
-  SEMINARIO: 'bg-gradient-to-r from-blue-100 to-rose-100 text-slate-800',
-  SS: 'bg-purple-100 text-purple-800',
-  PRIMARIA: 'bg-orange-100 text-orange-800',
-  JAS: 'bg-sky-100 text-sky-800',
-  AS: 'bg-indigo-100 text-indigo-800',
-  CFS: 'bg-yellow-100 text-yellow-900',
-  TODAS: 'bg-slate-200 text-slate-800',
+const ORG_CARD_STYLES: Record<OrganizationCode, { bg: string; border: string }> = {
+  ESTACA: { bg: 'bg-slate-100/80 hover:bg-slate-100', border: 'border-slate-300/80' },
+  MJ: { bg: 'bg-rose-50/75 hover:bg-rose-50', border: 'border-rose-200/90' },
+  HJ: { bg: 'bg-blue-50/75 hover:bg-blue-50', border: 'border-blue-200/90' },
+  SEMINARIO: {
+    bg: 'bg-gradient-to-r from-blue-50/85 to-rose-50/85',
+    border: 'border-blue-200/80',
+  },
+  SS: { bg: 'bg-purple-50/75 hover:bg-purple-50', border: 'border-purple-200/90' },
+  PRIMARIA: { bg: 'bg-orange-50/75 hover:bg-orange-50', border: 'border-orange-200/90' },
+  JAS: { bg: 'bg-sky-50/75 hover:bg-sky-50', border: 'border-sky-200/90' },
+  AS: { bg: 'bg-indigo-50/75 hover:bg-indigo-50', border: 'border-indigo-200/90' },
+  CFS: { bg: 'bg-yellow-50/75 hover:bg-yellow-50', border: 'border-yellow-200/90' },
+  TODAS: { bg: 'bg-slate-50/75', border: 'border-slate-200/90' },
 };
 
 function getDefaultSelectedOrgs(
@@ -440,6 +443,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 baseUserOrg,
                 act.organization
               );
+              const cardStyle = ORG_CARD_STYLES[act.organization] || ORG_CARD_STYLES.TODAS;
 
               return (
                 <article
@@ -449,21 +453,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   data-event-title={act.title}
                   data-past={isPast ? 'true' : 'false'}
                   data-upcoming-anchor={isNextUpcoming ? 'true' : 'false'}
-                  className={`p-4 rounded-2xl border transition space-y-2 ${
+                  className={`p-4 rounded-2xl transition space-y-2 ${
                     isPast
-                      ? 'border-slate-200/60 bg-slate-100/60 opacity-65'
+                      ? 'border border-slate-200/60 bg-slate-100/60 opacity-65'
                       : isNextUpcoming
-                      ? 'border-slate-800 bg-slate-50/90 ring-1 ring-slate-800/15 shadow-sm'
-                      : 'border-slate-200/80 bg-slate-50/60 hover:bg-slate-50'
+                      ? `${cardStyle.bg} border-2 border-slate-900 upcoming-card-pulse shadow-sm`
+                      : `${cardStyle.bg} border ${cardStyle.border}`
                   }`}
                 >
                   {/* Fila superior: Organización a la izquierda + Estado a la derecha */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span
-                      className={`inline-flex items-center text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
-                        ORG_BADGE_STYLES[act.organization]
-                      }`}
-                    >
+                    <span className="inline-flex items-center text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-white/85 text-slate-800 border border-slate-200/80">
                       {ORGANIZATION_SHORT_LABELS[act.organization]}
                     </span>
 

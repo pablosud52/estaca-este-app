@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
@@ -7,6 +7,7 @@ import {
   ChevronDown,
   FileEdit,
   LayoutDashboard,
+  Shield,
   ShieldCheck,
   Users,
   Wallet,
@@ -15,6 +16,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import {
   INITIAL_OPENING_BALANCE_2026,
+  isSuperAdminEmail,
   SEED_ACTIVITIES,
   SEED_BUDGET_ALLOCATIONS,
   SEED_CASH_WITHDRAWALS,
@@ -103,6 +105,23 @@ export const PresidencyHub: React.FC = () => {
   const [openUsersWithIncompleteFilter, setOpenUsersWithIncompleteFilter] = useState<boolean>(false);
   // Menú Drawer móvil (hamburguesa ☰ -> cruz ✕)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
+  // Menú desplegable Administración en escritorio
+  const [isAdminMenuOpen, setIsAdminMenuOpen] = useState<boolean>(false);
+  const adminMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(e.target as Node)) {
+        setIsAdminMenuOpen(false);
+      }
+    };
+    if (isAdminMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAdminMenuOpen]);
 
   // Año fiscal seleccionado: Presidencia y Admin pueden elegir 2025, 2026 y 2027; Líderes 2026 y 2027
   const [selectedYear, setSelectedYear] = useState<number>(2026);
@@ -821,12 +840,16 @@ export const PresidencyHub: React.FC = () => {
             aria-label="Navegación principal del panel"
             className="hidden md:flex mt-3 pt-2.5 border-t border-slate-100 items-center justify-between gap-2"
           >
+            {/* Secciones Generales: Panel, Calendario, Directorio, Proveedores */}
             <div className="flex items-center gap-2">
               {/* Botón 1: Panel */}
               <button
                 type="button"
                 data-testid="hub-nav-dashboard"
-                onClick={() => setActiveTab('DASHBOARD')}
+                onClick={() => {
+                  setActiveTab('DASHBOARD');
+                  setIsAdminMenuOpen(false);
+                }}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'DASHBOARD'
                     ? 'bg-slate-900 text-white shadow-sm'
@@ -837,49 +860,14 @@ export const PresidencyHub: React.FC = () => {
                 <span>Panel</span>
               </button>
 
-              {/* Botón 2: Aprobación de Actividades */}
-              <button
-                type="button"
-                data-testid="hub-nav-approvals"
-                onClick={() => setActiveTab('APPROVALS')}
-                className={`pressable relative inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                  activeTab === 'APPROVALS'
-                    ? 'bg-slate-900 text-white shadow-sm ring-2 ring-amber-400/70'
-                    : pendingProposalsCount > 0
-                    ? 'bg-amber-50 text-amber-950 border-2 border-amber-400 shadow-sm hover:bg-amber-100/80'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
-                }`}
-              >
-                <span className="relative flex items-center justify-center">
-                  <Bell className="w-4 h-4 text-amber-600" />
-                  {pendingProposalsCount > 0 && (
-                    <span
-                      data-testid="pending-proposals-pulse"
-                      className="absolute -top-1 -right-1 flex h-2.5 w-2.5"
-                    >
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-                    </span>
-                  )}
-                </span>
-                <span>Aprobación de Actividades</span>
-                <span
-                  data-testid="nav-pending-count"
-                  className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold tabular-nums ${
-                    pendingProposalsCount > 0
-                      ? 'bg-amber-500 text-slate-950'
-                      : 'bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {pendingProposalsCount}
-                </span>
-              </button>
-
-              {/* Botón 3: Calendario General de Estaca (Vista 4) */}
+              {/* Botón 2: Calendario */}
               <button
                 type="button"
                 data-testid="hub-nav-calendar"
-                onClick={() => setActiveTab('CALENDAR')}
+                onClick={() => {
+                  setActiveTab('CALENDAR');
+                  setIsAdminMenuOpen(false);
+                }}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'CALENDAR'
                     ? 'bg-slate-900 text-white shadow-sm'
@@ -890,26 +878,14 @@ export const PresidencyHub: React.FC = () => {
                 <span>Calendario</span>
               </button>
 
-              {/* Botón 4: Directorio de Proveedores (Vista 5) */}
-              <button
-                type="button"
-                data-testid="hub-nav-suppliers"
-                onClick={() => setActiveTab('SUPPLIERS')}
-                className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                  activeTab === 'SUPPLIERS'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
-                }`}
-              >
-                <Building2 className="w-4 h-4 text-sky-500" />
-                <span>Proveedores</span>
-              </button>
-
-              {/* Botón 5: Directorio de Líderes */}
+              {/* Botón 3: Directorio */}
               <button
                 type="button"
                 data-testid="hub-nav-directory"
-                onClick={() => setActiveTab('DIRECTORY')}
+                onClick={() => {
+                  setActiveTab('DIRECTORY');
+                  setIsAdminMenuOpen(false);
+                }}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'DIRECTORY'
                     ? 'bg-slate-900 text-white shadow-sm'
@@ -919,49 +895,164 @@ export const PresidencyHub: React.FC = () => {
                 <Users className="w-4 h-4 text-indigo-500" />
                 <span>Directorio</span>
               </button>
+
+              {/* Botón 4: Proveedores */}
+              <button
+                type="button"
+                data-testid="hub-nav-suppliers"
+                onClick={() => {
+                  setActiveTab('SUPPLIERS');
+                  setIsAdminMenuOpen(false);
+                }}
+                className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                  activeTab === 'SUPPLIERS'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                }`}
+              >
+                <Building2 className="w-4 h-4 text-sky-500" />
+                <span>Proveedores</span>
+              </button>
             </div>
 
-            {/* Botones Exclusivos de Administrador */}
-            {user.role === 'ADMIN' && (
-              <div className="flex items-center gap-2">
+            {/* Desplegable de Administración exclusivo para Presidencia y Admin */}
+            {(user.role === 'ADMIN' || user.role === 'PRESIDENCIA') && (
+              <div ref={adminMenuRef} className="relative">
                 <button
                   type="button"
-                  data-testid="hub-admin-users-btn"
-                  onClick={() => {
-                    setOpenUsersWithIncompleteFilter(false);
-                    setActiveTab('USERS');
-                  }}
-                  className={`pressable inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                    activeTab === 'USERS'
+                  data-testid="hub-admin-menu-trigger"
+                  aria-expanded={isAdminMenuOpen}
+                  aria-haspopup="true"
+                  onClick={() => setIsAdminMenuOpen((prev) => !prev)}
+                  className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                    activeTab === 'APPROVALS' || activeTab === 'USERS' || activeTab === 'OPERATIONS'
                       ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
-                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-200/90'
                   }`}
                 >
-                  <Users
+                  <Shield
                     className={`w-3.5 h-3.5 ${
-                      activeTab === 'USERS' ? 'text-emerald-300' : 'text-emerald-700'
+                      activeTab === 'APPROVALS' || activeTab === 'USERS' || activeTab === 'OPERATIONS'
+                        ? 'text-emerald-300'
+                        : 'text-emerald-700'
                     }`}
                   />
-                  <span>Gestión de Usuarios</span>
+                  <span>Administración</span>
+                  {(pendingProposalsCount > 0 || incompleteContactsCount > 0) && (
+                    <span className="w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white animate-pulse" />
+                  )}
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      isAdminMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
                 </button>
 
-                <button
-                  type="button"
-                  data-testid="hub-admin-operations-btn"
-                  onClick={() => setActiveTab('OPERATIONS')}
-                  className={`pressable inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                    activeTab === 'OPERATIONS'
-                      ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
-                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200'
-                  }`}
-                >
-                  <FileEdit
-                    className={`w-3.5 h-3.5 ${
-                      activeTab === 'OPERATIONS' ? 'text-emerald-300' : 'text-emerald-700'
-                    }`}
-                  />
-                  <span>Centro de Edición y Carga</span>
-                </button>
+                {isAdminMenuOpen && (
+                  <div
+                    data-testid="admin-menu-dropdown"
+                    className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-50 animate-fade-in divide-y divide-slate-100"
+                  >
+                    <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Secciones de Administración
+                    </div>
+                    <div className="p-1 space-y-0.5">
+                      {/* 1. Calendario (Aprobaciones y LCR) */}
+                      <button
+                        type="button"
+                        data-testid="hub-nav-approvals"
+                        onClick={() => {
+                          setActiveTab('APPROVALS');
+                          setIsAdminMenuOpen(false);
+                        }}
+                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                          activeTab === 'APPROVALS'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Calendar className="w-4 h-4 text-emerald-600" />
+                          <span>Calendario</span>
+                        </span>
+                        {pendingProposalsCount > 0 && (
+                          <span
+                            data-testid="nav-pending-count"
+                            className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums"
+                          >
+                            {pendingProposalsCount}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* 2. Directorio (Gestión de Usuarios y llamamientos) */}
+                      <button
+                        type="button"
+                        data-testid="hub-admin-users-btn"
+                        onClick={() => {
+                          setOpenUsersWithIncompleteFilter(false);
+                          setActiveTab('USERS');
+                          setIsAdminMenuOpen(false);
+                        }}
+                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                          activeTab === 'USERS'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Users className="w-4 h-4 text-indigo-600" />
+                          <span>Directorio</span>
+                        </span>
+                        {incompleteContactsCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                            {incompleteContactsCount}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* 3. Proveedores */}
+                      <button
+                        type="button"
+                        data-testid="hub-admin-suppliers-btn"
+                        onClick={() => {
+                          setActiveTab('SUPPLIERS');
+                          setIsAdminMenuOpen(false);
+                        }}
+                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                          activeTab === 'SUPPLIERS'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Building2 className="w-4 h-4 text-sky-600" />
+                          <span>Proveedores</span>
+                        </span>
+                      </button>
+
+                      {/* 4. Finanzas (Centro de Edición y Carga) */}
+                      <button
+                        type="button"
+                        data-testid="hub-admin-operations-btn"
+                        onClick={() => {
+                          setActiveTab('OPERATIONS');
+                          setIsAdminMenuOpen(false);
+                        }}
+                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                          activeTab === 'OPERATIONS'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <FileEdit className="w-4 h-4 text-emerald-600" />
+                          <span>Finanzas</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </nav>
@@ -1009,11 +1100,12 @@ export const PresidencyHub: React.FC = () => {
               </div>
 
               <div className="flex flex-col gap-2">
+                {/* 1. Panel */}
                 <button
                   type="button"
                   data-testid="drawer-nav-dashboard"
                   onClick={() => selectTabAndCloseDrawer('DASHBOARD')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                  className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'DASHBOARD'
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
@@ -1023,30 +1115,12 @@ export const PresidencyHub: React.FC = () => {
                   <span>Panel</span>
                 </button>
 
-                <button
-                  type="button"
-                  data-testid="drawer-nav-approvals"
-                  onClick={() => selectTabAndCloseDrawer('APPROVALS')}
-                  className={`pressable w-full flex items-center justify-between gap-2 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
-                    activeTab === 'APPROVALS'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-3">
-                    <Bell className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                    <span>Aprobación de Actividades</span>
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-500 text-slate-950 tabular-nums">
-                    {pendingProposalsCount}
-                  </span>
-                </button>
-
+                {/* 2. Calendario */}
                 <button
                   type="button"
                   data-testid="drawer-nav-calendar"
                   onClick={() => selectTabAndCloseDrawer('CALENDAR')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                  className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'CALENDAR'
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
@@ -1056,67 +1130,122 @@ export const PresidencyHub: React.FC = () => {
                   <span>Calendario</span>
                 </button>
 
-                <button
-                  type="button"
-                  data-testid="drawer-nav-suppliers"
-                  onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
-                    activeTab === 'SUPPLIERS'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
-                  <span>Directorio de Proveedores</span>
-                </button>
-
+                {/* 3. Directorio */}
                 <button
                   type="button"
                   data-testid="drawer-nav-directory"
                   onClick={() => selectTabAndCloseDrawer('DIRECTORY')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                  className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'DIRECTORY'
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
                   <Users className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                  <span>Directorio de Líderes</span>
+                  <span>Directorio</span>
                 </button>
 
-                {user.role === 'ADMIN' && (
-                  <>
-                    <button
-                      type="button"
-                      data-testid="drawer-admin-users-btn"
-                      onClick={() => {
-                        setOpenUsersWithIncompleteFilter(false);
-                        selectTabAndCloseDrawer('USERS');
-                      }}
-                      className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
-                        activeTab === 'USERS'
-                          ? 'bg-emerald-900 text-white shadow-sm'
-                          : 'bg-emerald-50 text-emerald-950 border border-emerald-200'
-                      }`}
-                    >
-                      <Users className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Gestión de Usuarios</span>
-                    </button>
+                {/* 4. Proveedores */}
+                <button
+                  type="button"
+                  data-testid="drawer-nav-suppliers"
+                  onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'SUPPLIERS'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  <span>Proveedores</span>
+                </button>
 
-                    <button
-                      type="button"
-                      data-testid="drawer-admin-operations-btn"
-                      onClick={() => selectTabAndCloseDrawer('OPERATIONS')}
-                      className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
-                        activeTab === 'OPERATIONS'
-                          ? 'bg-emerald-900 text-white shadow-sm'
-                          : 'bg-emerald-50 text-emerald-950 border border-emerald-200'
-                      }`}
-                    >
-                      <FileEdit className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span>Centro de Edición y Carga</span>
-                    </button>
-                  </>
+                {/* Bloque: ADMINISTRACIÓN (exclusivo para Presidencia y Admin) */}
+                {(user.role === 'ADMIN' || user.role === 'PRESIDENCIA') && (
+                  <div className="pt-2.5 mt-1 border-t border-slate-100">
+                    <p className="px-1 mb-2 text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                      Administración
+                    </p>
+
+                    <div className="space-y-1.5">
+                      {/* 1. Calendario (Aprobaciones) */}
+                      <button
+                        type="button"
+                        data-testid="drawer-nav-approvals"
+                        onClick={() => selectTabAndCloseDrawer('APPROVALS')}
+                        className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                          activeTab === 'APPROVALS'
+                            ? 'bg-emerald-900 text-white shadow-sm'
+                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-3">
+                          <Calendar className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span>Calendario</span>
+                        </span>
+                        {pendingProposalsCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums">
+                            {pendingProposalsCount}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* 2. Directorio (Gestión de Usuarios) */}
+                      <button
+                        type="button"
+                        data-testid="drawer-admin-users-btn"
+                        onClick={() => {
+                          setOpenUsersWithIncompleteFilter(false);
+                          selectTabAndCloseDrawer('USERS');
+                        }}
+                        className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                          activeTab === 'USERS'
+                            ? 'bg-emerald-900 text-white shadow-sm'
+                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-3">
+                          <Users className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span>Directorio</span>
+                        </span>
+                        {incompleteContactsCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                            {incompleteContactsCount}
+                          </span>
+                        )}
+                      </button>
+
+                      {/* 3. Proveedores */}
+                      <button
+                        type="button"
+                        data-testid="drawer-admin-suppliers-btn"
+                        onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
+                        className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                          activeTab === 'SUPPLIERS'
+                            ? 'bg-emerald-900 text-white shadow-sm'
+                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                        }`}
+                      >
+                        <Building2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span>Proveedores</span>
+                      </button>
+
+                      {/* 4. Finanzas (Operaciones y Carga) */}
+                      <button
+                        type="button"
+                        data-testid="drawer-admin-operations-btn"
+                        onClick={() => selectTabAndCloseDrawer('OPERATIONS')}
+                        className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                          activeTab === 'OPERATIONS'
+                            ? 'bg-emerald-900 text-white shadow-sm'
+                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                        }`}
+                      >
+                        <FileEdit className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span>Finanzas</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -1130,11 +1259,11 @@ export const PresidencyHub: React.FC = () => {
 
       {/* ==================== CONTENIDO PRINCIPAL ==================== */}
       <main className="max-w-6xl w-full mx-auto px-4 sm:px-6 pt-5 space-y-6 flex-1">
-        {activeTab === 'USERS' && user.role === 'ADMIN' ? (
+        {activeTab === 'USERS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <UserManagementPanel initialFilterIncomplete={openUsersWithIncompleteFilter} />
         ) : activeTab === 'DIRECTORY' ? (
           <LeadersDirectoryView />
-        ) : activeTab === 'OPERATIONS' && user.role === 'ADMIN' ? (
+        ) : activeTab === 'OPERATIONS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <AdminOperationsCenter
             budgets={budgets.filter((b) => Number(b.year) === selectedYear)}
             expenses={expenses.filter((e) =>
@@ -1153,7 +1282,7 @@ export const PresidencyHub: React.FC = () => {
         ) : activeTab === 'APPROVALS' ? (
           <ActivityApprovalTray
             activities={activities}
-            canApprove={user.can_approve_activities || user.role === 'ADMIN'}
+            canApprove={Boolean(user.can_approve_activities || (user.email && isSuperAdminEmail(user.email)))}
             userFullName={user.full_name}
             userCalling={user.calling}
             onApproveActivity={handleApproveActivity}

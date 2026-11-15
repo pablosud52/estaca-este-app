@@ -15,13 +15,20 @@ async function navigateToHubTab(
     } as const;
     await page.getByTestId(drawerMap[tab]).click();
   } else {
-    const desktopMap = {
-      DASHBOARD: 'hub-nav-dashboard',
-      APPROVALS: 'hub-nav-approvals',
-      USERS: 'hub-admin-users-btn',
-      OPERATIONS: 'hub-admin-operations-btn',
-    } as const;
-    await page.getByTestId(desktopMap[tab]).click();
+    if (tab === 'DASHBOARD') {
+      await page.getByTestId('hub-nav-dashboard').click();
+    } else {
+      const adminTrigger = page.getByTestId('hub-admin-menu-trigger');
+      if (await adminTrigger.isVisible()) {
+        await adminTrigger.click();
+      }
+      const desktopMap = {
+        APPROVALS: 'hub-nav-approvals',
+        USERS: 'hub-admin-users-btn',
+        OPERATIONS: 'hub-admin-operations-btn',
+      } as const;
+      await page.getByTestId(desktopMap[tab]).click();
+    }
   }
 }
 
@@ -174,6 +181,24 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
 
     await page.getByTestId('back-to-hub-btn').click();
     await expect(page.getByTestId('presidency-hub-view')).toBeVisible();
+
+    if (!isMobile) {
+      // Verificar orden canónico de las 4 secciones generales en escritorio: Panel, Calendario, Directorio, Proveedores
+      await expect(page.getByTestId('hub-nav-dashboard')).toBeVisible();
+      await expect(page.getByTestId('hub-nav-calendar')).toBeVisible();
+      await expect(page.getByTestId('hub-nav-directory')).toBeVisible();
+      await expect(page.getByTestId('hub-nav-suppliers')).toBeVisible();
+      await expect(page.getByTestId('hub-admin-menu-trigger')).toBeVisible();
+
+      // Probar menú desplegable Administración y orden estricto: Calendario, Directorio, Proveedores, Finanzas
+      await page.getByTestId('hub-admin-menu-trigger').click();
+      await expect(page.getByTestId('admin-menu-dropdown')).toBeVisible();
+      await expect(page.getByTestId('hub-nav-approvals')).toContainText('Calendario');
+      await expect(page.getByTestId('hub-admin-users-btn')).toContainText('Directorio');
+      await expect(page.getByTestId('hub-admin-suppliers-btn')).toContainText('Proveedores');
+      await expect(page.getByTestId('hub-admin-operations-btn')).toContainText('Finanzas');
+      await page.getByTestId('hub-nav-dashboard').click();
+    }
 
     // Probar Menú Hamburguesa (☰ -> ✕) y Drawer en viewport móvil
     await page.setViewportSize({ width: 390, height: 844 });

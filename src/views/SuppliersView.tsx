@@ -262,7 +262,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           )}
 
           <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight text-center uppercase truncate flex-1">
-            Directorio de Proveedores
+            Proveedores
           </h1>
 
           {onBack && <div className="w-12 flex-shrink-0" aria-hidden="true" />}

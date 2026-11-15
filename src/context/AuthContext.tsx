@@ -62,12 +62,20 @@ const DIRECTORY_STORAGE_KEY = 'estaca_este_directory_entries_v1';
 const normalizeDirectoryEntries = (entries: StakeDirectoryEntry[]): StakeDirectoryEntry[] =>
   entries.map((entry) => {
     const isSuper = isSuperAdminEmail(entry.email);
-    if (entry.slot_key === 'pres-presidente' || entry.slot_key === 'pres-secretario') {
+    if (entry.slot_key === 'pres-presidente') {
       return {
         ...entry,
         role: 'ADMIN',
         is_permanent_admin: true,
         can_approve_activities: true,
+      };
+    }
+    if (entry.slot_key === 'pres-secretario') {
+      return {
+        ...entry,
+        role: 'ADMIN',
+        is_permanent_admin: true,
+        can_approve_activities: Boolean(entry.can_approve_activities),
       };
     }
     if (entry.slot_key === 'pres-secretario-financiero') {

@@ -63,7 +63,7 @@ export const STAKE_ORG_STRUCTURE: DirectoryOrgDefinition[] = [
         slot_key: 'pres-secretario',
         calling: 'Secretario de Estaca',
         defaultRole: 'ADMIN',
-        defaultCanApprove: true,
+        defaultCanApprove: false,
         isPermanentAdmin: true,
       },
       {

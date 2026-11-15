@@ -190,7 +190,7 @@ export const DEV_PROFILES: UserProfile[] = [
     organization: 'TODAS',
     calling: 'Secretario de Estaca',
     phone: '099000004',
-    can_approve_activities: true,
+    can_approve_activities: false,
     is_permanent_admin: true,
     is_active: true,
   },

@@ -671,20 +671,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
             <button
               type="button"
-              data-testid="leader-nav-suppliers"
-              onClick={() => setActiveTab('SUPPLIERS')}
-              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                activeTab === 'SUPPLIERS'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
-              }`}
-            >
-              <Building2 className="w-4 h-4 text-sky-500" />
-              <span>Proveedores</span>
-            </button>
-
-            <button
-              type="button"
               data-testid="leader-nav-directory"
               onClick={() => setActiveTab('DIRECTORY')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
@@ -695,6 +681,20 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             >
               <Users className="w-4 h-4 text-indigo-500" />
               <span>Directorio</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="leader-nav-suppliers"
+              onClick={() => setActiveTab('SUPPLIERS')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                activeTab === 'SUPPLIERS'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-sky-500" />
+              <span>Proveedores</span>
             </button>
           </nav>
         </div>
@@ -771,20 +771,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
                 <button
                   type="button"
-                  data-testid="drawer-nav-suppliers"
-                  onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
-                    activeTab === 'SUPPLIERS'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
-                  <span>Directorio de Proveedores</span>
-                </button>
-
-                <button
-                  type="button"
                   data-testid="drawer-nav-directory"
                   onClick={() => selectTabAndCloseDrawer('DIRECTORY')}
                   className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
@@ -794,7 +780,21 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                   }`}
                 >
                   <Users className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                  <span>Directorio de Líderes</span>
+                  <span>Directorio</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="drawer-nav-suppliers"
+                  onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
+                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                    activeTab === 'SUPPLIERS'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  <span>Proveedores</span>
                 </button>
               </div>
             </div>

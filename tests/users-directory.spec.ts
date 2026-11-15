@@ -6,6 +6,10 @@ async function openUsersPanel(page: Page) {
     await mobileToggle.click();
     await page.getByTestId('drawer-admin-users-btn').click();
   } else {
+    const adminTrigger = page.getByTestId('hub-admin-menu-trigger');
+    if (await adminTrigger.isVisible()) {
+      await adminTrigger.click();
+    }
     await page.getByTestId('hub-admin-users-btn').click();
   }
   await expect(page.getByTestId('user-management-panel')).toBeVisible();
@@ -34,7 +38,7 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
 
   test('1. Acordeones plegados por defecto, validación Gmail/09xxxxxxx y regla de Admins permanentes', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await openUsersPanel(page);
 
     // Verificar organizaciones principales plegadas por defecto y aviso de incompletos oculto al estar todo completo
@@ -96,7 +100,13 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     await page.getByTestId('save-edit-mj-consejera-1').click();
     await expect(page.getByTestId('org-incomplete-badge-MJ')).toContainText('1 incompleto');
 
-    await page.getByRole('button', { name: 'Panel' }).first().click();
+    const isMobile = (testInfo.project.name || '').toLowerCase().includes('mobile');
+    if (isMobile) {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await page.getByTestId('drawer-nav-dashboard').click();
+    } else {
+      await page.getByTestId('hub-nav-dashboard').click();
+    }
     await expect(page.getByTestId('presidency-incomplete-contacts-alert')).toBeVisible();
   });
 

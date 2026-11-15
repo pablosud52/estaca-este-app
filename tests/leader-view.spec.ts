@@ -242,7 +242,7 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
       await page.getByTestId('leader-nav-suppliers').click();
     }
 
-    await expect(page.getByText('Directorio de Proveedores')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Proveedores' })).toBeVisible();
 
     if (isMobile) {
       await page.getByTestId('mobile-menu-toggle').click();

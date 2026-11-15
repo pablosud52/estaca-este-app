@@ -42,7 +42,7 @@ export const LeadersDirectoryView: React.FC = () => {
 
   return (
     <section
-      aria-label="Directorio de Líderes de la Estaca"
+      aria-label="Directorio"
       data-testid="leaders-directory-view"
       className="space-y-5"
     >
@@ -50,7 +50,7 @@ export const LeadersDirectoryView: React.FC = () => {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
-              Directorio de Líderes de Estaca
+              Directorio
             </h2>
             <p className="text-xs text-slate-500">
               Contactos oficiales separados por organización con acceso directo a WhatsApp.

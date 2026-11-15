@@ -10,6 +10,10 @@ async function openAdminSection(page: Page, section: 'USERS' | 'OPERATIONS') {
       )
       .click();
   } else {
+    const adminTrigger = page.getByTestId('hub-admin-menu-trigger');
+    if (await adminTrigger.isVisible()) {
+      await adminTrigger.click();
+    }
     await page
       .getByTestId(section === 'USERS' ? 'hub-admin-users-btn' : 'hub-admin-operations-btn')
       .click();
@@ -34,33 +38,43 @@ test.describe('Paso 6.4 — Panel de Administrador (AdminPanel)', () => {
     await openAdminSection(page, 'USERS');
     await expect(page.getByTestId('user-management-panel')).toBeVisible();
 
-    // 1. Verificar texto oficial innegociable del banner de seguridad (PROJECT_CONTEXT.md §4.3)
+    // Desplegar Presidencia si está colapsado
+    const presidenciaToggle = page.getByTestId('org-accordion-toggle-PRESIDENCIA');
+    if (await presidenciaToggle.isVisible()) {
+      const isExpanded = await presidenciaToggle.getAttribute('aria-expanded');
+      if (isExpanded !== 'true') {
+        await presidenciaToggle.click();
+      }
+    }
+
+    // 1. Verificar texto oficial innegociable del banner de seguridad en el modal informativo (PROJECT_CONTEXT.md §4.3)
+    await page.getByTestId('admin-security-info-btn').click();
     const bannerText = page.getByTestId('security-banner-official-text');
     await expect(bannerText).toContainText(
       'Por seguridad del sistema, ningún administrador puede revocar sus propios permisos ni eliminarse a sí mismo. Las modificaciones de administradores deben ser realizadas por otro administrador activo.'
     );
+    await page.getByRole('button', { name: 'Entendido' }).click();
 
-    // 2. Verificar que la propia fila de Pablo Lamela (admin-pablo-01, pablosud52@gmail.com) está protegida y deshabilitada
-    await expect(page.getByTestId('self-session-badge-admin-pablo-01')).toBeVisible();
-    await expect(page.getByTestId('immutable-admin-pill-admin-pablo-01')).toContainText(
-      'Admin Vitalicio (Propietario del Sistema)'
-    );
-    await expect(page.getByTestId('user-row-admin-pablo-01')).toContainText('pablosud52@gmail.com');
-    await expect(page.getByTestId('role-select-admin-pablo-01')).toBeDisabled();
-    await expect(page.getByTestId('toggle-active-btn-admin-pablo-01')).toBeDisabled();
-    await expect(page.getByTestId('edit-superadmin-calling-btn')).toBeVisible();
+    // 2. Verificar que la propia fila de Pablo Lamela (pres-secretario-financiero, pablosud52@gmail.com) está protegida e inmutable
+    const pabloRow = page.getByTestId('directory-row-pres-secretario-financiero');
+    await expect(pabloRow).toBeVisible();
+    await expect(pabloRow).toContainText('pablosud52@gmail.com');
+    await expect(pabloRow).toContainText('Inmutable');
+    await expect(page.getByTestId('toggle-access-pres-secretario-financiero')).toBeDisabled();
+    await expect(page.getByRole('combobox', { name: 'Rol de Secretario Financiero' })).toBeDisabled();
 
-    // 3. Verificar que el Presidente de Estaca (admin-presidente-01) también está permanentemente protegido
-    await expect(page.getByTestId('immutable-admin-pill-admin-presidente-01')).toBeVisible();
-    await expect(page.getByTestId('role-select-admin-presidente-01')).toBeDisabled();
-    await expect(page.getByTestId('toggle-active-btn-admin-presidente-01')).toBeDisabled();
+    // 3. Verificar que el Presidente de Estaca (pres-presidente) también es un administrador inmutable
+    const presidentRow = page.getByTestId('directory-row-pres-presidente');
+    await expect(presidentRow).toBeVisible();
+    await expect(presidentRow).toContainText('Inmutable');
+    await expect(page.getByTestId('toggle-access-pres-presidente')).toBeDisabled();
+    await expect(page.getByRole('combobox', { name: 'Rol de Presidente de Estaca' })).toBeDisabled();
 
-    // 4. Verificar que el administrador SÍ puede modificar permisos de otro usuario no inmutable (ej. Secretario de Estaca)
-    const secretaryApproveBtn = page.getByTestId('toggle-approve-perm-presidencia-secretario-01');
-    await expect(secretaryApproveBtn).toBeEnabled();
-    await expect(secretaryApproveBtn).toContainText('Solo Lectura');
-    await secretaryApproveBtn.click();
-    await expect(secretaryApproveBtn).toContainText('✓ Aprueba Actividades');
+    // 4. Verificar que un puesto no inmutable (ej. Primer Consejero) sí permite cambiar acceso y rol
+    const counselorAccessBtn = page.getByTestId('toggle-access-pres-consejero-1');
+    await expect(counselorAccessBtn).toBeEnabled();
+    const counselorRoleSelect = page.getByRole('combobox', { name: 'Rol de Primer Consejero' });
+    await expect(counselorRoleSelect).toBeEnabled();
   });
 
   test('2. Monitor de Conciliación en Vivo con LCR y Centro de Carga Rápida con atajo "MMDD-MONTO"', async ({

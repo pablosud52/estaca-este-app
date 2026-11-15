@@ -1,25 +1,90 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
+  ChevronDown,
   Copy,
   MapPin,
   MessageCircle,
   Phone,
   Search,
+  SlidersHorizontal,
   Users,
+  X,
 } from 'lucide-react';
 import { isEntryPersonLoaded, useAuth } from '../context/AuthContext';
 import { STAKE_ORG_STRUCTURE } from '../data/stakeOrgStructure';
 import { formatUruguayanMobile, toWhatsAppUrl } from '../lib/formatters';
 import { DirectoryOrgCode } from '../types/database';
 
+const ORG_DOT_CLASSES: Record<DirectoryOrgCode, string> = {
+  PRESIDENCIA: 'bg-slate-900',
+  SUMO_CONSEJO: 'bg-indigo-600',
+  MJ: 'bg-rose-500',
+  HJ: 'bg-amber-500',
+  SS: 'bg-teal-600',
+  PRIMARIA: 'bg-sky-500',
+  JAS: 'bg-violet-600',
+  AS: 'bg-cyan-600',
+  CFS: 'bg-emerald-600',
+  ESCUELA_DOMINICAL: 'bg-blue-500',
+  BIENESTAR: 'bg-lime-600',
+  MUSICA: 'bg-pink-500',
+};
+
 export const LeadersDirectoryView: React.FC = () => {
   const { directoryEntries } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedOrg, setSelectedOrg] = useState<DirectoryOrgCode | 'TODAS'>('TODAS');
+  const [selectedOrgs, setSelectedOrgs] = useState<DirectoryOrgCode[]>([]);
+  const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const orgMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOrgMenuOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (orgMenuRef.current && !orgMenuRef.current.contains(e.target as Node)) {
+        setIsOrgMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOrgMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOrgMenuOpen]);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  const toggleOrg = (code: DirectoryOrgCode) => {
+    setSelectedOrgs((prev) =>
+      prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]
+    );
+  };
+
+  const orgFilterLabel = useMemo(() => {
+    if (selectedOrgs.length === 0 || selectedOrgs.length === STAKE_ORG_STRUCTURE.length) {
+      return 'Todas las organizaciones';
+    }
+    if (selectedOrgs.length === 1) {
+      const found = STAKE_ORG_STRUCTURE.find((o) => o.code === selectedOrgs[0]);
+      return found ? found.shortLabel : selectedOrgs[0];
+    }
+    if (
+      selectedOrgs.length === 2 &&
+      selectedOrgs.includes('HJ') &&
+      selectedOrgs.includes('MJ')
+    ) {
+      return 'Jóvenes (HJ + MJ)';
+    }
+    return `${selectedOrgs.length} organizaciones`;
+  }, [selectedOrgs]);
+
+  const isOrgFiltered =
+    selectedOrgs.length > 0 && selectedOrgs.length < STAKE_ORG_STRUCTURE.length;
 
   const handleCopyPhone = async (entryId: string, rawPhone: string) => {
     const formatted = formatUruguayanMobile(rawPhone);
@@ -35,73 +100,153 @@ export const LeadersDirectoryView: React.FC = () => {
   const visibleOrgs = useMemo(
     () =>
       STAKE_ORG_STRUCTURE.filter((org) =>
-        selectedOrg === 'TODAS' ? true : org.code === selectedOrg
+        selectedOrgs.length === 0 ? true : selectedOrgs.includes(org.code)
       ),
-    [selectedOrg]
+    [selectedOrgs]
   );
 
   return (
     <section
       aria-label="Directorio"
       data-testid="leaders-directory-view"
-      className="space-y-5"
+      className="space-y-2.5"
     >
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/90 space-y-3.5">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
-              Directorio
-            </h2>
-            <p className="text-xs text-slate-500">
-              Contactos oficiales separados por organización con acceso directo a WhatsApp.
-            </p>
-          </div>
-          <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-            {directoryEntries.filter(isEntryPersonLoaded).length} líderes registrados
-          </span>
+      {/* Marco superior fijo: Título + Desplegable multi-organización + Buscador */}
+      <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
+            Directorio
+          </h1>
         </div>
 
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nombre, apellido, llamamiento o unidad..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          <button
-            type="button"
-            onClick={() => setSelectedOrg('TODAS')}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
-              selectedOrg === 'TODAS'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Todas
-          </button>
-          {STAKE_ORG_STRUCTURE.map((org) => (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+          {/* Selector desplegable multi-organización */}
+          <div ref={orgMenuRef} className="relative sm:w-64 flex-shrink-0">
             <button
-              key={org.code}
               type="button"
-              onClick={() => setSelectedOrg(org.code)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
-                selectedOrg === org.code
-                  ? 'bg-emerald-800 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              data-testid="directory-org-filter-trigger"
+              aria-haspopup="listbox"
+              aria-expanded={isOrgMenuOpen}
+              onClick={() => setIsOrgMenuOpen((prev) => !prev)}
+              className={`w-full flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs font-bold shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 transition ${
+                isOrgFiltered
+                  ? 'bg-slate-100 border border-slate-700 text-slate-900'
+                  : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
               }`}
             >
-              {org.shortLabel}
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <SlidersHorizontal
+                  className={`w-3.5 h-3.5 flex-shrink-0 ${
+                    isOrgFiltered ? 'text-slate-900' : 'text-slate-500'
+                  }`}
+                />
+                <span className="truncate">{orgFilterLabel}</span>
+              </span>
+              <ChevronDown
+                className={`w-4 h-4 text-slate-500 flex-shrink-0 transition-transform ${
+                  isOrgMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
             </button>
-          ))}
+
+            {isOrgMenuOpen && (
+              <div
+                data-testid="directory-org-filter-popover"
+                className="absolute left-0 right-0 sm:w-72 mt-1.5 z-30 bg-white rounded-2xl border border-slate-200 shadow-lg p-2.5 space-y-2"
+              >
+                <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-slate-100">
+                  <button
+                    type="button"
+                    data-testid="directory-filter-all"
+                    onClick={() => {
+                      setSelectedOrgs([]);
+                      setIsOrgMenuOpen(false);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      selectedOrgs.length === 0 ||
+                      selectedOrgs.length === STAKE_ORG_STRUCTURE.length
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Todas
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="directory-filter-jovenes"
+                    onClick={() => {
+                      setSelectedOrgs(['HJ', 'MJ']);
+                      setIsOrgMenuOpen(false);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      selectedOrgs.length === 2 &&
+                      selectedOrgs.includes('HJ') &&
+                      selectedOrgs.includes('MJ')
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Jóvenes
+                  </button>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto space-y-1 pr-0.5">
+                  {STAKE_ORG_STRUCTURE.map((org) => {
+                    const checked = selectedOrgs.includes(org.code);
+                    return (
+                      <label
+                        key={org.code}
+                        data-testid={`directory-org-option-${org.code}`}
+                        className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-slate-50 cursor-pointer text-xs font-semibold text-slate-800"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleOrg(org.code)}
+                          className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                        />
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                            ORG_DOT_CLASSES[org.code]
+                          }`}
+                        />
+                        <span className="truncate">{org.shortLabel}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Buscador en tiempo real */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por nombre, apellido, llamamiento o unidad..."
+              aria-label="Buscar en directorio"
+              className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition"
+            />
+            {searchTerm.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                aria-label="Limpiar búsqueda"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="space-y-4">
+      {/* Marco independiente para las tarjetas (scroll propio sin mover la cabecera) */}
+      <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-card">
+        <div className="relative overflow-y-auto scroll-smooth pr-1 space-y-4 max-h-[calc(100dvh-230px)] min-h-[320px]">
         {visibleOrgs.map((orgDef) => {
           const loadedInOrg = directoryEntries.filter((e) => {
             if (e.directory_org !== orgDef.code) return false;
@@ -227,6 +372,7 @@ export const LeadersDirectoryView: React.FC = () => {
             </div>
           );
         })}
+        </div>
       </div>
     </section>
   );

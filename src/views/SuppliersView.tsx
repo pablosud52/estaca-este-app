@@ -10,9 +10,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
-  ArrowLeft,
   Clock,
   AlertCircle,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { SupplierRecord } from '../types/database';
 
@@ -26,7 +26,6 @@ type SortOrder = 'RELEVANCE' | 'AZ' | 'ZA';
 
 export const SuppliersView: React.FC<SuppliersViewProps> = ({
   suppliers,
-  onBack,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('TODOS');
@@ -235,7 +234,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-4 pb-20">
+    <section className="space-y-2.5">
       {/* Toast discreto de copiado */}
       {toastMessage && (
         <div
@@ -247,108 +246,133 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       )}
 
-      {/* ZONA FIJA SUPERIOR (Sticky): Cabecera + Buscador + Categorías/Orden + Toggles WhatsApp/Fijo */}
-      <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-md pt-2 pb-2.5 -mx-4 px-4 border-b border-slate-200 shadow-2xs space-y-2">
-        {/* Cabecera en una sola línea con título destacado */}
+      {/* Marco superior fijo: Título + Desplegable de categorías + Buscador + Orden/WhatsApp */}
+      <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
         <div className="flex items-center justify-between gap-2">
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="pressable inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-900 py-0.5 flex-shrink-0 touch-manipulation"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Volver</span>
-            </button>
-          )}
-
-          <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight text-center uppercase truncate flex-1">
+          <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
             Proveedores
           </h1>
-
-          {onBack && <div className="w-12 flex-shrink-0" aria-hidden="true" />}
+          <span className="text-[11px] text-slate-500 font-semibold tabular-nums">
+            Mostrando {filteredSuppliers.length} de {suppliers.length}
+          </span>
         </div>
 
-        {/* Input de Búsqueda limpio */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nombre, producto o servicio..."
-            className="w-full pl-9 pr-9 py-2 bg-white rounded-xl border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 shadow-2xs focus:outline-none focus:border-slate-400 transition"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-              aria-label="Borrar búsqueda"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Fila compacta: Desplegable custom de rubro + Switch segmentado */}
-        <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-          {/* Desplegable personalizado de Rubro (contador gris y sin paréntesis) */}
-          <div ref={categoryRef} className="relative">
+        {/* Fila de controles: Desplegable de categorías + Buscador */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+          {/* Desplegable personalizado de Rubro (estilo Calendario) */}
+          <div ref={categoryRef} className="relative sm:w-64 flex-shrink-0">
             <button
               type="button"
+              data-testid="suppliers-category-filter-trigger"
               onClick={() => setIsCategoryOpen((prev) => !prev)}
               aria-expanded={isCategoryOpen}
               aria-haspopup="listbox"
-              className="w-full flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:border-slate-300 focus:outline-none focus:border-slate-400 cursor-pointer transition"
+              className={`w-full flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs font-bold shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 transition ${
+                selectedCategory !== 'TODOS'
+                  ? 'bg-slate-100 border border-slate-700 text-slate-900'
+                  : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
+              }`}
             >
-              <span className="truncate">
-                {activeCategoryObj.id === 'TODOS' ? 'Categorías' : activeCategoryObj.label}{' '}
-                <span className="text-slate-400 font-semibold tabular-nums">
-                  {activeCategoryObj.count}
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <SlidersHorizontal
+                  className={`w-3.5 h-3.5 flex-shrink-0 ${
+                    selectedCategory !== 'TODOS' ? 'text-slate-900' : 'text-slate-500'
+                  }`}
+                />
+                <span className="truncate">
+                  {activeCategoryObj.id === 'TODOS' ? 'Todas las categorías' : activeCategoryObj.label}{' '}
+                  <span className="text-slate-400 font-semibold tabular-nums">
+                    {activeCategoryObj.count}
+                  </span>
                 </span>
               </span>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-slate-400 flex-shrink-0 transition-transform ${
+                className={`w-4 h-4 text-slate-500 flex-shrink-0 transition-transform ${
                   isCategoryOpen ? 'rotate-180' : ''
                 }`}
               />
             </button>
 
             {isCategoryOpen && (
-              <ul
+              <div
                 role="listbox"
-                className="absolute left-0 right-0 mt-1.5 max-h-64 overflow-y-auto bg-white rounded-xl border border-slate-200 shadow-lg py-1 z-40"
+                className="absolute left-0 right-0 sm:w-72 mt-1.5 z-30 bg-white rounded-2xl border border-slate-200 shadow-lg p-2 space-y-1.5"
               >
-                {categories.map((c) => {
-                  const isSelected = c.id === selectedCategory;
-                  return (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        onClick={() => {
-                          setSelectedCategory(c.id);
-                          setIsCategoryOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-xs text-left transition ${
-                          isSelected
-                            ? 'bg-slate-100 text-slate-900 font-bold'
-                            : 'text-slate-700 hover:bg-slate-50 font-medium'
-                        }`}
-                      >
-                        <span className="truncate">{c.label}</span>
-                        <span className="text-slate-400 font-semibold tabular-nums flex-shrink-0">
-                          {c.count}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                <div className="flex items-center gap-1.5 pb-1.5 border-b border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory('TODOS');
+                      setIsCategoryOpen(false);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                      selectedCategory === 'TODOS'
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    Todas ({suppliers.length})
+                  </button>
+                </div>
+
+                <ul className="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+                  {categories
+                    .filter((c) => c.id !== 'TODOS')
+                    .map((c) => {
+                      const isSelected = c.id === selectedCategory;
+                      return (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            onClick={() => {
+                              setSelectedCategory(c.id);
+                              setIsCategoryOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl text-xs text-left transition ${
+                              isSelected
+                                ? 'bg-slate-100 text-slate-900 font-bold'
+                                : 'text-slate-700 hover:bg-slate-50 font-semibold'
+                            }`}
+                          >
+                            <span className="truncate">{c.label}</span>
+                            <span className="text-slate-400 font-semibold tabular-nums flex-shrink-0">
+                              {c.count}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
             )}
           </div>
 
-          {/* Switch segmentado de ancho fijo: [ Relevancia | A-Z / Z-A ] */}
+          {/* Input de Búsqueda limpio */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por nombre, producto o servicio..."
+              className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                aria-label="Borrar búsqueda"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Fila inferior: Switch de orden + Filtro WhatsApp */}
+        <div className="flex items-center justify-between gap-2">
           <div className="inline-flex items-center h-8 bg-slate-100 p-0.5 rounded-xl border border-slate-200/90 shadow-2xs select-none">
             <button
               type="button"
@@ -374,13 +398,6 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               {sortOrder === 'ZA' ? 'Z-A' : 'A-Z'}
             </button>
           </div>
-        </div>
-
-        {/* Fila inferior: Contador visible a la izquierda + Tiene WhatsApp a la derecha */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] text-slate-500 font-semibold tabular-nums">
-            Mostrando {filteredSuppliers.length} de {suppliers.length}
-          </span>
 
           <button
             type="button"
@@ -399,8 +416,9 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       </div>
 
-      {/* Listado de Proveedores: Tarjetas plegables por defecto */}
-      <div className="pt-3">
+      {/* Marco independiente para las tarjetas de proveedores (scroll propio sin mover la cabecera) */}
+      <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-card">
+        <div className="relative overflow-y-auto scroll-smooth pr-1 max-h-[calc(100dvh-260px)] min-h-[320px]">
         {filteredSuppliers.length === 0 ? (
           <div className="text-center py-12 px-4 bg-white rounded-2xl border border-slate-300 shadow-sm my-2">
             <p className="text-sm font-semibold text-slate-700">Sin resultados</p>
@@ -597,7 +615,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
             })}
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </section>
   );
 };

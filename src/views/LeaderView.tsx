@@ -20,10 +20,12 @@ import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
 import {
   canViewActivityBudget,
+  consolidateLeaderExpenses,
   formatCurrency,
   formatDate,
   getExpenseEffectiveDate,
   getQuarterFromDate,
+  isExpenseApplied,
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
 } from '../lib/formatters';
@@ -263,6 +265,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       .filter(
         (e) =>
           e.organization === 'SEMINARIO' &&
+          isExpenseApplied(e) &&
           !e.is_reimbursable_oai &&
           getExpenseEffectiveDate(e).startsWith(String(activeYear))
       )
@@ -278,6 +281,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     const matchingExpenses = expenses.filter(
       (e) =>
         e.organization === baseOrg &&
+        isExpenseApplied(e) &&
         !e.is_reimbursable_oai &&
         getExpenseEffectiveDate(e).startsWith(String(activeYear))
     );
@@ -362,13 +366,16 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     };
   }, [budgets, expenses, baseOrg, activeYear]);
 
-  // Gastos filtrados por trimestre en el acordeón
+  // Gastos filtrados por trimestre en el acordeón, consolidando múltiples comprobantes de una misma actividad en 1 fila
   const filteredExpenses = useMemo(() => {
-    if (quarterFilter === 'TODOS') return financialSummary.orgExpenses;
-    return financialSummary.orgExpenses.filter(
-      (exp) => getQuarterFromDate(getExpenseEffectiveDate(exp)) === quarterFilter
-    );
-  }, [financialSummary.orgExpenses, quarterFilter]);
+    const baseList =
+      quarterFilter === 'TODOS'
+        ? financialSummary.orgExpenses
+        : financialSummary.orgExpenses.filter(
+            (exp) => getQuarterFromDate(getExpenseEffectiveDate(exp)) === quarterFilter
+          );
+    return consolidateLeaderExpenses(baseList, activities);
+  }, [financialSummary.orgExpenses, quarterFilter, activities]);
 
   // Fecha de referencia actual para separar actividades pasadas (realizadas) de las próximas futuras
   const referenceToday = '2026-11-08';

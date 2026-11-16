@@ -29,6 +29,7 @@ import {
   formatDate,
   getExpenseEffectiveDate,
   getQuarterFromDate,
+  isExpenseApplied,
   ORGANIZATION_LABELS,
 } from '../lib/formatters';
 import { supabase } from '../lib/supabase';
@@ -324,8 +325,10 @@ export const PresidencyHub: React.FC = () => {
   // Cálculos Globales y por Organización exactos según Ejemplo_DB_Finanzas.xlsx para el año seleccionado
   const executiveMetrics = useMemo(() => {
     const yearBudgets = budgets.filter((b) => Number(b.year) === selectedYear);
-    const yearExpenses = expenses.filter((e) =>
-      getExpenseEffectiveDate(e).startsWith(String(selectedYear))
+    const yearExpenses = expenses.filter(
+      (e) =>
+        isExpenseApplied(e) &&
+        getExpenseEffectiveDate(e).startsWith(String(selectedYear))
     );
 
     const nonReimbursableExpenses = yearExpenses.filter((e) => !e.is_reimbursable_oai);
@@ -530,8 +533,76 @@ export const PresidencyHub: React.FC = () => {
     [activities]
   );
 
+  // Sincronización automática: si se reprograma una actividad en el calendario, actualiza la fecha de sus gastos proyectados enlazados
+  useEffect(() => {
+    const actMap = new Map(activities.map((a) => [a.id, a]));
+    const toUpdate: Array<{ id: number; newDate: string }> = [];
+    expenses.forEach((exp) => {
+      if (
+        exp.expense_type === 'PROYECTADO_ACTIVIDAD' &&
+        exp.activity_id &&
+        actMap.has(exp.activity_id)
+      ) {
+        const act = actMap.get(exp.activity_id)!;
+        if (act.event_date && exp.activity_date !== act.event_date) {
+          toUpdate.push({ id: exp.id, newDate: act.event_date });
+        }
+      }
+    });
+    if (toUpdate.length === 0) return;
+
+    const updateMap = new Map(toUpdate.map((u) => [u.id, u.newDate]));
+    setExpenses((prev) =>
+      prev.map((e) =>
+        updateMap.has(e.id)
+          ? { ...e, activity_date: updateMap.get(e.id)!, expense_date: updateMap.get(e.id)! }
+          : e
+      )
+    );
+    if (!isSimulating) {
+      toUpdate.forEach(({ id, newDate }) => {
+        supabase
+          .from('expenses')
+          .update({ activity_date: newDate, expense_date: newDate })
+          .eq('id', id)
+          .then(() => {});
+      });
+    }
+  }, [activities, expenses, isSimulating]);
+
   // Handlers de la Bandeja de Aprobación
+  const createProjectedForActivity = async (act: ActivityRecord) => {
+    if (!act || Number(act.estimated_cost || 0) <= 0) return;
+    const alreadyExists = expenses.some(
+      (e) => e.activity_id === act.id && e.expense_type === 'PROYECTADO_ACTIVIDAD'
+    );
+    if (alreadyExists) return;
+
+    await handleSaveExpenseGroup([
+      {
+        ref_number: null,
+        expense_date: act.event_date,
+        activity_date: act.event_date,
+        activity_id: act.id,
+        shared_group_id: null,
+        expense_type: 'PROYECTADO_ACTIVIDAD',
+        is_applied: false,
+        withdrawal_allocations: [],
+        organization: act.organization,
+        supplier_name: 'Por definir',
+        concept: act.title,
+        gross_amount: Number(act.estimated_cost),
+        external_reimbursement: 0,
+        net_amount: Number(act.estimated_cost),
+        is_reimbursable_oai: false,
+        status: 'PENDIENTE_LCR',
+        withdrawal_ref: null,
+      },
+    ]);
+  };
+
   const handleApproveActivity = async (id: number) => {
+    const targetAct = activities.find((a) => a.id === id);
     setActivities((prev) => {
       const updated = prev.map((a) =>
         a.id === id ? { ...a, status: 'APROBADA' as const } : a
@@ -545,6 +616,9 @@ export const PresidencyHub: React.FC = () => {
       } catch {
         // Estado local ya actualizado
       }
+    }
+    if (targetAct && Number(targetAct.estimated_cost || 0) > 0) {
+      await createProjectedForActivity({ ...targetAct, status: 'APROBADA' });
     }
   };
 
@@ -584,6 +658,7 @@ export const PresidencyHub: React.FC = () => {
       estimated_cost: number;
     }
   ) => {
+    const targetAct = activities.find((a) => a.id === id);
     setActivities((prev) => {
       const updated = prev.map((a) =>
         a.id === id
@@ -616,6 +691,14 @@ export const PresidencyHub: React.FC = () => {
       } catch {
         // Estado local ya actualizado
       }
+    }
+    if (targetAct && updates.estimated_cost > 0) {
+      await createProjectedForActivity({
+        ...targetAct,
+        ...updates,
+        has_budget: true,
+        status: 'APROBADA',
+      });
     }
   };
 
@@ -687,7 +770,43 @@ export const PresidencyHub: React.FC = () => {
     existingIds?: number[]
   ) => {
     const baseId = Date.now();
-    const localRecords: ExpenseRecord[] = records.map((item, idx) => ({
+    const first = records[0];
+    const totalGross = Number(
+      records.reduce((acc, r) => acc + Number(r.gross_amount), 0).toFixed(2)
+    );
+
+    // Detectar si requiere salida directa auto-cerrada en cash_withdrawals (DIRECTO_TARJETA o TRANSFERENCIA formal)
+    const isDirectMovement =
+      first &&
+      first.is_applied !== false &&
+      (first.expense_type === 'DIRECTO_TARJETA' || first.expense_type === 'TRANSFERENCIA');
+
+    const prevRecords = existingIds?.length
+      ? expenses.filter((e) => existingIds.includes(e.id))
+      : [];
+    const prevDirectRef =
+      prevRecords[0] &&
+      (prevRecords[0].expense_type === 'DIRECTO_TARJETA' ||
+        prevRecords[0].expense_type === 'TRANSFERENCIA')
+        ? prevRecords[0].withdrawal_ref
+        : null;
+
+    let assignedDirectRef: string | null = null;
+    let normalizedRecords = records;
+
+    if (isDirectMovement) {
+      assignedDirectRef =
+        first.ref_number?.trim() ||
+        prevDirectRef ||
+        `${first.expense_type === 'TRANSFERENCIA' ? 'TRF' : 'DIR'}-${baseId}`;
+      normalizedRecords = records.map((r) => ({
+        ...r,
+        withdrawal_ref: assignedDirectRef,
+        withdrawal_allocations: [],
+      }));
+    }
+
+    const localRecords: ExpenseRecord[] = normalizedRecords.map((item, idx) => ({
       ...item,
       id: baseId + idx,
     }));
@@ -699,12 +818,68 @@ export const PresidencyHub: React.FC = () => {
       return [...localRecords, ...remaining];
     });
 
+    // Sincronizar salida directa en cash_withdrawals
+    if (prevDirectRef && prevDirectRef !== assignedDirectRef) {
+      setWithdrawals((prev) => prev.filter((w) => w.withdrawal_ref !== prevDirectRef));
+      if (!isSimulating) {
+        supabase
+          .from('cash_withdrawals')
+          .delete()
+          .eq('withdrawal_ref', prevDirectRef)
+          .then(() => {});
+      }
+    }
+
+    if (isDirectMovement && assignedDirectRef) {
+      const autoWithdrawal: Omit<CashWithdrawalRecord, 'id'> = {
+        withdrawal_ref: assignedDirectRef,
+        withdrawal_date: first.expense_date,
+        amount: totalGross,
+        responsible_person: user.full_name || 'Administrador',
+        purpose: first.concept,
+        movement_type: first.expense_type === 'TRANSFERENCIA' ? 'TRANSFERENCIA' : 'DIRECTO_TARJETA',
+        status: 'CERRADO_EN_CERO',
+        return_date: null,
+        returned_amount: 0,
+      };
+
+      setWithdrawals((prev) => {
+        const exists = prev.some((w) => w.withdrawal_ref === assignedDirectRef);
+        if (exists) {
+          return prev.map((w) =>
+            w.withdrawal_ref === assignedDirectRef ? { ...w, ...autoWithdrawal } : w
+          );
+        }
+        return [{ ...autoWithdrawal, id: baseId + 999 }, ...prev];
+      });
+
+      if (!isSimulating) {
+        try {
+          const { data: existingW } = await supabase
+            .from('cash_withdrawals')
+            .select('id')
+            .eq('withdrawal_ref', assignedDirectRef)
+            .maybeSingle();
+          if (existingW?.id) {
+            await supabase
+              .from('cash_withdrawals')
+              .update(autoWithdrawal)
+              .eq('id', existingW.id);
+          } else {
+            await supabase.from('cash_withdrawals').insert([autoWithdrawal]);
+          }
+        } catch {
+          // Estado local ya actualizado
+        }
+      }
+    }
+
     if (!isSimulating) {
       try {
         if (existingIds && existingIds.length > 0) {
           await supabase.from('expenses').delete().in('id', existingIds);
         }
-        const dbPayloads = records.map(({ net_amount: _ignored, ...rest }) => rest);
+        const dbPayloads = normalizedRecords.map(({ net_amount: _ignored, ...rest }) => rest);
         const { data } = await supabase.from('expenses').insert(dbPayloads).select();
         if (data && data.length > 0) {
           const inserted = data.map((e) => ({
@@ -727,7 +902,58 @@ export const PresidencyHub: React.FC = () => {
 
   const handleDeleteExpenseGroup = async (ids: number[]) => {
     if (ids.length === 0) return;
+    const deletedRows = expenses.filter((e) => ids.includes(e.id));
+
     setExpenses((prev) => prev.filter((e) => !ids.includes(e.id)));
+
+    // Si se elimina un PROYECTADO_ACTIVIDAD, desmarcar presupuesto en la actividad del calendario
+    const projectedActIds = deletedRows
+      .filter((r) => r.expense_type === 'PROYECTADO_ACTIVIDAD' && r.activity_id)
+      .map((r) => r.activity_id as number);
+
+    if (projectedActIds.length > 0) {
+      setActivities((prev) =>
+        prev.map((a) =>
+          projectedActIds.includes(a.id)
+            ? { ...a, has_budget: false, estimated_cost: 0 }
+            : a
+        )
+      );
+      if (!isSimulating) {
+        try {
+          await supabase
+            .from('activities')
+            .update({ has_budget: false, estimated_cost: 0 })
+            .in('id', projectedActIds);
+        } catch {
+          // Estado local ya actualizado
+        }
+      }
+    }
+
+    // Si se elimina un DIRECTO_TARJETA / TRANSFERENCIA, limpiar su salida directa vinculada
+    const directRefs = deletedRows
+      .filter(
+        (r) =>
+          (r.expense_type === 'DIRECTO_TARJETA' || r.expense_type === 'TRANSFERENCIA') &&
+          r.withdrawal_ref
+      )
+      .map((r) => r.withdrawal_ref as string);
+
+    if (directRefs.length > 0) {
+      setWithdrawals((prev) => prev.filter((w) => !directRefs.includes(w.withdrawal_ref)));
+      if (!isSimulating) {
+        try {
+          await supabase
+            .from('cash_withdrawals')
+            .delete()
+            .in('withdrawal_ref', directRefs);
+        } catch {
+          // Estado local ya actualizado
+        }
+      }
+    }
+
     if (!isSimulating) {
       try {
         await supabase.from('expenses').delete().in('id', ids);

@@ -75,6 +75,20 @@ export interface BudgetAllocation {
   notes?: string;
 }
 
+export type MovementType = 'EFECTIVO' | 'DIRECTO_TARJETA' | 'TRANSFERENCIA';
+
+export type ExpenseType =
+  | 'EFECTIVO'
+  | 'DIRECTO_TARJETA'
+  | 'TRANSFERENCIA'
+  | 'PROYECTADO_ACTIVIDAD'
+  | 'PLANIFICADO_SIN_FECHA';
+
+export interface WithdrawalAllocationItem {
+  withdrawal_ref: string;
+  amount: number;
+}
+
 export interface ExpenseRecord {
   id: number;
   ref_number: string | null;
@@ -82,6 +96,9 @@ export interface ExpenseRecord {
   activity_date?: string; // YYYY-MM-DD (Fecha en que se hace la actividad — visible al líder y define el trimestre)
   activity_id?: number | null; // Vínculo opcional con una actividad del calendario
   shared_group_id?: string | null; // Agrupa las cuotas de un mismo movimiento LCR compartido entre 2+ organizaciones
+  expense_type?: ExpenseType;
+  is_applied?: boolean; // true = gasto formal que impacta presupuesto; false = proyectado/planificado
+  withdrawal_allocations?: WithdrawalAllocationItem[]; // Hasta 2 retiros en efectivo con su monto exacto
   organization: OrganizationCode;
   supplier_name: string;
   concept: string;
@@ -129,6 +146,7 @@ export interface CashWithdrawalRecord {
   amount: number;
   responsible_person: string;
   purpose: string;
+  movement_type?: MovementType;
   status: 'CERRADO_EN_CERO' | 'PENDIENTE_JUSTIFICAR';
   return_date: string | null;
   returned_amount: number;

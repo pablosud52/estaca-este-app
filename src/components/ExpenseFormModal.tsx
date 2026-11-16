@@ -1,27 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  Banknote,
   Calendar,
   CreditCard,
   Plus,
   RotateCcw,
+  Send,
   Sparkles,
   Store,
   Trash2,
   X,
 } from 'lucide-react';
 import {
-  buildMmddMontoRef,
   formatCurrency,
   formatDate,
+  getExpenseWithdrawalAllocations,
   ORGANIZATION_LABELS,
   parseMmddMontoShortcut,
 } from '../lib/formatters';
 import {
   ActivityRecord,
   ExpenseRecord,
+  ExpenseType,
   OrganizationCode,
   SupplierRecord,
+  WithdrawalAllocationItem,
 } from '../types/database';
 
 const TARGET_ORGS: OrganizationCode[] = [
@@ -36,10 +40,19 @@ const TARGET_ORGS: OrganizationCode[] = [
   'ESTACA',
 ];
 
+export interface OpenWithdrawalOption {
+  id: number;
+  withdrawal_ref: string;
+  withdrawal_date: string;
+  amount: number;
+  pendingToRender: number;
+  purpose: string;
+}
+
 interface ParticipantRow {
   uid: string;
   organization: OrganizationCode;
-  manualAmount: string | null; // null = calculado automáticamente en gris
+  manualAmount: string | null;
 }
 
 export interface ExpenseGroupEditData {
@@ -52,6 +65,7 @@ interface ExpenseFormModalProps {
   editGroup: ExpenseGroupEditData | null;
   activities: ActivityRecord[];
   suppliers: SupplierRecord[];
+  openWithdrawals: OpenWithdrawalOption[];
   onClose: () => void;
   onSave: (
     records: Array<Omit<ExpenseRecord, 'id'>>,
@@ -78,14 +92,15 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   editGroup,
   activities,
   suppliers,
+  openWithdrawals,
   onClose,
   onSave,
   onDelete,
   onCreateSupplier,
 }) => {
+  const [expenseType, setExpenseType] = useState<ExpenseType>('EFECTIVO');
   const [shortcutInput, setShortcutInput] = useState('');
   const [shortcutBadge, setShortcutBadge] = useState<string | null>(null);
-  const [isDirectExpense, setIsDirectExpense] = useState(false);
 
   const [activityDate, setActivityDate] = useState(todayIso());
   const [accountingDate, setAccountingDate] = useState(todayIso());
@@ -94,7 +109,12 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
 
   const [grossAmount, setGrossAmount] = useState('');
   const [externalReimbursement, setExternalReimbursement] = useState('');
-  const [refNumber, setRefNumber] = useState('');
+  const [directRefNumber, setDirectRefNumber] = useState('');
+
+  // Selección manual opcional de retiros (null = automático FIFO hasta 2 retiros)
+  const [manualWithdrawalRef1, setManualWithdrawalRef1] = useState<string | null>(null);
+  const [manualWithdrawalRef2, setManualWithdrawalRef2] = useState<string | null>(null);
+
   const [supplierName, setSupplierName] = useState(suppliers[0]?.commercial_name || '');
   const [concept, setConcept] = useState('');
   const [statusLcr, setStatusLcr] = useState<'REGISTRADO_LCR' | 'PENDIENTE_LCR'>('REGISTRADO_LCR');
@@ -110,7 +130,41 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Inicializar formulario al abrir (nuevo o edición)
+  const isRealExpense =
+    expenseType === 'EFECTIVO' ||
+    expenseType === 'DIRECTO_TARJETA' ||
+    expenseType === 'TRANSFERENCIA';
+  const isCashMode = expenseType === 'EFECTIVO';
+  const isDirectOrTransfer =
+    expenseType === 'DIRECTO_TARJETA' || expenseType === 'TRANSFERENCIA';
+
+  // Retiros disponibles ordenados del más antiguo al más nuevo, sumando lo que ya tenía asignado este gasto si se está editando
+  const availableWithdrawals = useMemo(() => {
+    const editedMap = new Map<string, number>();
+    if (editGroup?.records.length) {
+      const first = editGroup.records[0];
+      const existingAllocs = getExpenseWithdrawalAllocations({
+        withdrawal_allocations: first.withdrawal_allocations,
+        withdrawal_ref: first.withdrawal_ref,
+        gross_amount: editGroup.records.reduce((acc, r) => acc + Number(r.gross_amount), 0),
+      });
+      existingAllocs.forEach((a) => {
+        editedMap.set(a.withdrawal_ref, (editedMap.get(a.withdrawal_ref) || 0) + a.amount);
+      });
+    }
+
+    return [...openWithdrawals]
+      .map((w) => ({
+        ...w,
+        effectiveAvailable: Number(
+          (w.pendingToRender + (editedMap.get(w.withdrawal_ref) || 0)).toFixed(2)
+        ),
+      }))
+      .filter((w) => w.effectiveAvailable > 0)
+      .sort((a, b) => a.withdrawal_date.localeCompare(b.withdrawal_date));
+  }, [openWithdrawals, editGroup]);
+
+  // Inicializar formulario al abrir
   useEffect(() => {
     if (!isOpen) return;
     setConfirmDelete(false);
@@ -126,25 +180,42 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
         0
       );
 
+      const detectedType: ExpenseType =
+        first.expense_type ||
+        (first.is_applied === false
+          ? first.activity_id
+            ? 'PROYECTADO_ACTIVIDAD'
+            : 'PLANIFICADO_SIN_FECHA'
+          : first.withdrawal_ref
+          ? 'EFECTIVO'
+          : 'DIRECTO_TARJETA');
+
+      setExpenseType(detectedType);
       setAccountingDate(first.expense_date);
       setActivityDate(first.activity_date || first.expense_date);
       setActivityDateTouched(true);
       setSelectedActivityId(first.activity_id ? String(first.activity_id) : '');
       setGrossAmount(totalGross.toFixed(2));
       setExternalReimbursement(totalExt > 0 ? totalExt.toFixed(2) : '');
-      setRefNumber(first.ref_number || '');
-      setIsDirectExpense(!first.withdrawal_ref);
+      setDirectRefNumber(first.ref_number || '');
       setSupplierName(first.supplier_name);
       setConcept(first.concept);
       setStatusLcr(first.status === 'PENDIENTE_LCR' ? 'PENDIENTE_LCR' : 'REGISTRADO_LCR');
       setIsReimbursableOai(Boolean(first.is_reimbursable_oai));
+
+      const existingAllocs = getExpenseWithdrawalAllocations({
+        withdrawal_allocations: first.withdrawal_allocations,
+        withdrawal_ref: first.withdrawal_ref,
+        gross_amount: totalGross,
+      });
+      setManualWithdrawalRef1(existingAllocs[0]?.withdrawal_ref ?? null);
+      setManualWithdrawalRef2(existingAllocs[1]?.withdrawal_ref ?? null);
 
       if (editGroup.records.length === 1) {
         setParticipants([
           { uid: 'p-1', organization: first.organization, manualAmount: null },
         ]);
       } else {
-        // Si todas las cuotas son casi iguales, dejar en automático; si difieren, cargar como manual
         const evenParts = distributeEvenly(totalGross, editGroup.records.length);
         const isEven = editGroup.records.every(
           (r, idx) => Math.abs(Number(r.gross_amount) - evenParts[idx]) < 0.02
@@ -159,14 +230,16 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       }
     } else {
       const today = todayIso();
+      setExpenseType('EFECTIVO');
       setAccountingDate(today);
       setActivityDate(today);
       setActivityDateTouched(false);
       setSelectedActivityId('');
       setGrossAmount('');
       setExternalReimbursement('');
-      setRefNumber('');
-      setIsDirectExpense(false);
+      setDirectRefNumber('');
+      setManualWithdrawalRef1(null);
+      setManualWithdrawalRef2(null);
       setSupplierName(suppliers[0]?.commercial_name || '');
       setConcept('');
       setStatusLcr('REGISTRADO_LCR');
@@ -185,9 +258,72 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : 0;
   }, [externalReimbursement]);
 
-  // Cálculo en cascada de participantes:
-  // - Los modificados manualmente conservan su monto fijo.
-  // - El saldo restante se divide automáticamente entre los que NO fueron modificados.
+  // Cálculo automático de hasta 2 retiros en cascada (modo EFECTIVO)
+  const cashCoverage = useMemo(() => {
+    if (!isCashMode) {
+      return { allocations: [] as WithdrawalAllocationItem[], uncovered: 0, w1: null, w2: null };
+    }
+
+    if (availableWithdrawals.length === 0) {
+      return {
+        allocations: [] as WithdrawalAllocationItem[],
+        uncovered: parsedTotalGross,
+        w1: null,
+        w2: null,
+      };
+    }
+
+    const w1 =
+      (manualWithdrawalRef1 &&
+        availableWithdrawals.find((w) => w.withdrawal_ref === manualWithdrawalRef1)) ||
+      availableWithdrawals[0];
+
+    if (parsedTotalGross <= 0) {
+      return {
+        allocations: w1 ? [{ withdrawal_ref: w1.withdrawal_ref, amount: 0 }] : [],
+        uncovered: 0,
+        w1,
+        w2: null,
+      };
+    }
+
+    const take1 = Number(Math.min(parsedTotalGross, w1.effectiveAvailable).toFixed(2));
+    const remainingAfter1 = Number((parsedTotalGross - take1).toFixed(2));
+    const allocations: WithdrawalAllocationItem[] = [
+      { withdrawal_ref: w1.withdrawal_ref, amount: take1 },
+    ];
+
+    let w2 = null;
+    let remainingAfter2 = remainingAfter1;
+
+    if (remainingAfter1 > 0) {
+      const candidates2 = availableWithdrawals.filter(
+        (w) => w.withdrawal_ref !== w1.withdrawal_ref
+      );
+      w2 =
+        (manualWithdrawalRef2 &&
+          candidates2.find((w) => w.withdrawal_ref === manualWithdrawalRef2)) ||
+        candidates2[0] ||
+        null;
+
+      if (w2) {
+        const take2 = Number(Math.min(remainingAfter1, w2.effectiveAvailable).toFixed(2));
+        remainingAfter2 = Number((remainingAfter1 - take2).toFixed(2));
+        if (take2 > 0) {
+          allocations.push({ withdrawal_ref: w2.withdrawal_ref, amount: take2 });
+        }
+      }
+    }
+
+    return {
+      allocations,
+      uncovered: Math.max(0, remainingAfter2),
+      w1,
+      w2,
+    };
+  }, [isCashMode, availableWithdrawals, manualWithdrawalRef1, manualWithdrawalRef2, parsedTotalGross]);
+
+  // Cálculo en cascada de participantes (Organizaciones)
   const computedParticipants = useMemo(() => {
     if (participants.length === 1) {
       return participants.map((p) => ({
@@ -219,7 +355,6 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
           isAuto: false,
         };
       }
-      // Si el saldo restante ya es <= 0, el automático queda en 0 para disparar la alerta
       const amt = remaining <= 0 ? 0 : autoAmounts[autoIdx] ?? 0;
       autoIdx += 1;
       return {
@@ -253,15 +388,18 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const hasAllocationMismatch =
     parsedTotalGross > 0 && Math.abs(allocationDiff) > 0.01;
 
+  const hasInsufficientCash = isCashMode && cashCoverage.uncovered > 0.01;
+
   const canSubmit =
     !saving &&
     parsedTotalGross > 0 &&
     Boolean(activityDate) &&
     Boolean(accountingDate) &&
     Boolean(concept.trim()) &&
-    Boolean(supplierName.trim()) &&
+    (isRealExpense ? Boolean(supplierName.trim()) : true) &&
     !hasAllocationMismatch &&
-    !hasZeroOrNegativeParticipant;
+    !hasZeroOrNegativeParticipant &&
+    !hasInsufficientCash;
 
   const usedOrgs = useMemo(
     () => new Set(participants.map((p) => p.organization)),
@@ -273,18 +411,16 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     [usedOrgs]
   );
 
+  // Atajo MMDD-MONTO: rellena fecha contable y monto sin pisar el retiro automático abierto
   const handleShortcutChange = (val: string) => {
     setShortcutInput(val);
     const parsed = parseMmddMontoShortcut(val);
-    if (parsed.isValid && parsed.date && parsed.amount !== undefined && parsed.ref) {
+    if (parsed.isValid && parsed.date && parsed.amount !== undefined) {
       setAccountingDate(parsed.date);
       if (!activityDateTouched && !editGroup) {
         setActivityDate(parsed.date);
       }
       setGrossAmount(String(parsed.amount));
-      if (!isDirectExpense) {
-        setRefNumber(parsed.ref);
-      }
       setShortcutBadge(`${formatDate(parsed.date)} • ${formatCurrency(parsed.amount)}`);
     } else {
       setShortcutBadge(null);
@@ -297,9 +433,6 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       setActivityDate(nextDate);
     }
     setGrossAmount(nextAmount);
-    if (!isDirectExpense && nextDate && nextAmount && Number(nextAmount) > 0) {
-      setRefNumber(buildMmddMontoRef(nextDate, Number(nextAmount)));
-    }
   };
 
   const handleActivityLinkChange = (actIdStr: string) => {
@@ -378,7 +511,6 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
           ? existingGroupId || `grp-${Date.now()}`
           : null;
 
-      // Prorratear reintegro externo proporcionalmente si hubiera
       const extParts =
         parsedExternalReimb > 0
           ? computedParticipants.map((p) =>
@@ -386,24 +518,49 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             )
           : computedParticipants.map(() => 0);
 
+      // En efectivo con 2 retiros, repartimos las asignaciones proporcionalmente o en la fila principal si es 1
+      const finalRefNumber = isCashMode
+        ? cashCoverage.allocations.map((a) => a.withdrawal_ref).join(' + ')
+        : isDirectOrTransfer
+        ? directRefNumber.trim() || null
+        : null;
+
+      const primaryWithdrawalRef = isCashMode
+        ? cashCoverage.allocations[0]?.withdrawal_ref || null
+        : null;
+
       const records: Array<Omit<ExpenseRecord, 'id'>> = computedParticipants.map((p, idx) => {
         const extAmt = extParts[idx] || 0;
         const netAmt = Number(Math.max(0, p.computedAmount - extAmt).toFixed(2));
+        // Asignar retiros proporcionalmente al peso de esta fila sobre el total para que la suma de todas las filas cuadre exacto por retiro
+        const rowAllocations: WithdrawalAllocationItem[] = isCashMode
+          ? cashCoverage.allocations.map((a) => ({
+              withdrawal_ref: a.withdrawal_ref,
+              amount:
+                computedParticipants.length === 1
+                  ? a.amount
+                  : Number(((a.amount * p.computedAmount) / parsedTotalGross).toFixed(2)),
+            }))
+          : [];
+
         return {
-          ref_number: refNumber.trim() || null,
-          expense_date: accountingDate,
+          ref_number: finalRefNumber,
+          expense_date: isRealExpense ? accountingDate : activityDate,
           activity_date: activityDate,
           activity_id: selectedActivityId ? Number(selectedActivityId) : null,
           shared_group_id: groupId,
+          expense_type: expenseType,
+          is_applied: isRealExpense,
+          withdrawal_allocations: rowAllocations,
           organization: p.organization,
-          supplier_name: supplierName.trim(),
+          supplier_name: isRealExpense ? supplierName.trim() : supplierName.trim() || 'Por definir',
           concept: concept.trim(),
           gross_amount: p.computedAmount,
           external_reimbursement: extAmt,
           net_amount: netAmt,
           is_reimbursable_oai: isReimbursableOai,
-          status: statusLcr,
-          withdrawal_ref: isDirectExpense ? null : refNumber.trim() || null,
+          status: isRealExpense ? statusLcr : 'PENDIENTE_LCR',
+          withdrawal_ref: primaryWithdrawalRef,
         };
       });
 
@@ -428,10 +585,10 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 id="expense-modal-title" className="text-base font-extrabold text-slate-900">
-              {editGroup ? 'Editar Comprobante de Gasto' : 'Añadir Gasto'}
+              {editGroup ? 'Editar Movimiento' : 'Añadir Gasto'}
             </h3>
             <p className="text-xs text-slate-500">
-              Registra el movimiento contable y asigna una o más organizaciones
+              Selecciona el tipo de movimiento y asigna una o más organizaciones
             </p>
           </div>
           <button
@@ -446,9 +603,76 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4">
-          {/* Atajo MMDD-MONTO + Gasto Directo */}
-          {!editGroup && (
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+          {/* Selector de los 5 tipos de gasto */}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                Real:
+              </span>
+              {(
+                [
+                  { id: 'EFECTIVO', label: 'Efectivo', icon: Banknote },
+                  { id: 'DIRECTO_TARJETA', label: 'Tarjeta', icon: CreditCard },
+                  { id: 'TRANSFERENCIA', label: 'Transferencia LCR', icon: Send },
+                ] as const
+              ).map((item) => {
+                const Icon = item.icon;
+                const active = expenseType === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    data-testid={`expense-type-${item.id}`}
+                    onClick={() => setExpenseType(item.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                      active
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 ml-1 mr-1">
+                Proyectado:
+              </span>
+              {(
+                [
+                  { id: 'PROYECTADO_ACTIVIDAD', label: 'De Actividad' },
+                  { id: 'PLANIFICADO_SIN_FECHA', label: 'Sin fecha' },
+                ] as const
+              ).map((item) => {
+                const active = expenseType === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    data-testid={`expense-type-${item.id}`}
+                    onClick={() => setExpenseType(item.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                      active
+                        ? 'bg-amber-100 text-amber-950 border-amber-300'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {!isRealExpense && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-1.5 font-medium">
+                Los gastos proyectados no descuentan el presupuesto real ni afectan retiros ni LCR hasta que los formalices.
+              </p>
+            )}
+          </div>
+
+          {/* Atajo MMDD-MONTO (para reales nuevos) */}
+          {!editGroup && isRealExpense && (
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <label
                   htmlFor="modal-mmdd-input"
@@ -467,7 +691,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                 id="modal-mmdd-input"
                 data-testid="mmdd-shortcut-input"
                 type="text"
-                placeholder="Ej: 1115-5000 (15/11 y $ 5.000,00)"
+                placeholder="Ej: 1115-5000 (completa fecha y monto)"
                 value={shortcutInput}
                 onChange={(e) => handleShortcutChange(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400"
@@ -475,33 +699,39 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             </div>
           )}
 
-          {/* Vínculo opcional con actividad del calendario */}
+          {/* Vínculo con actividad del calendario + Dos fechas */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                <span>Vincular a actividad del calendario (opcional)</span>
-              </label>
-              <select
-                value={selectedActivityId}
-                onChange={(e) => handleActivityLinkChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
-              >
-                <option value="">— Sin vincular (carga libre) —</option>
-                {activities
-                  .filter((a) => a.status !== 'CANCELADA' && a.status !== 'RECHAZADA')
-                  .map((act) => (
-                    <option key={act.id} value={act.id}>
-                      {formatDate(act.event_date)} • {act.title} ({ORGANIZATION_LABELS[act.organization]})
-                    </option>
-                  ))}
-              </select>
-            </div>
+            {expenseType !== 'PLANIFICADO_SIN_FECHA' && (
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                  <span>
+                    Vincular a actividad del calendario{' '}
+                    {expenseType === 'PROYECTADO_ACTIVIDAD' ? '*' : '(opcional)'}
+                  </span>
+                </label>
+                <select
+                  value={selectedActivityId}
+                  onChange={(e) => handleActivityLinkChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
+                >
+                  <option value="">— Sin vincular (carga libre) —</option>
+                  {activities
+                    .filter((a) => a.status !== 'CANCELADA' && a.status !== 'RECHAZADA')
+                    .map((act) => (
+                      <option key={act.id} value={act.id}>
+                        {formatDate(act.event_date)} • {act.title} ({ORGANIZATION_LABELS[act.organization]})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
 
-            {/* Dos fechas distintas */}
             <div>
               <label className="block text-xs font-bold text-slate-900 mb-1">
-                Fecha de la actividad *
+                {expenseType === 'PLANIFICADO_SIN_FECHA'
+                  ? 'Fecha tentativa *'
+                  : 'Fecha de la actividad *'}
               </label>
               <input
                 type="date"
@@ -519,29 +749,31 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
               </p>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Fecha contable / LCR *
-              </label>
-              <input
-                type="date"
-                required
-                data-testid="expense-date-input"
-                value={accountingDate}
-                onChange={(e) =>
-                  handleAccountingDateOrAmountChange(e.target.value, grossAmount)
-                }
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm tabular-nums"
-              />
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Uso interno de control y rendición LCR
-              </p>
-            </div>
+            {isRealExpense && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Fecha contable / LCR *
+                </label>
+                <input
+                  type="date"
+                  required
+                  data-testid="expense-date-input"
+                  value={accountingDate}
+                  onChange={(e) =>
+                    handleAccountingDateOrAmountChange(e.target.value, grossAmount)
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm tabular-nums"
+                />
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Uso interno de control y rendición LCR
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Monto Total + Referencia + Tipo Directo */}
+          {/* Monto Total + Referencia (Directa/Transferencia) o Cobertura automática de Retiros (Efectivo) */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
-            <div className="sm:col-span-5">
+            <div className={isDirectOrTransfer ? 'sm:col-span-5' : 'sm:col-span-12'}>
               <label className="block text-xs font-bold text-slate-900 mb-1">
                 Monto total del gasto ($) *
               </label>
@@ -561,34 +793,122 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
               />
             </div>
 
-            <div className="sm:col-span-4">
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                {isDirectExpense ? 'N° Cupón / Ref. Directa' : 'Ref. Retiro (MMDD-MONTO)'}
-              </label>
-              <input
-                type="text"
-                data-testid="expense-ref-input"
-                placeholder={isDirectExpense ? 'Ej: TX-401' : 'MMDD-MONTO'}
-                value={refNumber}
-                onChange={(e) => setRefNumber(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm font-mono"
-              />
-            </div>
-
-            <div className="sm:col-span-3 sm:pt-6">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+            {isDirectOrTransfer && (
+              <div className="sm:col-span-7">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {expenseType === 'TRANSFERENCIA'
+                    ? 'N° Referencia Transferencia LCR'
+                    : 'N° Cupón / Referencia única (sin separadores)'}
+                </label>
                 <input
-                  type="checkbox"
-                  data-testid="direct-expense-checkbox"
-                  checked={isDirectExpense}
-                  onChange={(e) => setIsDirectExpense(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-emerald-700"
+                  type="text"
+                  data-testid="expense-ref-input"
+                  placeholder={expenseType === 'TRANSFERENCIA' ? 'Ej: TRF1095' : 'Ej: 1095082'}
+                  value={directRefNumber}
+                  onChange={(e) => setDirectRefNumber(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm font-mono"
                 />
-                <CreditCard className="w-3.5 h-3.5 text-slate-500" />
-                <span>Directo</span>
-              </label>
-            </div>
+              </div>
+            )}
           </div>
+
+          {/* Bloque de Retiros Automáticos (solo en modo EFECTIVO) */}
+          {isCashMode && (
+            <div
+              data-testid="cash-withdrawal-coverage-box"
+              className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2.5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-extrabold text-slate-800">
+                  Retiros de efectivo vinculados (automático)
+                </span>
+                {cashCoverage.allocations.length === 2 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-white">
+                    2 retiros encadenados
+                  </span>
+                )}
+              </div>
+
+              {availableWithdrawals.length === 0 ? (
+                <div className="text-xs text-rose-700 font-bold flex flex-wrap items-center justify-between gap-2">
+                  <span>No hay retiros en efectivo abiertos con saldo disponible.</span>
+                  <button
+                    type="button"
+                    onClick={() => setExpenseType('PLANIFICADO_SIN_FECHA')}
+                    className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold"
+                  >
+                    Dejar como Proyectado (pendiente de fondos)
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* Retiro 1 */}
+                  {cashCoverage.w1 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <select
+                        data-testid="withdrawal-select-1"
+                        value={cashCoverage.w1.withdrawal_ref}
+                        onChange={(e) => setManualWithdrawalRef1(e.target.value)}
+                        className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white"
+                      >
+                        {availableWithdrawals.map((w) => (
+                          <option key={w.withdrawal_ref} value={w.withdrawal_ref}>
+                            {w.withdrawal_ref} • Disp: {formatCurrency(w.effectiveAvailable)} (
+                            {formatDate(w.withdrawal_date)})
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-xs font-bold text-slate-700 tabular-nums whitespace-nowrap">
+                        Toma: {formatCurrency(cashCoverage.allocations[0]?.amount || 0)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Retiro 2 automático si el 1 no alcanzó */}
+                  {cashCoverage.w2 && cashCoverage.allocations[1] && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1 border-t border-slate-200/70">
+                      <select
+                        data-testid="withdrawal-select-2"
+                        value={cashCoverage.w2.withdrawal_ref}
+                        onChange={(e) => setManualWithdrawalRef2(e.target.value)}
+                        className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white"
+                      >
+                        {availableWithdrawals
+                          .filter((w) => w.withdrawal_ref !== cashCoverage.w1?.withdrawal_ref)
+                          .map((w) => (
+                            <option key={w.withdrawal_ref} value={w.withdrawal_ref}>
+                              {w.withdrawal_ref} • Disp: {formatCurrency(w.effectiveAvailable)} (
+                              {formatDate(w.withdrawal_date)})
+                            </option>
+                          ))}
+                      </select>
+                      <span className="text-xs font-bold text-slate-700 tabular-nums whitespace-nowrap">
+                        Toma: {formatCurrency(cashCoverage.allocations[1].amount)}
+                      </span>
+                    </div>
+                  )}
+
+                  {hasInsufficientCash && (
+                    <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-rose-600">
+                      <span className="flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span>
+                          Faltan {formatCurrency(cashCoverage.uncovered)} por cubrir en retiros abiertos.
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setExpenseType('PLANIFICADO_SIN_FECHA')}
+                        className="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold"
+                      >
+                        Pasar a Proyectado (esperando fondos)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Organización y Participantes (Reparto automático en cascada) */}
           <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2.5">
@@ -712,34 +1032,36 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
 
           {/* Proveedor y Concepto */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-slate-700">Proveedor *</label>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingSupplier((v) => !v)}
-                  className="text-[11px] font-bold text-emerald-800 hover:underline flex items-center gap-1"
+            {isRealExpense && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">Proveedor *</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingSupplier((v) => !v)}
+                    className="text-[11px] font-bold text-emerald-800 hover:underline flex items-center gap-1"
+                  >
+                    <Store className="w-3 h-3" />
+                    <span>{isAddingSupplier ? 'Cancelar' : '+ Nuevo'}</span>
+                  </button>
+                </div>
+                <select
+                  value={supplierName}
+                  onChange={(e) => setSupplierName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
                 >
-                  <Store className="w-3 h-3" />
-                  <span>{isAddingSupplier ? 'Cancelar' : '+ Nuevo'}</span>
-                </button>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.commercial_name}>
+                      {s.commercial_name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <select
-                value={supplierName}
-                onChange={(e) => setSupplierName(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
-              >
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.commercial_name}>
-                    {s.commercial_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            )}
 
-            <div>
+            <div className={isRealExpense ? '' : 'sm:col-span-2'}>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                Concepto / Descripción *
+                Concepto / Propósito *
               </label>
               <input
                 type="text"
@@ -753,7 +1075,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             </div>
           </div>
 
-          {isAddingSupplier && (
+          {isRealExpense && isAddingSupplier && (
             <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
@@ -779,50 +1101,52 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             </div>
           )}
 
-          {/* Estado LCR, Reintegro externo y Reembolsable OAI */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Estado LCR</label>
-              <select
-                value={statusLcr}
-                onChange={(e) =>
-                  setStatusLcr(e.target.value as 'REGISTRADO_LCR' | 'PENDIENTE_LCR')
-                }
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white"
-              >
-                <option value="REGISTRADO_LCR">✓ Registrado en LCR</option>
-                <option value="PENDIENTE_LCR">Pendiente asentar LCR</option>
-              </select>
-            </div>
+          {/* Estado LCR, Reintegro externo y Reembolsable OAI (solo para gastos reales) */}
+          {isRealExpense && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Estado LCR</label>
+                <select
+                  value={statusLcr}
+                  onChange={(e) =>
+                    setStatusLcr(e.target.value as 'REGISTRADO_LCR' | 'PENDIENTE_LCR')
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white"
+                >
+                  <option value="REGISTRADO_LCR">✓ Registrado en LCR</option>
+                  <option value="PENDIENTE_LCR">Pendiente asentar LCR</option>
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Reintegro otras estacas ($)
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                placeholder="0,00"
-                value={externalReimbursement}
-                onChange={(e) => setExternalReimbursement(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs tabular-nums"
-              />
-            </div>
-
-            <div className="flex items-end pb-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reintegro otras estacas ($)
+                </label>
                 <input
-                  type="checkbox"
-                  checked={isReimbursableOai}
-                  onChange={(e) => setIsReimbursableOai(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-emerald-700"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  placeholder="0,00"
+                  value={externalReimbursement}
+                  onChange={(e) => setExternalReimbursement(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs tabular-nums"
                 />
-                <span>Reembolsable OAI</span>
-              </label>
+              </div>
+
+              <div className="flex items-end pb-2">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isReimbursableOai}
+                    onChange={(e) => setIsReimbursableOai(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-emerald-700"
+                  />
+                  <span>Reembolsable OAI</span>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Footer */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
@@ -879,7 +1203,9 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   ? 'Guardando...'
                   : editGroup
                   ? 'Guardar cambios'
-                  : 'Guardar gasto'}
+                  : isRealExpense
+                  ? 'Guardar gasto'
+                  : 'Guardar proyección'}
               </button>
             </div>
           </div>

@@ -1,4 +1,10 @@
-import { OrganizationCode, QuarterCode } from '../types/database';
+import {
+  ActivityRecord,
+  ExpenseRecord,
+  OrganizationCode,
+  QuarterCode,
+  WithdrawalAllocationItem,
+} from '../types/database';
 
 /**
  * Regla Sagrada #4 (Constitution):
@@ -65,6 +71,97 @@ export function getExpenseEffectiveDate(exp: {
   expense_date: string;
 }): string {
   return (exp.activity_date && exp.activity_date.trim()) || exp.expense_date;
+}
+
+/**
+ * Indica si un gasto es formal / aplicado (impacta en presupuesto real y LCR).
+ * Los gastos proyectados de actividad o planificados sin fecha devuelven false.
+ */
+export function isExpenseApplied(
+  exp: Pick<ExpenseRecord, 'is_applied' | 'expense_type'>
+): boolean {
+  if (exp.is_applied === false) return false;
+  if (
+    exp.expense_type === 'PROYECTADO_ACTIVIDAD' ||
+    exp.expense_type === 'PLANIFICADO_SIN_FECHA'
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Devuelve las asignaciones a retiros en efectivo de un gasto (soporta hasta 2 retiros).
+ */
+export function getExpenseWithdrawalAllocations(
+  exp: Pick<ExpenseRecord, 'withdrawal_allocations' | 'withdrawal_ref' | 'gross_amount'>
+): WithdrawalAllocationItem[] {
+  if (Array.isArray(exp.withdrawal_allocations) && exp.withdrawal_allocations.length > 0) {
+    return exp.withdrawal_allocations.map((a) => ({
+      withdrawal_ref: a.withdrawal_ref,
+      amount: Number(a.amount || 0),
+    }));
+  }
+  if (exp.withdrawal_ref) {
+    return [{ withdrawal_ref: exp.withdrawal_ref, amount: Number(exp.gross_amount || 0) }];
+  }
+  return [];
+}
+
+/**
+ * Consolida los gastos reales de una misma actividad en una sola línea para la vista del líder.
+ * Los gastos sin `activity_id` se mantienen individuales.
+ */
+export function consolidateLeaderExpenses(
+  expenses: ExpenseRecord[],
+  activities: ActivityRecord[]
+): ExpenseRecord[] {
+  const byActivity = new Map<number, ExpenseRecord[]>();
+  const standalone: ExpenseRecord[] = [];
+
+  expenses.forEach((exp) => {
+    if (exp.activity_id) {
+      const list = byActivity.get(exp.activity_id) || [];
+      list.push(exp);
+      byActivity.set(exp.activity_id, list);
+    } else {
+      standalone.push(exp);
+    }
+  });
+
+  const consolidated: ExpenseRecord[] = [...standalone];
+
+  byActivity.forEach((group, actId) => {
+    if (group.length === 1) {
+      consolidated.push(group[0]);
+      return;
+    }
+    const primary = group[0];
+    const act = activities.find((a) => a.id === actId);
+    const totalGross = Number(
+      group.reduce((acc, r) => acc + Number(r.gross_amount), 0).toFixed(2)
+    );
+    const totalExt = Number(
+      group.reduce((acc, r) => acc + Number(r.external_reimbursement || 0), 0).toFixed(2)
+    );
+    const totalNet = Number(
+      group.reduce((acc, r) => acc + Number(r.net_amount), 0).toFixed(2)
+    );
+
+    consolidated.push({
+      ...primary,
+      concept: act ? act.title : primary.concept,
+      supplier_name:
+        group.length > 1 ? `${group.length} comprobantes vinculados` : primary.supplier_name,
+      gross_amount: totalGross,
+      external_reimbursement: totalExt,
+      net_amount: totalNet,
+    });
+  });
+
+  return consolidated.sort((a, b) =>
+    getExpenseEffectiveDate(b).localeCompare(getExpenseEffectiveDate(a))
+  );
 }
 
 export const ORGANIZATION_LABELS: Record<OrganizationCode, string> = {

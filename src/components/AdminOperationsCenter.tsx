@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  Clock,
   FileSpreadsheet,
   Pencil,
   Plus,
@@ -14,6 +15,8 @@ import {
   formatCurrency,
   formatDate,
   getExpenseEffectiveDate,
+  getExpenseWithdrawalAllocations,
+  isExpenseApplied,
   ORGANIZATION_SHORT_LABELS,
   parseMmddMontoShortcut,
 } from '../lib/formatters';
@@ -22,10 +25,15 @@ import {
   BudgetAllocation,
   CashWithdrawalRecord,
   ExpenseRecord,
+  MovementType,
   SupplierRecord,
 } from '../types/database';
 import { BudgetManagementSection } from './BudgetManagementSection';
-import { ExpenseFormModal, ExpenseGroupEditData } from './ExpenseFormModal';
+import {
+  ExpenseFormModal,
+  ExpenseGroupEditData,
+  OpenWithdrawalOption,
+} from './ExpenseFormModal';
 
 const ExcelSyncPanel = lazy(() =>
   import('./ExcelSyncPanel').then((m) => ({ default: m.ExcelSyncPanel }))
@@ -64,10 +72,17 @@ interface GroupedExpenseMovement {
   totalExternalReimb: number;
   totalNet: number;
   isPendingLcr: boolean;
+  isApplied: boolean;
   isShared: boolean;
   effectiveDate: string;
   accountingDate: string;
 }
+
+const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
+  EFECTIVO: 'Efectivo',
+  DIRECTO_TARJETA: 'Tarjeta',
+  TRANSFERENCIA: 'Transferencia',
+};
 
 export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   selectedYear = 2026,
@@ -92,15 +107,17 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   );
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // Modal de Añadir / Editar Gasto
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ExpenseGroupEditData | null>(null);
 
   // Filtros del Libro de Comprobantes
   const [ledgerSearch, setLedgerSearch] = useState('');
-  const [onlyPendingLcr, setOnlyPendingLcr] = useState(false);
+  const [ledgerFilter, setLedgerFilter] = useState<'ALL' | 'PENDING_LCR' | 'PROJECTED'>('ALL');
 
-  // Nuevo Retiro + Confirmación de Cierre con fecha real
+  // Filtro de la tabla unificada de Salidas (Efectivo vs Directo/Transferencia)
+  const [withdrawalTypeFilter, setWithdrawalTypeFilter] = useState<'ALL' | 'EFECTIVO' | 'DIRECTO'>('ALL');
+
+  // Nuevo Retiro + Confirmación de Cierre
   const [newWithdrawalShortcut, setNewWithdrawalShortcut] = useState('');
   const [newWithdrawalPurpose, setNewWithdrawalPurpose] = useState('');
   const [newWithdrawalResponsible, setNewWithdrawalResponsible] = useState('Pablo Lamela');
@@ -110,47 +127,79 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   );
   const [closingReturnAmount, setClosingReturnAmount] = useState('');
 
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
   const triggerToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 4500);
   };
 
   // =========================================================================
-  // 1. CÁLCULOS EN VIVO DEL MONITOR DE CONCILIACIÓN LCR
+  // 1. CÁLCULOS EN VIVO DEL MONITOR DE CONCILIACIÓN LCR (CON SOPORTE DE 2 RETIROS)
   // =========================================================================
   const reconciliationStats = useMemo(() => {
-    const totalWithdrawn = withdrawals.reduce((acc, w) => acc + Number(w.amount), 0);
-    const totalReturnedDeposits = withdrawals.reduce(
+    const appliedExpenses = expenses.filter((e) => isExpenseApplied(e));
+    const cashWithdrawalsOnly = withdrawals.filter(
+      (w) => !w.movement_type || w.movement_type === 'EFECTIVO'
+    );
+
+    const totalWithdrawn = cashWithdrawalsOnly.reduce((acc, w) => acc + Number(w.amount), 0);
+    const totalReturnedDeposits = cashWithdrawalsOnly.reduce(
       (acc, w) => acc + Number(w.returned_amount || 0),
       0
     );
 
+    // Sumar cuánto consumió cada retiro usando `withdrawal_allocations` (soporta hasta 2 retiros por gasto)
+    const renderedByRef = new Map<string, number>();
+    appliedExpenses.forEach((exp) => {
+      const allocs = getExpenseWithdrawalAllocations(exp);
+      allocs.forEach((a) => {
+        renderedByRef.set(
+          a.withdrawal_ref,
+          Number(((renderedByRef.get(a.withdrawal_ref) || 0) + a.amount).toFixed(2))
+        );
+      });
+    });
+
     const withdrawalDetails = withdrawals.map((w) => {
-      const linkedExpenses = expenses.filter((e) => e.withdrawal_ref === w.withdrawal_ref);
-      const renderedAmount = linkedExpenses.reduce((acc, e) => acc + Number(e.gross_amount), 0);
-      const rawPending = Number(w.amount) - renderedAmount - Number(w.returned_amount || 0);
+      const mType: MovementType = w.movement_type || 'EFECTIVO';
+      const renderedAmount =
+        mType === 'EFECTIVO' ? renderedByRef.get(w.withdrawal_ref) || 0 : Number(w.amount);
+      const rawPending =
+        mType === 'EFECTIVO'
+          ? Number(w.amount) - renderedAmount - Number(w.returned_amount || 0)
+          : 0;
       const pendingToRender =
-        w.status === 'CERRADO_EN_CERO' ? 0 : Math.max(0, Number(rawPending.toFixed(2)));
+        w.status === 'CERRADO_EN_CERO' || mType !== 'EFECTIVO'
+          ? 0
+          : Math.max(0, Number(rawPending.toFixed(2)));
 
       return {
         ...w,
+        movementType: mType,
         renderedAmount,
         pendingToRender,
       };
     });
 
-    const openWithdrawals = withdrawalDetails.filter((w) => w.status === 'PENDIENTE_JUSTIFICAR');
+    const openWithdrawals = withdrawalDetails.filter(
+      (w) => w.movementType === 'EFECTIVO' && w.status === 'PENDIENTE_JUSTIFICAR'
+    );
     const totalUnjustifiedWithdrawalsAmount = openWithdrawals.reduce(
       (acc, w) => acc + w.pendingToRender,
       0
     );
 
     const totalRenderedInWithdrawals = totalWithdrawn - totalUnjustifiedWithdrawalsAmount;
-    const pendingLcrExpenses = expenses.filter((e) => e.status === 'PENDIENTE_LCR');
+    const pendingLcrExpenses = appliedExpenses.filter((e) => e.status === 'PENDIENTE_LCR');
     const pendingLcrTotalAmount = pendingLcrExpenses.reduce(
       (acc, e) => acc + Number(e.gross_amount),
       0
     );
+
+    const projectedTotalAmount = expenses
+      .filter((e) => !isExpenseApplied(e))
+      .reduce((acc, e) => acc + Number(e.gross_amount), 0);
 
     const totalPendingDifference = totalUnjustifiedWithdrawalsAmount + pendingLcrTotalAmount;
     const semaphoreState: 'VERDE' | 'AMBAR' | 'ROJO' =
@@ -169,13 +218,27 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       totalUnjustifiedWithdrawalsAmount,
       pendingLcrExpenses,
       pendingLcrTotalAmount,
+      projectedTotalAmount,
       totalPendingDifference,
       semaphoreState,
     };
   }, [withdrawals, expenses]);
 
+  const openWithdrawalOptions: OpenWithdrawalOption[] = useMemo(
+    () =>
+      reconciliationStats.openWithdrawals.map((w) => ({
+        id: w.id,
+        withdrawal_ref: w.withdrawal_ref,
+        withdrawal_date: w.withdrawal_date,
+        amount: Number(w.amount),
+        pendingToRender: w.pendingToRender,
+        purpose: w.purpose,
+      })),
+    [reconciliationStats.openWithdrawals]
+  );
+
   // =========================================================================
-  // 2. AGRUPACIÓN DE MOVIMIENTOS LCR (PARA MOSTRAR COMPARTIDOS COMO 1 SOLO)
+  // 2. AGRUPACIÓN DE MOVIMIENTOS Y ALERTAS DE ACTIVIDADES PENDIENTES DE RENDIR
   // =========================================================================
   const groupedMovements = useMemo<GroupedExpenseMovement[]>(() => {
     const groups = new Map<string, ExpenseRecord[]>();
@@ -198,6 +261,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       const totalNet = Number(
         records.reduce((acc, r) => acc + Number(r.net_amount), 0).toFixed(2)
       );
+      const applied = isExpenseApplied(primary);
 
       result.push({
         key,
@@ -207,7 +271,8 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         totalGross,
         totalExternalReimb,
         totalNet,
-        isPendingLcr: records.some((r) => r.status === 'PENDIENTE_LCR'),
+        isPendingLcr: applied && records.some((r) => r.status === 'PENDIENTE_LCR'),
+        isApplied: applied,
         isShared: records.length > 1,
         effectiveDate: getExpenseEffectiveDate(primary),
         accountingDate: primary.expense_date,
@@ -221,10 +286,23 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     });
   }, [expenses]);
 
+  // Actividades proyectadas cuya fecha ya llegó o pasó -> Alerta "Pendiente de rendir"
+  const dueProjectedMovements = useMemo(
+    () =>
+      groupedMovements.filter(
+        (m) =>
+          !m.isApplied &&
+          m.primary.expense_type === 'PROYECTADO_ACTIVIDAD' &&
+          m.effectiveDate <= todayStr
+      ),
+    [groupedMovements, todayStr]
+  );
+
   const filteredMovements = useMemo(() => {
     const q = ledgerSearch.trim().toLowerCase();
     return groupedMovements.filter((m) => {
-      if (onlyPendingLcr && !m.isPendingLcr) return false;
+      if (ledgerFilter === 'PENDING_LCR' && !m.isPendingLcr) return false;
+      if (ledgerFilter === 'PROJECTED' && m.isApplied) return false;
       if (!q) return true;
       const orgNames = m.records
         .map((r) => ORGANIZATION_SHORT_LABELS[r.organization].toLowerCase())
@@ -236,7 +314,17 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         orgNames.includes(q)
       );
     });
-  }, [groupedMovements, ledgerSearch, onlyPendingLcr]);
+  }, [groupedMovements, ledgerSearch, ledgerFilter]);
+
+  const filteredWithdrawals = useMemo(
+    () =>
+      reconciliationStats.withdrawalDetails.filter((w) => {
+        if (withdrawalTypeFilter === 'EFECTIVO') return w.movementType === 'EFECTIVO';
+        if (withdrawalTypeFilter === 'DIRECTO') return w.movementType !== 'EFECTIVO';
+        return true;
+      }),
+    [reconciliationStats.withdrawalDetails, withdrawalTypeFilter]
+  );
 
   // =========================================================================
   // 3. HANDLERS
@@ -256,10 +344,10 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     const totalAmt = records.reduce((acc, r) => acc + Number(r.gross_amount), 0);
     triggerToast(
       existingIds?.length
-        ? `Comprobante "${records[0].concept}" actualizado (${formatCurrency(totalAmt)}).`
+        ? `Movimiento "${records[0].concept}" actualizado (${formatCurrency(totalAmt)}).`
         : records.length > 1
-        ? `Gasto compartido registrado entre ${records.length} organizaciones (${formatCurrency(totalAmt)}).`
-        : `Comprobante "${records[0].concept}" registrado (${formatCurrency(totalAmt)}).`
+        ? `Movimiento compartido registrado entre ${records.length} organizaciones (${formatCurrency(totalAmt)}).`
+        : `Movimiento "${records[0].concept}" registrado (${formatCurrency(totalAmt)}).`
     );
   };
 
@@ -277,6 +365,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       amount: parsed.amount,
       responsible_person: newWithdrawalResponsible.trim() || 'Pablo Lamela',
       purpose: newWithdrawalPurpose.trim() || 'Fondo para actividades',
+      movement_type: 'EFECTIVO',
       status: 'PENDIENTE_JUSTIFICAR',
       return_date: null,
       returned_amount: 0,
@@ -312,7 +401,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               Administración de Finanzas
             </h2>
             <p className="text-xs text-slate-400">
-              Control de retiros, gastos por actividad y conciliación LCR
+              Salidas del presupuesto, gastos por actividad y conciliación LCR
             </p>
           </div>
 
@@ -346,7 +435,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
           <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Total Retirado
+              Total Retirado (Efectivo)
             </span>
             <p
               data-testid="monitor-total-withdrawn"
@@ -407,7 +496,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               {formatCurrency(reconciliationStats.pendingLcrTotalAmount)}
             </p>
             <p className="text-[11px] text-slate-400 mt-1">
-              Pendientes de asentar en LCR
+              Proyectado: {formatCurrency(reconciliationStats.projectedTotalAmount)}
             </p>
           </div>
 
@@ -437,6 +526,40 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         </div>
       </div>
 
+      {/* Alerta visual de actividades proyectadas cuya fecha ya llegó (Pendientes de rendir) */}
+      {dueProjectedMovements.length > 0 && (
+        <div
+          data-testid="due-projected-alert"
+          className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+        >
+          <div className="flex items-center gap-2 text-xs text-amber-950 font-bold">
+            <Clock className="w-4 h-4 text-amber-700 flex-shrink-0" />
+            <span>
+              {dueProjectedMovements.length === 1
+                ? `Actividad pendiente de rendir: "${dueProjectedMovements[0].primary.concept}" (${formatDate(
+                    dueProjectedMovements[0].effectiveDate
+                  )})`
+                : `${dueProjectedMovements.length} actividades proyectadas ya cumplieron su fecha y están pendientes de rendir.`}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {dueProjectedMovements.slice(0, 2).map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => {
+                  setEditingGroup({ ids: m.ids, records: m.records });
+                  setIsExpenseModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-900 hover:bg-amber-950 text-white text-[11px] font-extrabold"
+              >
+                Rendir: {m.primary.concept}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toastMsg && (
         <div
@@ -463,7 +586,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
             }`}
           >
             <Zap className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Gastos y Retiros</span>
+            <span>Gastos y Salidas</span>
           </button>
 
           <button
@@ -511,167 +634,224 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         )}
       </div>
 
-      {/* ==================== PESTAÑA 1: GASTOS Y RETIROS ==================== */}
+      {/* ==================== PESTAÑA 1: GASTOS Y SALIDAS ==================== */}
       {subTab === 'LOAD_AND_RETIROS' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* COLUMNA PRINCIPAL (8 cols): LIBRO MAYOR DE COMPROBANTES */}
+          {/* COLUMNA PRINCIPAL (8 cols): TABLA DE GASTOS */}
           <div className="lg:col-span-8 bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-extrabold text-slate-900">
-                  Comprobantes de Gasto ({filteredMovements.length})
+                  Registro de Gastos ({filteredMovements.length})
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Muestra fecha de actividad y estado LCR
+                  Fecha de actividad, referencia LCR y estado
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1 sm:w-48">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="relative w-36 sm:w-44">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Buscar..."
                     value={ledgerSearch}
                     onChange={(e) => setLedgerSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none"
+                    className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none"
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setOnlyPendingLcr((v) => !v)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
-                    onlyPendingLcr
-                      ? 'bg-rose-50 border-rose-300 text-rose-800'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  Pendientes LCR
-                </button>
+                {(
+                  [
+                    { id: 'ALL', label: 'Todos' },
+                    { id: 'PENDING_LCR', label: 'Pend. LCR' },
+                    { id: 'PROJECTED', label: 'Proyectados' },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setLedgerFilter(f.id)}
+                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border whitespace-nowrap transition ${
+                      ledgerFilter === f.id
+                        ? 'bg-slate-900 border-slate-900 text-white'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div className="divide-y divide-slate-100 max-h-[34rem] overflow-y-auto">
               {filteredMovements.length === 0 ? (
                 <div className="py-10 text-center text-xs text-slate-400">
-                  No se encontraron comprobantes con ese filtro.
+                  No se encontraron registros con ese filtro.
                 </div>
               ) : (
-                filteredMovements.map((m) => (
-                  <div
-                    key={m.key}
-                    data-testid={`admin-expense-row-${m.primary.id}`}
-                    className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
-                      m.isPendingLcr ? 'bg-rose-50/60 hover:bg-rose-50' : 'hover:bg-slate-50/70'
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                          {m.primary.ref_number || 'DIRECTO'}
-                        </span>
-                        <span className="text-xs font-extrabold text-slate-800 tabular-nums">
-                          {formatDate(m.effectiveDate)}
-                        </span>
-                        {m.accountingDate !== m.effectiveDate && (
-                          <span className="text-[11px] text-slate-400 tabular-nums">
-                            (LCR: {formatDate(m.accountingDate)})
+                filteredMovements.map((m) => {
+                  const isDueProjected =
+                    !m.isApplied &&
+                    m.primary.expense_type === 'PROYECTADO_ACTIVIDAD' &&
+                    m.effectiveDate <= todayStr;
+                  return (
+                    <div
+                      key={m.key}
+                      data-testid={`admin-expense-row-${m.primary.id}`}
+                      className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
+                        isDueProjected
+                          ? 'bg-amber-50/70 hover:bg-amber-50'
+                          : m.isPendingLcr
+                          ? 'bg-rose-50/60 hover:bg-rose-50'
+                          : !m.isApplied
+                          ? 'bg-slate-50/50 hover:bg-slate-50'
+                          : 'hover:bg-slate-50/70'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                            {!m.isApplied
+                              ? 'PROYECTADO'
+                              : m.primary.ref_number || 'DIRECTO'}
                           </span>
-                        )}
-                        {m.isPendingLcr ? (
-                          <span
-                            data-testid={`pending-lcr-pill-${m.primary.id}`}
-                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800"
-                          >
-                            <AlertTriangle className="w-3 h-3" />
-                            <span>Pendiente LCR</span>
+                          <span className="text-xs font-extrabold text-slate-800 tabular-nums">
+                            {formatDate(m.effectiveDate)}
                           </span>
-                        ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                            ✓ LCR
-                          </span>
-                        )}
-                      </div>
+                          {m.isApplied && m.accountingDate !== m.effectiveDate && (
+                            <span className="text-[11px] text-slate-400 tabular-nums">
+                              (LCR: {formatDate(m.accountingDate)})
+                            </span>
+                          )}
+                          {isDueProjected ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-950">
+                              <Clock className="w-3 h-3" />
+                              <span>Pendiente de rendir</span>
+                            </span>
+                          ) : !m.isApplied ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                              No aplicado
+                            </span>
+                          ) : m.isPendingLcr ? (
+                            <span
+                              data-testid={`pending-lcr-pill-${m.primary.id}`}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800"
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              <span>Pendiente LCR</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                              ✓ LCR
+                            </span>
+                          )}
+                        </div>
 
-                      <p className="text-xs sm:text-sm font-bold text-slate-900 mt-1">
-                        {m.primary.concept}
-                      </p>
-
-                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                        <span className="text-[11px] text-slate-500 mr-1">
-                          {m.primary.supplier_name}
-                        </span>
-                        {m.records.map((r) => (
-                          <span
-                            key={r.id}
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 tabular-nums"
-                          >
-                            {ORGANIZATION_SHORT_LABELS[r.organization]}
-                            {m.isShared ? `: ${formatCurrency(r.gross_amount)}` : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-2.5 flex-shrink-0">
-                      <div className="text-right">
-                        <p className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
-                          {formatCurrency(m.totalGross)}
+                        <p className="text-xs sm:text-sm font-bold text-slate-900 mt-1">
+                          {m.primary.concept}
                         </p>
-                        {m.totalExternalReimb > 0 && (
-                          <p className="text-[10px] font-bold text-emerald-700 tabular-nums">
-                            Neto: {formatCurrency(m.totalNet)}
-                          </p>
-                        )}
+
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          {m.isApplied && (
+                            <span className="text-[11px] text-slate-500 mr-1">
+                              {m.primary.supplier_name}
+                            </span>
+                          )}
+                          {m.records.map((r) => (
+                            <span
+                              key={r.id}
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 tabular-nums"
+                            >
+                              {ORGANIZATION_SHORT_LABELS[r.organization]}
+                              {m.isShared ? `: ${formatCurrency(r.gross_amount)}` : ''}
+                            </span>
+                          ))}
+                        </div>
                       </div>
 
-                      <button
-                        type="button"
-                        title="Editar movimiento"
-                        data-testid={`edit-expense-btn-${m.primary.id}`}
-                        onClick={() => {
-                          setEditingGroup({ ids: m.ids, records: m.records });
-                          setIsExpenseModalOpen(true);
-                        }}
-                        className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-between sm:justify-end gap-2.5 flex-shrink-0">
+                        <div className="text-right">
+                          <p className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
+                            {formatCurrency(m.totalGross)}
+                          </p>
+                          {m.totalExternalReimb > 0 && (
+                            <p className="text-[10px] font-bold text-emerald-700 tabular-nums">
+                              Neto: {formatCurrency(m.totalNet)}
+                            </p>
+                          )}
+                        </div>
 
-                      {m.isPendingLcr && (
                         <button
                           type="button"
-                          data-testid={`reconcile-lcr-btn-${m.primary.id}`}
-                          onClick={() => handleReconcileGroup(m)}
-                          className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold"
+                          title="Editar movimiento"
+                          data-testid={`edit-expense-btn-${m.primary.id}`}
+                          onClick={() => {
+                            setEditingGroup({ ids: m.ids, records: m.records });
+                            setIsExpenseModalOpen(true);
+                          }}
+                          className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                         >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Conciliar</span>
+                          <Pencil className="w-3.5 h-3.5" />
                         </button>
-                      )}
+
+                        {m.isPendingLcr && (
+                          <button
+                            type="button"
+                            data-testid={`reconcile-lcr-btn-${m.primary.id}`}
+                            onClick={() => handleReconcileGroup(m)}
+                            className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Conciliar</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
 
-          {/* COLUMNA DERECHA (4 cols): RETIROS DE EFECTIVO */}
-          <div className="lg:col-span-4 bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/90 space-y-4">
+          {/* COLUMNA DERECHA (4 cols): TABLA UNIFICADA DE SALIDAS (EFECTIVO + DIRECTOS) */}
+          <div className="lg:col-span-4 bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/90 space-y-3.5">
             <div>
               <h3 className="text-sm font-extrabold text-slate-900">
-                Retiros de Efectivo ({withdrawals.length})
+                Salidas del Presupuesto ({filteredWithdrawals.length})
               </h3>
               <p className="text-xs text-slate-500">
-                Control de efectivo hasta cierre en $ 0,00
+                Retiros en efectivo, tarjeta y transferencias
               </p>
+            </div>
+
+            <div className="flex items-center gap-1">
+              {(
+                [
+                  { id: 'ALL', label: 'Todos' },
+                  { id: 'EFECTIVO', label: 'Efectivo' },
+                  { id: 'DIRECTO', label: 'Tarjeta / Transf.' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setWithdrawalTypeFilter(f.id)}
+                  className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold border transition ${
+                    withdrawalTypeFilter === f.id
+                      ? 'bg-slate-900 border-slate-900 text-white'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
 
             <form
               onSubmit={handleAddWithdrawal}
               className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2"
             >
-              <p className="text-xs font-bold text-slate-800">+ Nuevo Retiro</p>
+              <p className="text-xs font-bold text-slate-800">+ Nuevo Retiro en Efectivo</p>
               <input
                 type="text"
                 data-testid="new-withdrawal-shortcut-input"
@@ -705,24 +885,30 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
             </form>
 
             <div className="space-y-2 max-h-[26rem] overflow-y-auto pr-1">
-              {reconciliationStats.withdrawalDetails.map((w) => {
+              {filteredWithdrawals.map((w) => {
                 const isClosingThis = closingWithdrawalId === w.id;
+                const isCash = w.movementType === 'EFECTIVO';
                 return (
                   <div
                     key={w.id}
                     data-testid={`withdrawal-row-${w.withdrawal_ref}`}
                     className={`p-3 rounded-2xl border text-xs ${
-                      w.status === 'PENDIENTE_JUSTIFICAR'
+                      isCash && w.status === 'PENDIENTE_JUSTIFICAR'
                         ? 'bg-amber-50/60 border-amber-200'
                         : 'bg-slate-50/60 border-slate-200/80'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-extrabold text-slate-900">
-                        {w.withdrawal_ref}
-                      </span>
+                    <div className="flex items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-mono font-extrabold text-slate-900 truncate">
+                          {w.withdrawal_ref}
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200/70 text-slate-700">
+                          {MOVEMENT_TYPE_LABELS[w.movementType]}
+                        </span>
+                      </div>
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
                           w.status === 'CERRADO_EN_CERO'
                             ? 'bg-emerald-100 text-emerald-800'
                             : 'bg-amber-200/80 text-amber-950'
@@ -733,33 +919,35 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] text-slate-600 mt-1">
-                      <span>
+                      <span className="truncate">
                         {formatDate(w.withdrawal_date)} • {w.responsible_person}
                       </span>
-                      <span className="font-bold text-slate-900 tabular-nums">
+                      <span className="font-bold text-slate-900 tabular-nums whitespace-nowrap">
                         {formatCurrency(w.amount)}
                       </span>
                     </div>
 
-                    <div className="mt-1.5 pt-1.5 border-t border-slate-200/70 flex items-center justify-between text-[11px]">
-                      <span className="text-slate-500 tabular-nums">
-                        Pendiente: <strong>{formatCurrency(w.pendingToRender)}</strong>
-                      </span>
-                      {w.status === 'PENDIENTE_JUSTIFICAR' && !isClosingThis && (
-                        <button
-                          type="button"
-                          data-testid={`close-withdrawal-btn-${w.withdrawal_ref}`}
-                          onClick={() => {
-                            setClosingWithdrawalId(w.id);
-                            setClosingReturnDate(new Date().toISOString().slice(0, 10));
-                            setClosingReturnAmount(w.pendingToRender.toFixed(2));
-                          }}
-                          className="pressable px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
-                        >
-                          Cerrar en $ 0,00
-                        </button>
-                      )}
-                    </div>
+                    {isCash && (
+                      <div className="mt-1.5 pt-1.5 border-t border-slate-200/70 flex items-center justify-between text-[11px]">
+                        <span className="text-slate-500 tabular-nums">
+                          Pendiente: <strong>{formatCurrency(w.pendingToRender)}</strong>
+                        </span>
+                        {w.status === 'PENDIENTE_JUSTIFICAR' && !isClosingThis && (
+                          <button
+                            type="button"
+                            data-testid={`close-withdrawal-btn-${w.withdrawal_ref}`}
+                            onClick={() => {
+                              setClosingWithdrawalId(w.id);
+                              setClosingReturnDate(new Date().toISOString().slice(0, 10));
+                              setClosingReturnAmount(w.pendingToRender.toFixed(2));
+                            }}
+                            className="pressable px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
+                          >
+                            Cerrar en $ 0,00
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {isClosingThis && (
                       <div className="mt-2 pt-2 border-t border-amber-200 space-y-2">
@@ -822,9 +1010,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         <BudgetManagementSection
           year={selectedYear}
           budgets={budgets}
-          onSaveBudgetAllocation={
-            onSaveBudgetAllocation || (async () => {})
-          }
+          onSaveBudgetAllocation={onSaveBudgetAllocation || (async () => {})}
           onSavedToast={triggerToast}
         />
       )}
@@ -854,6 +1040,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         editGroup={editingGroup}
         activities={activities}
         suppliers={suppliers}
+        openWithdrawals={openWithdrawalOptions}
         onClose={() => {
           setIsExpenseModalOpen(false);
           setEditingGroup(null);

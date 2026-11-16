@@ -1,8 +1,11 @@
 import React, { lazy, Suspense, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Banknote,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock,
   FileSpreadsheet,
   Pencil,
@@ -102,17 +105,22 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   onCreateSupplier,
   onSaveBudgetAllocation,
 }) => {
-  const [subTab, setSubTab] = useState<'LOAD_AND_RETIROS' | 'BUDGETS' | 'EXCEL_SYNC'>(
-    'LOAD_AND_RETIROS'
+  const [subTab, setSubTab] = useState<'EXPENSES' | 'WITHDRAWALS' | 'BUDGETS' | 'EXCEL_SYNC'>(
+    'EXPENSES'
   );
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ExpenseGroupEditData | null>(null);
 
-  // Filtros del Libro de Comprobantes
+  // Filtros del Libro de Comprobantes y filas desplegadas (Varios)
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [ledgerFilter, setLedgerFilter] = useState<'ALL' | 'PENDING_LCR' | 'PROJECTED'>('ALL');
+  const [expandedSharedKeys, setExpandedSharedKeys] = useState<Record<string, boolean>>({});
+
+  const toggleSharedRow = (key: string) => {
+    setExpandedSharedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   // Filtro de la tabla unificada de Salidas (Efectivo vs Directo/Transferencia)
   const [withdrawalTypeFilter, setWithdrawalTypeFilter] = useState<'ALL' | 'EFECTIVO' | 'DIRECTO'>('ALL');
@@ -318,11 +326,13 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
   const filteredWithdrawals = useMemo(
     () =>
-      reconciliationStats.withdrawalDetails.filter((w) => {
-        if (withdrawalTypeFilter === 'EFECTIVO') return w.movementType === 'EFECTIVO';
-        if (withdrawalTypeFilter === 'DIRECTO') return w.movementType !== 'EFECTIVO';
-        return true;
-      }),
+      reconciliationStats.withdrawalDetails
+        .filter((w) => {
+          if (withdrawalTypeFilter === 'EFECTIVO') return w.movementType === 'EFECTIVO';
+          if (withdrawalTypeFilter === 'DIRECTO') return w.movementType !== 'EFECTIVO';
+          return true;
+        })
+        .sort((a, b) => b.withdrawal_date.localeCompare(a.withdrawal_date)),
     [reconciliationStats.withdrawalDetails, withdrawalTypeFilter]
   );
 
@@ -572,21 +582,36 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         </div>
       )}
 
-      {/* ==================== PESTAÑAS SIMPLIFICADAS ==================== */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded-2xl border border-slate-200/90 shadow-sm">
+      {/* ==================== BLOQUE FIJO ÚNICO AL HACER SCROLL (PESTAÑAS + CONTROLES ACTIVOS) ==================== */}
+      <div className="sticky top-[62px] md:top-[108px] z-20 bg-slate-50 pt-1 pb-2 space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded-2xl border border-slate-200/90 shadow-sm">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           <button
             type="button"
             data-testid="ops-subtab-load"
-            onClick={() => setSubTab('LOAD_AND_RETIROS')}
+            onClick={() => setSubTab('EXPENSES')}
             className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
-              subTab === 'LOAD_AND_RETIROS'
+              subTab === 'EXPENSES'
                 ? 'bg-slate-900 text-white'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
             <Zap className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Gastos y Salidas</span>
+            <span>Gastos</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="ops-subtab-withdrawals"
+            onClick={() => setSubTab('WITHDRAWALS')}
+            className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
+              subTab === 'WITHDRAWALS'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Banknote className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Retiros</span>
           </button>
 
           <button
@@ -618,7 +643,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
           </button>
         </div>
 
-        {subTab === 'LOAD_AND_RETIROS' && (
+        {subTab === 'EXPENSES' && (
           <button
             type="button"
             data-testid="open-add-expense-modal-btn"
@@ -632,47 +657,82 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
             <span>Añadir Gasto</span>
           </button>
         )}
-      </div>
+        </div>
 
-      {/* ==================== PESTAÑA 1: GASTOS Y SALIDAS ==================== */}
-      {subTab === 'LOAD_AND_RETIROS' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* COLUMNA PRINCIPAL (8 cols): TABLA DE GASTOS */}
-          <div className="lg:col-span-8 bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Controles fijos de Gastos */}
+        {subTab === 'EXPENSES' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">
+                Registro de Gastos ({filteredMovements.length})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Fecha de actividad, referencia LCR y estado
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div className="relative w-36 sm:w-44">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar..."
+                  value={ledgerSearch}
+                  onChange={(e) => setLedgerSearch(e.target.value)}
+                  className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none"
+                />
+              </div>
+              {(
+                [
+                  { id: 'ALL', label: 'Todos' },
+                  { id: 'PENDING_LCR', label: 'Pend. LCR' },
+                  { id: 'PROJECTED', label: 'Proyectados' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setLedgerFilter(f.id)}
+                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border whitespace-nowrap transition ${
+                    ledgerFilter === f.id
+                      ? 'bg-slate-900 border-slate-900 text-white'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Controles fijos de Retiros */}
+        {subTab === 'WITHDRAWALS' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900">
-                  Registro de Gastos ({filteredMovements.length})
+                <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                  Retiros y Salidas ({filteredWithdrawals.length})
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Fecha de actividad, referencia LCR y estado
+                  Retiros en efectivo, tarjeta y transferencias
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
-                <div className="relative w-36 sm:w-44">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Buscar..."
-                    value={ledgerSearch}
-                    onChange={(e) => setLedgerSearch(e.target.value)}
-                    className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none"
-                  />
-                </div>
+              <div className="flex items-center gap-1 sm:w-80">
                 {(
                   [
                     { id: 'ALL', label: 'Todos' },
-                    { id: 'PENDING_LCR', label: 'Pend. LCR' },
-                    { id: 'PROJECTED', label: 'Proyectados' },
+                    { id: 'EFECTIVO', label: 'Efectivo' },
+                    { id: 'DIRECTO', label: 'Tarjeta / Transf.' },
                   ] as const
                 ).map((f) => (
                   <button
                     key={f.id}
                     type="button"
-                    onClick={() => setLedgerFilter(f.id)}
-                    className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border whitespace-nowrap transition ${
-                      ledgerFilter === f.id
+                    onClick={() => setWithdrawalTypeFilter(f.id)}
+                    className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold border transition ${
+                      withdrawalTypeFilter === f.id
                         ? 'bg-slate-900 border-slate-900 text-white'
                         : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}
@@ -683,325 +743,630 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100 max-h-[34rem] overflow-y-auto">
-              {filteredMovements.length === 0 ? (
-                <div className="py-10 text-center text-xs text-slate-400">
-                  No se encontraron registros con ese filtro.
-                </div>
-              ) : (
-                filteredMovements.map((m) => {
-                  const isDueProjected =
-                    !m.isApplied &&
-                    m.primary.expense_type === 'PROYECTADO_ACTIVIDAD' &&
-                    m.effectiveDate <= todayStr;
-                  return (
-                    <div
-                      key={m.key}
-                      data-testid={`admin-expense-row-${m.primary.id}`}
-                      className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
-                        isDueProjected
-                          ? 'bg-amber-50/70 hover:bg-amber-50'
-                          : m.isPendingLcr
-                          ? 'bg-rose-50/60 hover:bg-rose-50'
-                          : !m.isApplied
-                          ? 'bg-slate-50/50 hover:bg-slate-50'
-                          : 'hover:bg-slate-50/70'
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                            {!m.isApplied
-                              ? 'PROYECTADO'
-                              : m.primary.ref_number || 'DIRECTO'}
-                          </span>
-                          <span className="text-xs font-extrabold text-slate-800 tabular-nums">
-                            {formatDate(m.effectiveDate)}
-                          </span>
-                          {m.isApplied && m.accountingDate !== m.effectiveDate && (
-                            <span className="text-[11px] text-slate-400 tabular-nums">
-                              (LCR: {formatDate(m.accountingDate)})
-                            </span>
-                          )}
-                          {isDueProjected ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-950">
-                              <Clock className="w-3 h-3" />
-                              <span>Pendiente de rendir</span>
-                            </span>
-                          ) : !m.isApplied ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                              No aplicado
-                            </span>
-                          ) : m.isPendingLcr ? (
-                            <span
-                              data-testid={`pending-lcr-pill-${m.primary.id}`}
-                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800"
-                            >
-                              <AlertTriangle className="w-3 h-3" />
-                              <span>Pendiente LCR</span>
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                              ✓ LCR
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="text-xs sm:text-sm font-bold text-slate-900 mt-1">
-                          {m.primary.concept}
-                        </p>
-
-                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                          {m.isApplied && (
-                            <span className="text-[11px] text-slate-500 mr-1">
-                              {m.primary.supplier_name}
-                            </span>
-                          )}
-                          {m.records.map((r) => (
-                            <span
-                              key={r.id}
-                              className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 tabular-nums"
-                            >
-                              {ORGANIZATION_SHORT_LABELS[r.organization]}
-                              {m.isShared ? `: ${formatCurrency(r.gross_amount)}` : ''}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between sm:justify-end gap-2.5 flex-shrink-0">
-                        <div className="text-right">
-                          <p className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
-                            {formatCurrency(m.totalGross)}
-                          </p>
-                          {m.totalExternalReimb > 0 && (
-                            <p className="text-[10px] font-bold text-emerald-700 tabular-nums">
-                              Neto: {formatCurrency(m.totalNet)}
-                            </p>
-                          )}
-                        </div>
-
-                        <button
-                          type="button"
-                          title="Editar movimiento"
-                          data-testid={`edit-expense-btn-${m.primary.id}`}
-                          onClick={() => {
-                            setEditingGroup({ ids: m.ids, records: m.records });
-                            setIsExpenseModalOpen(true);
-                          }}
-                          className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-
-                        {m.isPendingLcr && (
-                          <button
-                            type="button"
-                            data-testid={`reconcile-lcr-btn-${m.primary.id}`}
-                            onClick={() => handleReconcileGroup(m)}
-                            className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Conciliar</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* COLUMNA DERECHA (4 cols): TABLA UNIFICADA DE SALIDAS (EFECTIVO + DIRECTOS) */}
-          <div className="lg:col-span-4 bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/90 space-y-3.5">
-            <div>
-              <h3 className="text-sm font-extrabold text-slate-900">
-                Salidas del Presupuesto ({filteredWithdrawals.length})
-              </h3>
-              <p className="text-xs text-slate-500">
-                Retiros en efectivo, tarjeta y transferencias
-              </p>
-            </div>
-
-            <div className="flex items-center gap-1">
-              {(
-                [
-                  { id: 'ALL', label: 'Todos' },
-                  { id: 'EFECTIVO', label: 'Efectivo' },
-                  { id: 'DIRECTO', label: 'Tarjeta / Transf.' },
-                ] as const
-              ).map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setWithdrawalTypeFilter(f.id)}
-                  className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold border transition ${
-                    withdrawalTypeFilter === f.id
-                      ? 'bg-slate-900 border-slate-900 text-white'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
             <form
               onSubmit={handleAddWithdrawal}
-              className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2"
+              className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center"
             >
-              <p className="text-xs font-bold text-slate-800">+ Nuevo Retiro en Efectivo</p>
               <input
                 type="text"
                 data-testid="new-withdrawal-shortcut-input"
                 placeholder="MMDD-MONTO (ej: 1105-20000)"
                 value={newWithdrawalShortcut}
                 onChange={(e) => setNewWithdrawalShortcut(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white"
+                className="sm:col-span-3 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white"
               />
               <input
                 type="text"
-                placeholder="Propósito"
+                placeholder="Propósito del retiro"
                 value={newWithdrawalPurpose}
                 onChange={(e) => setNewWithdrawalPurpose(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                className="sm:col-span-4 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
               />
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={newWithdrawalResponsible}
-                  onChange={(e) => setNewWithdrawalResponsible(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white flex-1 min-w-0"
-                />
-                <button
-                  type="submit"
-                  data-testid="submit-new-withdrawal-btn"
-                  className="pressable px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold whitespace-nowrap"
-                >
-                  Cargar
-                </button>
-              </div>
+              <input
+                type="text"
+                value={newWithdrawalResponsible}
+                onChange={(e) => setNewWithdrawalResponsible(e.target.value)}
+                className="sm:col-span-3 px-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white"
+              />
+              <button
+                type="submit"
+                data-testid="submit-new-withdrawal-btn"
+                className="sm:col-span-2 pressable px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold whitespace-nowrap"
+              >
+                + Nuevo Retiro
+              </button>
             </form>
+          </div>
+        )}
+      </div>
 
-            <div className="space-y-2 max-h-[26rem] overflow-y-auto pr-1">
-              {filteredWithdrawals.map((w) => {
-                const isClosingThis = closingWithdrawalId === w.id;
-                const isCash = w.movementType === 'EFECTIVO';
-                return (
-                  <div
-                    key={w.id}
-                    data-testid={`withdrawal-row-${w.withdrawal_ref}`}
-                    className={`p-3 rounded-2xl border text-xs ${
-                      isCash && w.status === 'PENDIENTE_JUSTIFICAR'
-                        ? 'bg-amber-50/60 border-amber-200'
-                        : 'bg-slate-50/60 border-slate-200/80'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="font-mono font-extrabold text-slate-900 truncate">
-                          {w.withdrawal_ref}
-                        </span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200/70 text-slate-700">
-                          {MOVEMENT_TYPE_LABELS[w.movementType]}
-                        </span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
-                          w.status === 'CERRADO_EN_CERO'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-200/80 text-amber-950'
+      {/* ==================== PESTAÑA 1: GASTOS (FLUJO CONTINUO SIN DOBLE SCROLL) ==================== */}
+      {subTab === 'EXPENSES' && (
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
+            {filteredMovements.length === 0 ? (
+              <div className="py-10 text-center text-xs text-slate-400">
+                No se encontraron registros con ese filtro.
+              </div>
+            ) : (
+              <>
+                {/* VISTA ESCRITORIO: TABLA ALINEADA */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="py-3 pl-3 pr-1 w-8" aria-label="Desplegar" />
+                        <th className="py-3 px-3 whitespace-nowrap">Fecha</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Referencia</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Organización</th>
+                        <th className="py-3 px-3">Propósito</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Proveedor</th>
+                        <th className="py-3 pl-3 pr-4 text-right whitespace-nowrap">Monto</th>
+                        <th className="py-3 pr-4 w-10 text-right" aria-label="Editar" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {filteredMovements.map((m) => {
+                        const isDueProjected =
+                          !m.isApplied &&
+                          m.primary.expense_type === 'PROYECTADO_ACTIVIDAD' &&
+                          m.effectiveDate <= todayStr;
+                        const isExpanded = Boolean(expandedSharedKeys[m.key]);
+
+                        return (
+                          <React.Fragment key={m.key}>
+                            <tr
+                              data-testid={`admin-expense-row-${m.primary.id}`}
+                              className={`transition ${
+                                isDueProjected
+                                  ? 'bg-amber-50/70 hover:bg-amber-50'
+                                  : m.isPendingLcr
+                                  ? 'bg-rose-50/50 hover:bg-rose-50/80'
+                                  : !m.isApplied
+                                  ? 'bg-slate-50/50 hover:bg-slate-50'
+                                  : 'hover:bg-slate-50/70'
+                              }`}
+                            >
+                              {/* Flecha desplegable si son Varios */}
+                              <td className="py-3 pl-3 pr-1 align-middle">
+                                {m.isShared && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleSharedRow(m.key)}
+                                    data-testid={`expand-shared-${m.primary.id}`}
+                                    aria-label="Ver detalle de organizaciones"
+                                    className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/70"
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronDown className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronRight className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                )}
+                              </td>
+
+                              {/* 1. Fecha */}
+                              <td className="py-3 px-3 font-bold text-slate-800 tabular-nums whitespace-nowrap align-middle">
+                                {formatDate(m.effectiveDate)}
+                              </td>
+
+                              {/* 2. N° Referencia */}
+                              <td className="py-3 px-3 whitespace-nowrap align-middle">
+                                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                                  {!m.isApplied
+                                    ? 'PROYECTADO'
+                                    : m.primary.ref_number || 'DIRECTO'}
+                                </span>
+                              </td>
+
+                              {/* 3. Organización */}
+                              <td className="py-3 px-3 font-bold text-slate-800 whitespace-nowrap align-middle">
+                                {m.isShared
+                                  ? 'Varios'
+                                  : ORGANIZATION_SHORT_LABELS[m.primary.organization]}
+                              </td>
+
+                              {/* 4. Propósito (etiqueta pendiente arriba del propósito) */}
+                              <td className="py-3 px-3 align-middle">
+                                <div className="flex flex-col items-start gap-1">
+                                  {isDueProjected ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-950 whitespace-nowrap">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Pendiente de rendir</span>
+                                    </span>
+                                  ) : !m.isApplied ? (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 whitespace-nowrap">
+                                      Pendiente de rendir
+                                    </span>
+                                  ) : m.isPendingLcr ? (
+                                    <span
+                                      data-testid={`pending-lcr-pill-${m.primary.id}`}
+                                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 whitespace-nowrap"
+                                    >
+                                      <AlertTriangle className="w-3 h-3" />
+                                      <span>Pendiente LCR</span>
+                                    </span>
+                                  ) : null}
+                                  <span className="font-semibold text-slate-900">
+                                    {m.primary.concept}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 5. Proveedor */}
+                              <td className="py-3 px-3 text-slate-600 align-middle">
+                                {m.isApplied ? m.primary.supplier_name : '—'}
+                              </td>
+
+                              {/* 6. Monto (con botón Conciliar encima si está pendiente LCR) */}
+                              <td className="py-3 pl-3 pr-2 text-right whitespace-nowrap align-middle">
+                                <div className="inline-flex flex-col items-end gap-1">
+                                  {m.isPendingLcr && (
+                                    <button
+                                      type="button"
+                                      data-testid={`reconcile-lcr-btn-${m.primary.id}`}
+                                      onClick={() => handleReconcileGroup(m)}
+                                      className="pressable inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-[10px] font-bold"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Conciliar</span>
+                                    </button>
+                                  )}
+                                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
+                                    {formatCurrency(m.totalGross)}
+                                  </span>
+                                  {m.totalExternalReimb > 0 && (
+                                    <span className="text-[10px] font-medium text-slate-400 tabular-nums">
+                                      Neto: {formatCurrency(m.totalNet)}
+                                    </span>
+                                  )}
+                                  {m.primary.is_reimbursable_oai && (
+                                    <span className="text-[10px] font-medium text-slate-400">
+                                      Reembolsable
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Editar (ícono siempre alineado a la derecha al final de la fila) */}
+                              <td className="py-3 pr-4 pl-1 text-right align-middle">
+                                <button
+                                  type="button"
+                                  title="Editar movimiento"
+                                  data-testid={`edit-expense-btn-${m.primary.id}`}
+                                  onClick={() => {
+                                    setEditingGroup({ ids: m.ids, records: m.records });
+                                    setIsExpenseModalOpen(true);
+                                  }}
+                                  className="p-1.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+
+                            {/* Sub-fila desplegable con el aporte de cada organización */}
+                            {m.isShared && isExpanded && (
+                              <tr className="bg-slate-50/90">
+                                <td />
+                                <td colSpan={7} className="py-2.5 px-3">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[11px] font-bold text-slate-500 mr-1">
+                                      Detalle por organización:
+                                    </span>
+                                    {m.records.map((r) => (
+                                      <span
+                                        key={r.id}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-800 tabular-nums"
+                                      >
+                                        <span>{ORGANIZATION_SHORT_LABELS[r.organization]}</span>
+                                        <span className="text-slate-500">·</span>
+                                        <span>{formatCurrency(r.gross_amount)}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* VISTA MÓVIL: LECTURA COMPACTA VERTICAL */}
+                <div className="md:hidden divide-y divide-slate-100">
+                  {filteredMovements.map((m) => {
+                    const isDueProjected =
+                      !m.isApplied &&
+                      m.primary.expense_type === 'PROYECTADO_ACTIVIDAD' &&
+                      m.effectiveDate <= todayStr;
+                    const isExpanded = Boolean(expandedSharedKeys[m.key]);
+
+                    return (
+                      <div
+                        key={`mob-${m.key}`}
+                        className={`p-4 space-y-2 ${
+                          isDueProjected
+                            ? 'bg-amber-50/70'
+                            : m.isPendingLcr
+                            ? 'bg-rose-50/50'
+                            : ''
                         }`}
                       >
-                        {w.status === 'CERRADO_EN_CERO' ? 'Cerrado' : 'Por rendir'}
-                      </span>
-                    </div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                            {m.isShared && (
+                              <button
+                                type="button"
+                                onClick={() => toggleSharedRow(m.key)}
+                                className="p-0.5 mt-0.5 rounded text-slate-500"
+                                aria-label="Ver detalle de organizaciones"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap text-xs">
+                                <span className="font-bold text-slate-800 tabular-nums">
+                                  {formatDate(m.effectiveDate)}
+                                </span>
+                                <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                                  {!m.isApplied
+                                    ? 'PROYECTADO'
+                                    : m.primary.ref_number || 'DIRECTO'}
+                                </span>
+                                <span className="font-bold text-slate-700">
+                                  {m.isShared
+                                    ? 'Varios'
+                                    : ORGANIZATION_SHORT_LABELS[m.primary.organization]}
+                                </span>
+                              </div>
 
-                    <div className="flex items-center justify-between text-[11px] text-slate-600 mt-1">
-                      <span className="truncate">
-                        {formatDate(w.withdrawal_date)} • {w.responsible_person}
-                      </span>
-                      <span className="font-bold text-slate-900 tabular-nums whitespace-nowrap">
-                        {formatCurrency(w.amount)}
-                      </span>
-                    </div>
+                              <div className="flex flex-col items-start gap-1">
+                                {(isDueProjected || !m.isApplied) && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-950">
+                                    Pendiente de rendir
+                                  </span>
+                                )}
+                                {m.isPendingLcr && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">
+                                    Pendiente LCR
+                                  </span>
+                                )}
+                                <p className="text-xs font-bold text-slate-900">
+                                  {m.primary.concept}
+                                </p>
+                              </div>
 
-                    {isCash && (
-                      <div className="mt-1.5 pt-1.5 border-t border-slate-200/70 flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500 tabular-nums">
-                          Pendiente: <strong>{formatCurrency(w.pendingToRender)}</strong>
-                        </span>
-                        {w.status === 'PENDIENTE_JUSTIFICAR' && !isClosingThis && (
-                          <button
-                            type="button"
-                            data-testid={`close-withdrawal-btn-${w.withdrawal_ref}`}
-                            onClick={() => {
-                              setClosingWithdrawalId(w.id);
-                              setClosingReturnDate(new Date().toISOString().slice(0, 10));
-                              setClosingReturnAmount(w.pendingToRender.toFixed(2));
-                            }}
-                            className="pressable px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
-                          >
-                            Cerrar en $ 0,00
-                          </button>
+                              {m.isApplied && (
+                                <p className="text-[11px] text-slate-500">
+                                  {m.primary.supplier_name}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex flex-col items-end gap-1">
+                              {m.isPendingLcr && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReconcileGroup(m)}
+                                  className="px-2 py-0.5 rounded-lg bg-rose-700 text-white text-[10px] font-bold"
+                                >
+                                  Conciliar
+                                </button>
+                              )}
+                              <span className="text-xs font-extrabold text-slate-900 tabular-nums">
+                                {formatCurrency(m.totalGross)}
+                              </span>
+                              {m.totalExternalReimb > 0 && (
+                                <span className="text-[10px] font-medium text-slate-400 tabular-nums">
+                                  Neto: {formatCurrency(m.totalNet)}
+                                </span>
+                              )}
+                              {m.primary.is_reimbursable_oai && (
+                                <span className="text-[10px] font-medium text-slate-400">
+                                  Reembolsable
+                                </span>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              title="Editar movimiento"
+                              onClick={() => {
+                                setEditingGroup({ ids: m.ids, records: m.records });
+                                setIsExpenseModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-xl border border-slate-200 text-slate-500 bg-white"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {m.isShared && isExpanded && (
+                          <div className="pl-5 pt-1 flex flex-wrap gap-1.5">
+                            {m.records.map((r) => (
+                              <span
+                                key={r.id}
+                                className="px-2 py-0.5 rounded-lg bg-slate-100 text-[11px] font-bold text-slate-700 tabular-nums"
+                              >
+                                {ORGANIZATION_SHORT_LABELS[r.organization]}:{' '}
+                                {formatCurrency(r.gross_amount)}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+              </>
+            )}
+        </div>
+      )}
 
-                    {isClosingThis && (
-                      <div className="mt-2 pt-2 border-t border-amber-200 space-y-2">
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <input
-                            type="date"
-                            value={closingReturnDate}
-                            onChange={(e) => setClosingReturnDate(e.target.value)}
-                            className="px-2 py-1 rounded-lg border border-slate-300 text-[11px] bg-white tabular-nums"
-                          />
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={closingReturnAmount}
-                            onChange={(e) => setClosingReturnAmount(e.target.value)}
-                            className="px-2 py-1 rounded-lg border border-slate-300 text-[11px] bg-white tabular-nums text-right"
-                          />
+      {/* ==================== PESTAÑA 2: RETIROS (FORMATO TABLA ORDENADA POR FECHA) ==================== */}
+      {subTab === 'WITHDRAWALS' && (
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
+          {filteredWithdrawals.length === 0 ? (
+            <div className="py-10 text-center text-xs text-slate-400">
+              No se encontraron retiros o salidas con ese filtro.
+            </div>
+          ) : (
+            <>
+              {/* VISTA ESCRITORIO: TABLA ALINEADA */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="py-3 px-4 whitespace-nowrap">Fecha</th>
+                      <th className="py-3 px-3 whitespace-nowrap">Referencia</th>
+                      <th className="py-3 px-3 whitespace-nowrap">Tipo</th>
+                      <th className="py-3 px-3">Propósito</th>
+                      <th className="py-3 px-3 whitespace-nowrap">Responsable</th>
+                      <th className="py-3 px-3 text-right whitespace-nowrap">Pendiente</th>
+                      <th className="py-3 px-4 text-right whitespace-nowrap">Monto</th>
+                      <th className="py-3 pr-4 text-right whitespace-nowrap">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {filteredWithdrawals.map((w) => {
+                      const isClosingThis = closingWithdrawalId === w.id;
+                      const isCash = w.movementType === 'EFECTIVO';
+                      const isOpen = isCash && w.status === 'PENDIENTE_JUSTIFICAR';
+                      return (
+                        <React.Fragment key={w.id}>
+                          <tr
+                            data-testid={`withdrawal-row-${w.withdrawal_ref}`}
+                            className={`transition ${
+                              isOpen ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50/70'
+                            }`}
+                          >
+                            <td className="py-3 px-4 font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                              {formatDate(w.withdrawal_date)}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                                {w.withdrawal_ref}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                              {MOVEMENT_TYPE_LABELS[w.movementType]}
+                            </td>
+                            <td className="py-3 px-3 font-semibold text-slate-900">
+                              {w.purpose || '—'}
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                              {w.responsible_person}
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold tabular-nums whitespace-nowrap">
+                              {isCash ? (
+                                <span className={w.pendingToRender > 0 ? 'text-amber-700' : 'text-slate-400'}>
+                                  {formatCurrency(w.pendingToRender)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">$ 0,00</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right font-extrabold text-slate-900 tabular-nums whitespace-nowrap">
+                              {formatCurrency(w.amount)}
+                            </td>
+                            <td className="py-3 pr-4 text-right whitespace-nowrap">
+                              {isOpen && !isClosingThis ? (
+                                <button
+                                  type="button"
+                                  data-testid={`close-withdrawal-btn-${w.withdrawal_ref}`}
+                                  onClick={() => {
+                                    setClosingWithdrawalId(w.id);
+                                    setClosingReturnDate(new Date().toISOString().slice(0, 10));
+                                    setClosingReturnAmount(w.pendingToRender.toFixed(2));
+                                  }}
+                                  className="pressable px-2.5 py-1 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white text-[10px] font-bold"
+                                >
+                                  Cerrar en $ 0,00
+                                </button>
+                              ) : (
+                                <span className="text-[11px] font-semibold text-slate-400">
+                                  Cerrado
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {isClosingThis && (
+                            <tr className="bg-amber-50/80">
+                              <td colSpan={8} className="px-4 py-3">
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                  <span className="text-xs font-bold text-slate-700 mr-2">
+                                    Confirmar devolución para cerrar {w.withdrawal_ref}:
+                                  </span>
+                                  <input
+                                    type="date"
+                                    value={closingReturnDate}
+                                    onChange={(e) => setClosingReturnDate(e.target.value)}
+                                    className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs bg-white tabular-nums"
+                                  />
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={closingReturnAmount}
+                                    onChange={(e) => setClosingReturnAmount(e.target.value)}
+                                    className="w-28 px-2.5 py-1 rounded-lg border border-slate-300 text-xs bg-white tabular-nums text-right"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setClosingWithdrawalId(null)}
+                                    className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-200/60"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const amt = parseFloat(closingReturnAmount);
+                                      await onCloseWithdrawalInZero(
+                                        w.id,
+                                        Number.isFinite(amt) ? amt : w.pendingToRender,
+                                        closingReturnDate
+                                      );
+                                      setClosingWithdrawalId(null);
+                                      triggerToast(
+                                        `Retiro ${w.withdrawal_ref} cerrado en $ 0,00 (${formatDate(
+                                          closingReturnDate
+                                        )}).`
+                                      );
+                                    }}
+                                    className="px-3 py-1 rounded-lg bg-emerald-800 text-white text-xs font-bold"
+                                  >
+                                    Confirmar cierre
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* VISTA MÓVIL: LECTURA COMPACTA VERTICAL */}
+              <div className="md:hidden divide-y divide-slate-100">
+                {filteredWithdrawals.map((w) => {
+                  const isClosingThis = closingWithdrawalId === w.id;
+                  const isCash = w.movementType === 'EFECTIVO';
+                  const isOpen = isCash && w.status === 'PENDIENTE_JUSTIFICAR';
+                  return (
+                    <div
+                      key={`mob-w-${w.id}`}
+                      className={`p-4 space-y-2 text-xs ${isOpen ? 'bg-amber-50/50' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-800 tabular-nums">
+                              {formatDate(w.withdrawal_date)}
+                            </span>
+                            <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                              {w.withdrawal_ref}
+                            </span>
+                            <span className="font-semibold text-slate-600">
+                              {MOVEMENT_TYPE_LABELS[w.movementType]}
+                            </span>
+                          </div>
+                          <p className="font-bold text-slate-900">{w.purpose || '—'}</p>
+                          <p className="text-[11px] text-slate-500">{w.responsible_person}</p>
                         </div>
-                        <div className="flex justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setClosingWithdrawalId(null)}
-                            className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-200/60"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const amt = parseFloat(closingReturnAmount);
-                              await onCloseWithdrawalInZero(
-                                w.id,
-                                Number.isFinite(amt) ? amt : w.pendingToRender,
-                                closingReturnDate
-                              );
-                              setClosingWithdrawalId(null);
-                              triggerToast(
-                                `Retiro ${w.withdrawal_ref} cerrado en $ 0,00 (${formatDate(
-                                  closingReturnDate
-                                )}).`
-                              );
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
-                          >
-                            Confirmar cierre
-                          </button>
+
+                        <div className="text-right flex-shrink-0 space-y-1">
+                          <p className="font-extrabold text-slate-900 tabular-nums">
+                            {formatCurrency(w.amount)}
+                          </p>
+                          {isCash && (
+                            <p className="text-[11px] text-slate-500 tabular-nums">
+                              Pend: <strong>{formatCurrency(w.pendingToRender)}</strong>
+                            </p>
+                          )}
+                          {isOpen && !isClosingThis && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setClosingWithdrawalId(w.id);
+                                setClosingReturnDate(new Date().toISOString().slice(0, 10));
+                                setClosingReturnAmount(w.pendingToRender.toFixed(2));
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
+                            >
+                              Cerrar en $ 0,00
+                            </button>
+                          )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+
+                      {isClosingThis && (
+                        <div className="pt-2 border-t border-amber-200 space-y-2">
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <input
+                              type="date"
+                              value={closingReturnDate}
+                              onChange={(e) => setClosingReturnDate(e.target.value)}
+                              className="px-2 py-1 rounded-lg border border-slate-300 text-[11px] bg-white tabular-nums"
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={closingReturnAmount}
+                              onChange={(e) => setClosingReturnAmount(e.target.value)}
+                              className="px-2 py-1 rounded-lg border border-slate-300 text-[11px] bg-white tabular-nums text-right"
+                            />
+                          </div>
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setClosingWithdrawalId(null)}
+                              className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const amt = parseFloat(closingReturnAmount);
+                                await onCloseWithdrawalInZero(
+                                  w.id,
+                                  Number.isFinite(amt) ? amt : w.pendingToRender,
+                                  closingReturnDate
+                                );
+                                setClosingWithdrawalId(null);
+                                triggerToast(
+                                  `Retiro ${w.withdrawal_ref} cerrado en $ 0,00 (${formatDate(
+                                    closingReturnDate
+                                  )}).`
+                                );
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
+                            >
+                              Confirmar cierre
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 

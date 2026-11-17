@@ -75,7 +75,20 @@ export interface BudgetAllocation {
   notes?: string;
 }
 
-export type MovementType = 'EFECTIVO' | 'DIRECTO_TARJETA' | 'TRANSFERENCIA';
+export type BudgetIncomeEntryType = 'SALDO_INICIAL' | 'INGRESO_UNIDAD' | 'AJUSTE';
+
+export interface BudgetIncomeEntry {
+  id: number;
+  year: number;
+  quarter: QuarterCode;
+  entry_type: BudgetIncomeEntryType;
+  slot_index: number | null;
+  lcr_ref?: string | null;
+  description?: string | null;
+  amount: number;
+}
+
+export type MovementType = 'EFECTIVO' | 'DIRECTO_TARJETA' | 'TRANSFERENCIA' | 'DEPOSITO';
 
 export type ExpenseType =
   | 'EFECTIVO'

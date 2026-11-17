@@ -260,7 +260,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       }
     >
       {/* Marco superior unificado: Título + Sincronizar + Filtros y Búsqueda (fijo arriba) */}
-      <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
+      <div className="sticky top-[62px] md:top-[108px] z-20 bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             {onBack && (

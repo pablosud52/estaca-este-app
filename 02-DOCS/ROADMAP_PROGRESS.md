@@ -99,6 +99,12 @@ flowchart TD
   - **Pendiente para Etapa 2 (Finanzas)**:
     - [ ] Traspaso de excedentes entre retiros encadenados (Regla 7).
     - [ ] Evaluar si el ingreso de retiro de efectivo tendrá su propia pestaña/sección o un botón con modal propio, junto con filtros avanzados en la tabla de registros financieros.
+    - [x] Rediseño de **Presupuestos**: sub-pestaña `1. Ingresos del Año` (saldo inicial en T1 con sugerencia en vivo sin aplicar + 7 ingresos por trimestre + ajustes `+`/`-` + Modo proyección en años futuros), sub-pestaña `2. Distribución por Organización` (fila `Estaca` automática, porcentajes en tiempo real, bloqueo en rojo si queda negativa) y Monitor de Quita al Cierre (Regla del 50%) en Finanzas.
+    - [x] Nueva sección **Información y Normativas Financieras** (accesible debajo de `Finanzas` en el menú de Administración para Admins y Presidencia):
+      - [x] Resumen del documento oficial de **Cierre de Fin de Año y Regla del 50%**.
+      - [ ] Documentación de **Cierre de tarjeta, reseteo y límite mensual** (desde planilla Excel).
+      - [ ] Procedimiento para **solicitar ampliaciones y excepciones de dinero** hacia otras unidades.
+      - [ ] Guía de **uso apropiado de los fondos** de presupuesto.
 - [x] Vista 4: Calendario General de Actividades de Estaca (`CalendarView.tsx`) y Servicio de Sincronización con LCR (`lcrSyncService.ts` + `LcrSyncButton.tsx`):
   - Doble Escudo de Sincronización con LCR: sincronización global silenciosa al montar la app + escudo de base de datos compartido (`LAST_SYNCED_AT` en `app_config` de 10 minutos) + botón manual `"🔄 Sincronizar"` con spinner `"Sincronizando..."`, estado `"✓ Calendario al día"` y cooldown progresivo (30s en las primeras 3 pulsaciones, 10 minutos desde la 4ª pulsación consecutiva, reinicio a la hora) con micro-texto explicativo (`"⏱️ Próxima sincronización manual disponible en ..."`).
   - Deduplicación Inmutable RFC 5545 con `ical.js` por `UID` único sin duplicar reprogramaciones.

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
+  BookOpen,
   Building2,
   Calendar,
   ChevronDown,
@@ -20,6 +21,7 @@ import {
   isSuperAdminEmail,
   SEED_ACTIVITIES,
   SEED_BUDGET_ALLOCATIONS,
+  SEED_BUDGET_INCOMES,
   SEED_CASH_WITHDRAWALS,
   SEED_EXPENSES,
   SEED_SUPPLIERS,
@@ -36,6 +38,7 @@ import { supabase } from '../lib/supabase';
 import {
   ActivityRecord,
   BudgetAllocation,
+  BudgetIncomeEntry,
   CashWithdrawalRecord,
   ExpenseRecord,
   OrganizationCode,
@@ -47,6 +50,8 @@ import { OrgDistributionChart, OrgSummaryStat } from '../components/OrgDistribut
 import { ActivityApprovalTray } from '../components/ActivityApprovalTray';
 import { UserManagementPanel } from '../components/UserManagementPanel';
 import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
+import { FinancialInfoSection } from '../components/FinancialInfoSection';
+import { computeYearIncomeSummary } from '../lib/budgetUtils';
 import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
 import { SuppliersView } from './SuppliersView';
@@ -101,9 +106,9 @@ const saveSessionProposals = (list: ActivityRecord[]) => {
 export const PresidencyHub: React.FC = () => {
   const { user, isSimulating, incompleteContactsCount } = useAuth();
 
-  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS
+  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | INFO
   const [activeTab, setActiveTab] = useState<
-    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS'
+    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS' | 'INFO'
   >('DASHBOARD');
   const [openUsersWithIncompleteFilter, setOpenUsersWithIncompleteFilter] = useState<boolean>(false);
   // Menú Drawer móvil (hamburguesa ☰ -> cruz ✕)
@@ -153,6 +158,7 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const [budgets, setBudgets] = useState<BudgetAllocation[]>(SEED_BUDGET_ALLOCATIONS);
+  const [budgetIncomes, setBudgetIncomes] = useState<BudgetIncomeEntry[]>(SEED_BUDGET_INCOMES);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(SEED_EXPENSES);
   const [activities, setActivities] = useState<ActivityRecord[]>(() => [
     ...SEED_ACTIVITIES,
@@ -167,13 +173,15 @@ export const PresidencyHub: React.FC = () => {
 
     async function fetchExecutiveData() {
       try {
-        const [budgetRes, expenseRes, activityRes, withdrawalRes, supplierRes] = await Promise.all([
-          supabase.from('budget_allocations').select('*'),
-          supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
-          supabase.from('activities').select('*').order('event_date', { ascending: true }),
-          supabase.from('cash_withdrawals').select('*').order('withdrawal_date', { ascending: false }),
-          supabase.from('suppliers').select('*').order('commercial_name', { ascending: true }),
-        ]);
+        const [budgetRes, incomeRes, expenseRes, activityRes, withdrawalRes, supplierRes] =
+          await Promise.all([
+            supabase.from('budget_allocations').select('*'),
+            supabase.from('budget_incomes').select('*').order('id', { ascending: true }),
+            supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
+            supabase.from('activities').select('*').order('event_date', { ascending: true }),
+            supabase.from('cash_withdrawals').select('*').order('withdrawal_date', { ascending: false }),
+            supabase.from('suppliers').select('*').order('commercial_name', { ascending: true }),
+          ]);
 
         if (!active) return;
 
@@ -187,6 +195,17 @@ export const PresidencyHub: React.FC = () => {
               t4_assigned: Number(b.t4_assigned),
               total_assigned: Number(b.total_assigned),
             })) as BudgetAllocation[]
+          );
+        }
+
+        if (!incomeRes.error && incomeRes.data && incomeRes.data.length > 0) {
+          setBudgetIncomes(
+            incomeRes.data.map((i) => ({
+              ...i,
+              year: Number(i.year),
+              slot_index: i.slot_index !== null && i.slot_index !== undefined ? Number(i.slot_index) : null,
+              amount: Number(i.amount),
+            })) as BudgetIncomeEntry[]
           );
         }
 
@@ -358,15 +377,25 @@ export const PresidencyHub: React.FC = () => {
     // Presupuesto Disponible Real ($ 114.168,09 en 2026)
     const consolidatedAvailable = totalConsolidatedAssigned - totalConsolidatedSpent;
 
-    // Resumen por trimestre (T1 - T4)
-    // En 2026: T1 Total Disponible ($ 194.468,69) = Remanente inicial 2025 ($ 123.027,89) + Ingreso T1 ($ 71.440,80)
+    // Resumen por trimestre (T1 - T4) conectado a budget_incomes (con fallback a budget_allocations)
+    const yearIncomeRows = budgetIncomes.filter((i) => Number(i.year) === selectedYear);
+    const hasIncomeEntries = yearIncomeRows.length > 0;
+    const incomeSummary = computeYearIncomeSummary(budgetIncomes, selectedYear);
+
     const qTotalAssigned: Record<QuarterCode, number> = { T1: 0, T2: 0, T3: 0, T4: 0 };
-    yearBudgets.forEach((b) => {
-      qTotalAssigned.T1 += Number(b.t1_assigned);
-      qTotalAssigned.T2 += Number(b.t2_assigned);
-      qTotalAssigned.T3 += Number(b.t3_assigned);
-      qTotalAssigned.T4 += Number(b.t4_assigned);
-    });
+    if (hasIncomeEntries) {
+      qTotalAssigned.T1 = incomeSummary.quarterTotals.T1;
+      qTotalAssigned.T2 = incomeSummary.quarterTotals.T2;
+      qTotalAssigned.T3 = incomeSummary.quarterTotals.T3;
+      qTotalAssigned.T4 = incomeSummary.quarterTotals.T4;
+    } else {
+      yearBudgets.forEach((b) => {
+        qTotalAssigned.T1 += Number(b.t1_assigned);
+        qTotalAssigned.T2 += Number(b.t2_assigned);
+        qTotalAssigned.T3 += Number(b.t3_assigned);
+        qTotalAssigned.T4 += Number(b.t4_assigned);
+      });
+    }
 
     const qSpent: Record<QuarterCode, number> = { T1: 0, T2: 0, T3: 0, T4: 0 };
     nonReimbursableExpenses.forEach((e) => {
@@ -374,11 +403,14 @@ export const PresidencyHub: React.FC = () => {
       qSpent[q] += Number(e.net_amount);
     });
 
-    const t1CarryOver =
-      selectedYear === 2026 && qTotalAssigned.T1 >= INITIAL_OPENING_BALANCE_2026
-        ? INITIAL_OPENING_BALANCE_2026
-        : 0;
-    const t1Income = Math.max(0, Number((qTotalAssigned.T1 - t1CarryOver).toFixed(2)));
+    const t1CarryOver = hasIncomeEntries
+      ? incomeSummary.appliedOpeningBalance
+      : selectedYear === 2026 && qTotalAssigned.T1 >= INITIAL_OPENING_BALANCE_2026
+      ? INITIAL_OPENING_BALANCE_2026
+      : 0;
+    const t1Income = hasIncomeEntries
+      ? incomeSummary.quarterIncomesOnly.T1
+      : Math.max(0, Number((qTotalAssigned.T1 - t1CarryOver).toFixed(2)));
     const a1 = qTotalAssigned.T1; // $ 194.468,69
     const r1 = Number((a1 - qSpent.T1).toFixed(2)); // $ 41.622,69
 
@@ -1054,6 +1086,165 @@ export const PresidencyHub: React.FC = () => {
     }
   };
 
+  const handleSaveOpeningBalance = async (year: number, amount: number, lcrRef?: string) => {
+    const existing = budgetIncomes.find(
+      (i) => Number(i.year) === year && i.entry_type === 'SALDO_INICIAL'
+    );
+    if (existing) {
+      const updated: BudgetIncomeEntry = {
+        ...existing,
+        amount,
+        lcr_ref: lcrRef ?? existing.lcr_ref,
+      };
+      setBudgetIncomes((prev) => prev.map((i) => (i.id === existing.id ? updated : i)));
+      if (!isSimulating) {
+        try {
+          await supabase
+            .from('budget_incomes')
+            .update({ amount, lcr_ref: updated.lcr_ref ?? null })
+            .eq('id', existing.id);
+        } catch {
+          // Estado local actualizado
+        }
+      }
+    } else {
+      const tempId = Date.now();
+      const created: BudgetIncomeEntry = {
+        id: tempId,
+        year,
+        quarter: 'T1',
+        entry_type: 'SALDO_INICIAL',
+        slot_index: 0,
+        lcr_ref: lcrRef || `APERTURA-${year}`,
+        description: `Saldo Inicial ${year}`,
+        amount,
+      };
+      setBudgetIncomes((prev) => [...prev, created]);
+      if (!isSimulating) {
+        try {
+          const { data } = await supabase
+            .from('budget_incomes')
+            .insert([
+              {
+                year,
+                quarter: 'T1',
+                entry_type: 'SALDO_INICIAL',
+                slot_index: 0,
+                lcr_ref: created.lcr_ref,
+                description: created.description,
+                amount,
+              },
+            ])
+            .select();
+          if (data && data[0]) {
+            const realRow = { ...data[0], amount: Number(data[0].amount) } as BudgetIncomeEntry;
+            setBudgetIncomes((prev) => prev.map((i) => (i.id === tempId ? realRow : i)));
+          }
+        } catch {
+          // Estado local actualizado
+        }
+      }
+    }
+  };
+
+  const handleSaveQuarterIncomes = async (
+    year: number,
+    quarter: QuarterCode,
+    unitRows: Array<{ slot_index: number; amount: number; lcr_ref: string }>,
+    adjustments: Array<{ id?: number; amount: number; description: string; lcr_ref: string }>
+  ) => {
+    const baseTime = Date.now();
+    const newEntries: BudgetIncomeEntry[] = [
+      ...unitRows.map((u, idx) => ({
+        id: baseTime + idx,
+        year,
+        quarter,
+        entry_type: 'INGRESO_UNIDAD' as const,
+        slot_index: u.slot_index,
+        lcr_ref: u.lcr_ref || null,
+        description: `Ingreso ${u.slot_index} - ${quarter}`,
+        amount: u.amount,
+      })),
+      ...adjustments.map((a, idx) => ({
+        id: baseTime + 100 + idx,
+        year,
+        quarter,
+        entry_type: 'AJUSTE' as const,
+        slot_index: null,
+        lcr_ref: a.lcr_ref || null,
+        description: a.description,
+        amount: a.amount,
+      })),
+    ];
+
+    setBudgetIncomes((prev) => [
+      ...prev.filter(
+        (i) =>
+          !(
+            Number(i.year) === year &&
+            i.quarter === quarter &&
+            (i.entry_type === 'INGRESO_UNIDAD' || i.entry_type === 'AJUSTE')
+          )
+      ),
+      ...newEntries,
+    ]);
+
+    if (!isSimulating) {
+      try {
+        await supabase
+          .from('budget_incomes')
+          .delete()
+          .eq('year', year)
+          .eq('quarter', quarter)
+          .in('entry_type', ['INGRESO_UNIDAD', 'AJUSTE']);
+
+        const payload = newEntries.map(({ id: _omit, ...rest }) => rest);
+        const { data } = await supabase.from('budget_incomes').insert(payload).select();
+        if (data && data.length > 0) {
+          const synced = data.map((row) => ({
+            ...row,
+            year: Number(row.year),
+            slot_index:
+              row.slot_index !== null && row.slot_index !== undefined
+                ? Number(row.slot_index)
+                : null,
+            amount: Number(row.amount),
+          })) as BudgetIncomeEntry[];
+          setBudgetIncomes((prev) => [
+            ...prev.filter(
+              (i) =>
+                !(
+                  Number(i.year) === year &&
+                  i.quarter === quarter &&
+                  (i.entry_type === 'INGRESO_UNIDAD' || i.entry_type === 'AJUSTE')
+                )
+            ),
+            ...synced,
+          ]);
+        }
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleResetFutureYearProjection = async (year: number) => {
+    if (year <= new Date().getFullYear()) return;
+    setBudgetIncomes((prev) => prev.filter((i) => Number(i.year) !== year));
+    setBudgets((prev) => prev.filter((b) => Number(b.year) !== year));
+
+    if (!isSimulating) {
+      try {
+        await Promise.all([
+          supabase.from('budget_incomes').delete().eq('year', year),
+          supabase.from('budget_allocations').delete().eq('year', year),
+        ]);
+      } catch {
+        // Estado local limpiado
+      }
+    }
+  };
+
   const handleCreateWithdrawal = async (
     newWithdrawal: Omit<CashWithdrawalRecord, 'id'>
   ) => {
@@ -1116,7 +1307,7 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const selectTabAndCloseDrawer = (
-    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS'
+    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS' | 'INFO'
   ) => {
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
@@ -1313,14 +1504,20 @@ export const PresidencyHub: React.FC = () => {
                   aria-haspopup="true"
                   onClick={() => setIsAdminMenuOpen((prev) => !prev)}
                   className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                    activeTab === 'APPROVALS' || activeTab === 'USERS' || activeTab === 'OPERATIONS'
+                    activeTab === 'APPROVALS' ||
+                    activeTab === 'USERS' ||
+                    activeTab === 'OPERATIONS' ||
+                    activeTab === 'INFO'
                       ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
                       : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-200/90'
                   }`}
                 >
                   <Shield
                     className={`w-3.5 h-3.5 ${
-                      activeTab === 'APPROVALS' || activeTab === 'USERS' || activeTab === 'OPERATIONS'
+                      activeTab === 'APPROVALS' ||
+                      activeTab === 'USERS' ||
+                      activeTab === 'OPERATIONS' ||
+                      activeTab === 'INFO'
                         ? 'text-emerald-300'
                         : 'text-emerald-700'
                     }`}
@@ -1436,6 +1633,26 @@ export const PresidencyHub: React.FC = () => {
                         <span className="flex items-center gap-2.5">
                           <FileEdit className="w-4 h-4 text-emerald-600" />
                           <span>Finanzas</span>
+                        </span>
+                      </button>
+
+                      {/* 5. Información / Normativas */}
+                      <button
+                        type="button"
+                        data-testid="hub-admin-info-btn"
+                        onClick={() => {
+                          setActiveTab('INFO');
+                          setIsAdminMenuOpen(false);
+                        }}
+                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                          activeTab === 'INFO'
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <BookOpen className="w-4 h-4 text-amber-600" />
+                          <span>Información / Normativas</span>
                         </span>
                       </button>
                     </div>
@@ -1632,6 +1849,21 @@ export const PresidencyHub: React.FC = () => {
                         <FileEdit className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                         <span>Finanzas</span>
                       </button>
+
+                      {/* 5. Información / Normativas */}
+                      <button
+                        type="button"
+                        data-testid="drawer-admin-info-btn"
+                        onClick={() => selectTabAndCloseDrawer('INFO')}
+                        className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                          activeTab === 'INFO'
+                            ? 'bg-emerald-900 text-white shadow-sm'
+                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                        }`}
+                      >
+                        <BookOpen className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <span>Información / Normativas</span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1657,15 +1889,19 @@ export const PresidencyHub: React.FC = () => {
           <UserManagementPanel initialFilterIncomplete={openUsersWithIncompleteFilter} />
         ) : activeTab === 'DIRECTORY' ? (
           <LeadersDirectoryView />
+        ) : activeTab === 'INFO' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
+          <FinancialInfoSection />
         ) : activeTab === 'OPERATIONS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <AdminOperationsCenter
             selectedYear={selectedYear}
             budgets={budgets.filter((b) => Number(b.year) === selectedYear)}
+            budgetIncomes={budgetIncomes}
             expenses={expenses.filter(
               (e) =>
                 getExpenseEffectiveDate(e).startsWith(String(selectedYear)) ||
                 e.expense_date.startsWith(String(selectedYear))
             )}
+            allExpenses={expenses}
             withdrawals={withdrawals}
             activities={activities}
             suppliers={suppliers}
@@ -1679,6 +1915,9 @@ export const PresidencyHub: React.FC = () => {
             onCloseWithdrawalInZero={handleCloseWithdrawalInZero}
             onCreateSupplier={handleCreateSupplier}
             onSaveBudgetAllocation={handleSaveBudgetAllocation}
+            onSaveOpeningBalance={handleSaveOpeningBalance}
+            onSaveQuarterIncomes={handleSaveQuarterIncomes}
+            onResetFutureYearProjection={handleResetFutureYearProjection}
           />
         ) : activeTab === 'APPROVALS' ? (
           <ActivityApprovalTray

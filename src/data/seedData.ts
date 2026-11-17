@@ -1,6 +1,7 @@
 import {
   ActivityRecord,
   BudgetAllocation,
+  BudgetIncomeEntry,
   CashWithdrawalRecord,
   DirectoryOrgCode,
   ExpenseRecord,
@@ -286,6 +287,44 @@ export const SEED_BUDGET_ALLOCATIONS: BudgetAllocation[] = [
   { id: 9, year: 2026, organization: 'ESTACA', t1_assigned: 62468.69, t2_assigned: 16891.40, t3_assigned: 18145.60, t4_assigned: 11767.40, total_assigned: 109273.09, notes: 'Estaca (Remanente Disponible)' },
 ];
 
+export const SEED_BUDGET_INCOMES: BudgetIncomeEntry[] = [
+  { id: 1, year: 2026, quarter: 'T1', entry_type: 'SALDO_INICIAL', slot_index: 0, lcr_ref: 'APERTURA-2026', description: 'Saldo Inicial de Apertura (Cierre 2025 LCR)', amount: 123027.89 },
+  { id: 2, year: 2026, quarter: 'T1', entry_type: 'INGRESO_UNIDAD', slot_index: 1, lcr_ref: '1098360374', description: 'Ingreso 1 - T1', amount: 7282.80 },
+  { id: 3, year: 2026, quarter: 'T1', entry_type: 'INGRESO_UNIDAD', slot_index: 2, lcr_ref: '1098359050', description: 'Ingreso 2 - T1', amount: 12253.60 },
+  { id: 4, year: 2026, quarter: 'T1', entry_type: 'INGRESO_UNIDAD', slot_index: 3, lcr_ref: '1098357614', description: 'Ingreso 3 - T1', amount: 14739.00 },
+  { id: 5, year: 2026, quarter: 'T1', entry_type: 'INGRESO_UNIDAD', slot_index: 4, lcr_ref: '1098348960', description: 'Ingreso 4 - T1', amount: 15374.80 },
+  { id: 6, year: 2026, quarter: 'T1', entry_type: 'INGRESO_UNIDAD', slot_index: 5, lcr_ref: '1098351181', description: 'Ingreso 5 - T1', amount: 7398.40 },
+  { id: 7, year: 2026, quarter: 'T1', entry_type: 'INGRESO_UNIDAD', slot_index: 6, lcr_ref: '1098342597', description: 'Ingreso 6 - T1', amount: 4219.40 },
+  { id: 8, year: 2026, quarter: 'T1', entry_type: 'INGRESO_UNIDAD', slot_index: 7, lcr_ref: '1098743419', description: 'Ingreso 7 - T1', amount: 10172.80 },
+  { id: 9, year: 2026, quarter: 'T2', entry_type: 'INGRESO_UNIDAD', slot_index: 1, lcr_ref: '1103655643', description: 'Ingreso 1 - T2', amount: 13409.60 },
+  { id: 10, year: 2026, quarter: 'T2', entry_type: 'INGRESO_UNIDAD', slot_index: 2, lcr_ref: '1103652897', description: 'Ingreso 2 - T2', amount: 18264.80 },
+  { id: 11, year: 2026, quarter: 'T2', entry_type: 'INGRESO_UNIDAD', slot_index: 3, lcr_ref: '1103650584', description: 'Ingreso 3 - T2', amount: 9941.60 },
+  { id: 12, year: 2026, quarter: 'T2', entry_type: 'INGRESO_UNIDAD', slot_index: 4, lcr_ref: '1103646439', description: 'Ingreso 4 - T2', amount: 3699.20 },
+  { id: 13, year: 2026, quarter: 'T2', entry_type: 'INGRESO_UNIDAD', slot_index: 5, lcr_ref: '1103639219', description: 'Ingreso 5 - T2', amount: 14161.00 },
+  { id: 14, year: 2026, quarter: 'T2', entry_type: 'INGRESO_UNIDAD', slot_index: 6, lcr_ref: '1103636847', description: 'Ingreso 6 - T2', amount: 7456.20 },
+  { id: 15, year: 2026, quarter: 'T2', entry_type: 'INGRESO_UNIDAD', slot_index: 7, lcr_ref: '1103632221', description: 'Ingreso 7 - T2', amount: 16588.60 },
+  { id: 16, year: 2026, quarter: 'T2', entry_type: 'AJUSTE', slot_index: null, lcr_ref: '1103736960', description: 'Ajuste Extraordinario T2', amount: -1618.40 },
+  { id: 31, year: 2026, quarter: 'T2', entry_type: 'AJUSTE', slot_index: null, lcr_ref: '1103737063', description: 'Ajuste Extraordinario T2', amount: -1387.20 },
+  { id: 32, year: 2026, quarter: 'T2', entry_type: 'AJUSTE', slot_index: null, lcr_ref: '1103732286', description: 'Ajuste Extraordinario T2', amount: -1156.00 },
+  { id: 33, year: 2026, quarter: 'T2', entry_type: 'AJUSTE', slot_index: null, lcr_ref: '1103727759', description: 'Ajuste Extraordinario T2', amount: -1156.00 },
+  { id: 34, year: 2026, quarter: 'T2', entry_type: 'AJUSTE', slot_index: null, lcr_ref: '1103727046', description: 'Ajuste Extraordinario T2', amount: -1156.00 },
+  { id: 35, year: 2026, quarter: 'T2', entry_type: 'AJUSTE', slot_index: null, lcr_ref: '1103725690', description: 'Ajuste Extraordinario T2', amount: -1156.00 },
+  { id: 17, year: 2026, quarter: 'T3', entry_type: 'INGRESO_UNIDAD', slot_index: 1, lcr_ref: '1109080418', description: 'Ingreso 1 - T3', amount: 7051.60 },
+  { id: 18, year: 2026, quarter: 'T3', entry_type: 'INGRESO_UNIDAD', slot_index: 2, lcr_ref: '1109074995', description: 'Ingreso 2 - T3', amount: 17051.00 },
+  { id: 19, year: 2026, quarter: 'T3', entry_type: 'INGRESO_UNIDAD', slot_index: 3, lcr_ref: '1109072016', description: 'Ingreso 3 - T3', amount: 11444.40 },
+  { id: 20, year: 2026, quarter: 'T3', entry_type: 'INGRESO_UNIDAD', slot_index: 4, lcr_ref: '1109065506', description: 'Ingreso 4 - T3', amount: 4161.60 },
+  { id: 21, year: 2026, quarter: 'T3', entry_type: 'INGRESO_UNIDAD', slot_index: 5, lcr_ref: '1109062255', description: 'Ingreso 5 - T3', amount: 13698.60 },
+  { id: 22, year: 2026, quarter: 'T3', entry_type: 'INGRESO_UNIDAD', slot_index: 6, lcr_ref: '1109058573', description: 'Ingreso 6 - T3', amount: 10519.60 },
+  { id: 23, year: 2026, quarter: 'T3', entry_type: 'INGRESO_UNIDAD', slot_index: 7, lcr_ref: '1109053304', description: 'Ingreso 7 - T3', amount: 14218.80 },
+  { id: 24, year: 2026, quarter: 'T4', entry_type: 'INGRESO_UNIDAD', slot_index: 1, lcr_ref: '1114333962', description: 'Ingreso 1 - T4', amount: 16646.40 },
+  { id: 25, year: 2026, quarter: 'T4', entry_type: 'INGRESO_UNIDAD', slot_index: 2, lcr_ref: '1114333384', description: 'Ingreso 2 - T4', amount: 7918.60 },
+  { id: 26, year: 2026, quarter: 'T4', entry_type: 'INGRESO_UNIDAD', slot_index: 3, lcr_ref: '1114333568', description: 'Ingreso 3 - T4', amount: 6300.20 },
+  { id: 27, year: 2026, quarter: 'T4', entry_type: 'INGRESO_UNIDAD', slot_index: 4, lcr_ref: '1114331492', description: 'Ingreso 4 - T4', amount: 3525.80 },
+  { id: 28, year: 2026, quarter: 'T4', entry_type: 'INGRESO_UNIDAD', slot_index: 5, lcr_ref: '1114323031', description: 'Ingreso 5 - T4', amount: 10288.40 },
+  { id: 29, year: 2026, quarter: 'T4', entry_type: 'INGRESO_UNIDAD', slot_index: 6, lcr_ref: '1114310299', description: 'Ingreso 6 - T4', amount: 14854.60 },
+  { id: 30, year: 2026, quarter: 'T4', entry_type: 'INGRESO_UNIDAD', slot_index: 7, lcr_ref: '1114310772', description: 'Ingreso 7 - T4', amount: 11733.40 },
+];
+
 export const SEED_EXPENSES: ExpenseRecord[] = [
   { id: 1, ref_number: '1226-30000', expense_date: '2026-01-17', organization: 'HJ', supplier_name: 'PALTICOR SA (LOS TREINTA Y TRES)', concept: 'Act. HJ - PALTICOR', gross_amount: 3802.00, external_reimbursement: 0, net_amount: 3802.00, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1226-30000' },
   { id: 2, ref_number: '1205-55000', expense_date: '2026-01-22', organization: 'CFS', supplier_name: 'Oldfin SA (Ofimax)', concept: 'CFS insumos', gross_amount: 4360.00, external_reimbursement: 0, net_amount: 4360.00, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1205-55000' },
@@ -320,8 +359,10 @@ export const SEED_EXPENSES: ExpenseRecord[] = [
   { id: 31, ref_number: '0902-30000', expense_date: '2026-09-10', organization: 'ESTACA', supplier_name: 'Mosca', concept: 'Decoración Meet Up 2026', gross_amount: 8622.00, external_reimbursement: 0, net_amount: 8622.00, is_reimbursable_oai: true, status: 'REEMBOLSADO_OAI', withdrawal_ref: '0902-30000' },
   { id: 32, ref_number: '1012-25000', expense_date: '2026-10-19', organization: 'AS', supplier_name: 'TENCONI CALVO GAEL NAHUEL', concept: 'Actividad Adultos Solteros', gross_amount: 10000.00, external_reimbursement: 0, net_amount: 10000.00, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1012-25000' },
   { id: 33, ref_number: '1012-25000', expense_date: '2026-10-19', organization: 'ESTACA', supplier_name: 'ALVANA SRL (CONFITERIA PANINO)', concept: 'Alimentos actividad Estaca', gross_amount: 14664.00, external_reimbursement: 0, net_amount: 14664.00, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1012-25000' },
-  { id: 34, ref_number: '1017-12500', expense_date: '2026-10-28', organization: 'PRIMARIA', supplier_name: 'Librería y Supermercado', concept: 'Materiales y refrigerio Primaria', gross_amount: 12394.00, external_reimbursement: 0, net_amount: 12394.00, is_reimbursable_oai: false, status: 'PENDIENTE_LCR', withdrawal_ref: '1017-12500' },
-  { id: 35, ref_number: '1024-9000', expense_date: '2026-11-01', organization: 'ESTACA', supplier_name: 'Palacio de la Música', concept: 'Materiales Coro de Estaca', gross_amount: 3112.00, external_reimbursement: 0, net_amount: 3112.00, is_reimbursable_oai: false, status: 'PENDIENTE_LCR', withdrawal_ref: '1024-9000' },
+  { id: 34, ref_number: '1017-12500', expense_date: '2026-11-08', organization: 'PRIMARIA', supplier_name: 'REVISOL SA', concept: 'Materiales y refrigerio Primaria', gross_amount: 12394.00, external_reimbursement: 0, net_amount: 12394.00, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1017-12500' },
+  { id: 35, ref_number: '1025-9000', expense_date: '2026-11-08', organization: 'ESTACA', supplier_name: 'ALVANA SRL (CONFITERIA PANINO)', concept: 'Materiales Coro de Estaca', gross_amount: 3112.00, external_reimbursement: 0, net_amount: 3112.00, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1024-9000' },
+  { id: 36, ref_number: '1025-9000', expense_date: '2026-11-11', organization: 'HJ', supplier_name: 'ALL IN ONE - VALLS SPOSITO GABRIEL', concept: 'Actividad HJ y MJ (cuota HJ)', gross_amount: 2689.50, external_reimbursement: 0, net_amount: 2689.50, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1025-9000' },
+  { id: 37, ref_number: '1025-9000', expense_date: '2026-11-11', organization: 'MJ', supplier_name: 'ALL IN ONE - VALLS SPOSITO GABRIEL', concept: 'Actividad HJ y MJ (cuota MJ)', gross_amount: 2689.50, external_reimbursement: 0, net_amount: 2689.50, is_reimbursable_oai: false, status: 'REGISTRADO_LCR', withdrawal_ref: '1025-9000' },
 ];
 
 export const SEED_ACTIVITIES: ActivityRecord[] = [

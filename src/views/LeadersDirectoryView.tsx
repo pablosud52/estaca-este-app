@@ -112,7 +112,7 @@ export const LeadersDirectoryView: React.FC = () => {
       className="space-y-2.5"
     >
       {/* Marco superior fijo: Título + Desplegable multi-organización + Buscador */}
-      <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
+      <div className="sticky top-[62px] md:top-[108px] z-20 bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
             Directorio

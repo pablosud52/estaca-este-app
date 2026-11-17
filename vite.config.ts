@@ -35,6 +35,10 @@ export default defineConfig({
   optimizeDeps: {
     include: ['xlsx', 'chart.js', 'react-chartjs-2', 'lucide-react', '@supabase/supabase-js'],
   },
+  server: {
+    port: 5173,
+    strictPort: true,
+  },
   build: {
     rollupOptions: {
       output: {

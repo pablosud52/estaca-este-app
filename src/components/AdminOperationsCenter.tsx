@@ -21,22 +21,25 @@ import {
   getExpenseWithdrawalAllocations,
   isExpenseApplied,
   ORGANIZATION_SHORT_LABELS,
-  parseMmddMontoShortcut,
 } from '../lib/formatters';
 import {
   ActivityRecord,
   BudgetAllocation,
+  BudgetIncomeEntry,
   CashWithdrawalRecord,
   ExpenseRecord,
   MovementType,
+  QuarterCode,
   SupplierRecord,
 } from '../types/database';
+import { computeClosingCapStats, computeYearIncomeSummary } from '../lib/budgetUtils';
 import { BudgetManagementSection } from './BudgetManagementSection';
 import {
   ExpenseFormModal,
   ExpenseGroupEditData,
   OpenWithdrawalOption,
 } from './ExpenseFormModal';
+import { NewMovementModal } from './NewMovementModal';
 
 const ExcelSyncPanel = lazy(() =>
   import('./ExcelSyncPanel').then((m) => ({ default: m.ExcelSyncPanel }))
@@ -45,7 +48,9 @@ const ExcelSyncPanel = lazy(() =>
 interface AdminOperationsCenterProps {
   selectedYear?: number;
   budgets: BudgetAllocation[];
+  budgetIncomes?: BudgetIncomeEntry[];
   expenses: ExpenseRecord[];
+  allExpenses?: ExpenseRecord[];
   withdrawals: CashWithdrawalRecord[];
   activities: ActivityRecord[];
   suppliers: SupplierRecord[];
@@ -64,6 +69,14 @@ interface AdminOperationsCenterProps {
   onSaveBudgetAllocation?: (
     allocation: Omit<BudgetAllocation, 'id' | 'total_assigned'> & { id?: number }
   ) => Promise<void>;
+  onSaveOpeningBalance?: (year: number, amount: number, lcrRef?: string) => Promise<void>;
+  onSaveQuarterIncomes?: (
+    year: number,
+    quarter: QuarterCode,
+    unitRows: Array<{ slot_index: number; amount: number; lcr_ref: string }>,
+    adjustments: Array<{ id?: number; amount: number; description: string; lcr_ref: string }>
+  ) => Promise<void>;
+  onResetFutureYearProjection?: (year: number) => Promise<void>;
 }
 
 interface GroupedExpenseMovement {
@@ -85,12 +98,15 @@ const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
   EFECTIVO: 'Efectivo',
   DIRECTO_TARJETA: 'Tarjeta',
   TRANSFERENCIA: 'Transferencia',
+  DEPOSITO: 'Depósito',
 };
 
 export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   selectedYear = 2026,
   budgets,
+  budgetIncomes = [],
   expenses,
+  allExpenses,
   withdrawals,
   activities,
   suppliers,
@@ -104,11 +120,25 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   onCloseWithdrawalInZero,
   onCreateSupplier,
   onSaveBudgetAllocation,
+  onSaveOpeningBalance,
+  onSaveQuarterIncomes,
+  onResetFutureYearProjection,
 }) => {
   const [subTab, setSubTab] = useState<'EXPENSES' | 'WITHDRAWALS' | 'BUDGETS' | 'EXCEL_SYNC'>(
     'EXPENSES'
   );
+  const [budgetSubTab, setBudgetSubTab] = useState<'INCOMES' | 'DISTRIBUTION'>('INCOMES');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const budgetYearSummary = useMemo(
+    () => computeYearIncomeSummary(budgetIncomes, selectedYear),
+    [budgetIncomes, selectedYear]
+  );
+
+  const closingCapStats = useMemo(
+    () => computeClosingCapStats(budgetIncomes, expenses, selectedYear),
+    [budgetIncomes, expenses, selectedYear]
+  );
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ExpenseGroupEditData | null>(null);
@@ -122,13 +152,12 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     setExpandedSharedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Filtro de la tabla unificada de Salidas (Efectivo vs Directo/Transferencia)
-  const [withdrawalTypeFilter, setWithdrawalTypeFilter] = useState<'ALL' | 'EFECTIVO' | 'DIRECTO'>('ALL');
+  // Filtros de la tabla de Movimientos (Retiros, Tarjeta, Transferencias, Depósitos)
+  const [withdrawalTypeFilter, setWithdrawalTypeFilter] = useState<'ALL' | MovementType>('ALL');
+  const [withdrawalSearch, setWithdrawalSearch] = useState('');
+  const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
 
-  // Nuevo Retiro + Confirmación de Cierre
-  const [newWithdrawalShortcut, setNewWithdrawalShortcut] = useState('');
-  const [newWithdrawalPurpose, setNewWithdrawalPurpose] = useState('');
-  const [newWithdrawalResponsible, setNewWithdrawalResponsible] = useState('Pablo Lamela');
+  // Confirmación de Cierre de Retiro en $0,00
   const [closingWithdrawalId, setClosingWithdrawalId] = useState<number | null>(null);
   const [closingReturnDate, setClosingReturnDate] = useState(() =>
     new Date().toISOString().slice(0, 10)
@@ -324,17 +353,31 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     });
   }, [groupedMovements, ledgerSearch, ledgerFilter]);
 
-  const filteredWithdrawals = useMemo(
-    () =>
-      reconciliationStats.withdrawalDetails
-        .filter((w) => {
-          if (withdrawalTypeFilter === 'EFECTIVO') return w.movementType === 'EFECTIVO';
-          if (withdrawalTypeFilter === 'DIRECTO') return w.movementType !== 'EFECTIVO';
-          return true;
-        })
-        .sort((a, b) => b.withdrawal_date.localeCompare(a.withdrawal_date)),
-    [reconciliationStats.withdrawalDetails, withdrawalTypeFilter]
-  );
+  const filteredWithdrawals = useMemo(() => {
+    const q = withdrawalSearch.trim().toLowerCase();
+    const numericQ = q.replace(/[$.\s]/g, '').replace(',', '.');
+
+    return reconciliationStats.withdrawalDetails
+      .filter((w) => {
+        if (withdrawalTypeFilter !== 'ALL' && w.movementType !== withdrawalTypeFilter) {
+          return false;
+        }
+        if (!q) return true;
+
+        const matchesText =
+          w.withdrawal_ref.toLowerCase().includes(q) ||
+          (w.purpose || '').toLowerCase().includes(q);
+        const matchesAmount =
+          numericQ.length > 0 &&
+          /^\d+(\.\d+)?$/.test(numericQ) &&
+          (String(w.amount).includes(numericQ) ||
+            w.amount.toFixed(2).includes(numericQ) ||
+            String(Math.round(w.amount)).includes(numericQ));
+
+        return matchesText || matchesAmount;
+      })
+      .sort((a, b) => b.withdrawal_date.localeCompare(a.withdrawal_date));
+  }, [reconciliationStats.withdrawalDetails, withdrawalTypeFilter, withdrawalSearch]);
 
   // =========================================================================
   // 3. HANDLERS
@@ -361,29 +404,13 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     );
   };
 
-  const handleAddWithdrawal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = parseMmddMontoShortcut(newWithdrawalShortcut);
-    if (!parsed.isValid || !parsed.date || parsed.amount === undefined || !parsed.ref) {
-      triggerToast('Usa el formato MMDD-MONTO (ej: 1105-20000).');
-      return;
-    }
-
-    await onCreateWithdrawal({
-      withdrawal_ref: parsed.ref,
-      withdrawal_date: parsed.date,
-      amount: parsed.amount,
-      responsible_person: newWithdrawalResponsible.trim() || 'Pablo Lamela',
-      purpose: newWithdrawalPurpose.trim() || 'Fondo para actividades',
-      movement_type: 'EFECTIVO',
-      status: 'PENDIENTE_JUSTIFICAR',
-      return_date: null,
-      returned_amount: 0,
-    });
-
-    setNewWithdrawalShortcut('');
-    setNewWithdrawalPurpose('');
-    triggerToast(`Retiro ${parsed.ref} (${formatCurrency(parsed.amount)}) registrado.`);
+  const handleSaveNewMovement = async (movement: Omit<CashWithdrawalRecord, 'id'>) => {
+    await onCreateWithdrawal(movement);
+    triggerToast(
+      `${MOVEMENT_TYPE_LABELS[movement.movement_type || 'EFECTIVO']} ${movement.withdrawal_ref} (${formatCurrency(
+        movement.amount
+      )}) registrado.`
+    );
   };
 
   const handleReconcileGroup = async (movement: GroupedExpenseMovement) => {
@@ -536,6 +563,63 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         </div>
       </div>
 
+      {/* Monitor de Quita al Cierre (Regla del 50%) — exclusivo en Finanzas */}
+      {closingCapStats.annualIncomesOnly > 0 && (
+        <div
+          data-testid="closing-cap-50-monitor"
+          className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+            closingCapStats.hasRisk
+              ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+              : 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+          }`}
+        >
+          <div className="flex items-start gap-2.5">
+            {closingCapStats.hasRisk ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-700 flex-shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-0.5 text-xs">
+              <p className="font-extrabold">
+                {closingCapStats.hasRisk
+                  ? `Alerta de quita al cierre (${selectedYear}): riesgo de descuento de ${formatCurrency(
+                      closingCapStats.excessOverCap
+                    )}`
+                  : `Regla del 50% al cierre (${selectedYear}): sin riesgo de quita`}
+              </p>
+              <p className="text-[11px] opacity-90">
+                {closingCapStats.hasRisk
+                  ? `Conviene ejecutar al menos ${formatCurrency(
+                      closingCapStats.excessOverCap
+                    )} antes del 31/12 para no perder fondos en el cierre.`
+                  : 'El saldo disponible actual está dentro del tope permitido del 50% de los 4 ingresos del año.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs tabular-nums flex-shrink-0">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider opacity-70 block">
+                Tope 50%
+              </span>
+              <span className="font-extrabold">{formatCurrency(closingCapStats.cap50)}</span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider opacity-70 block">
+                Saldo actual
+              </span>
+              <span
+                className={`font-extrabold ${
+                  closingCapStats.hasRisk ? 'text-rose-700' : 'text-emerald-800'
+                }`}
+              >
+                {formatCurrency(closingCapStats.remainingBalance)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Alerta visual de actividades proyectadas cuya fecha ya llegó (Pendientes de rendir) */}
       {dueProjectedMovements.length > 0 && (
         <div
@@ -582,202 +666,246 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         </div>
       )}
 
-      {/* ==================== BLOQUE FIJO ÚNICO AL HACER SCROLL (PESTAÑAS + CONTROLES ACTIVOS) ==================== */}
-      <div className="sticky top-[62px] md:top-[108px] z-20 bg-slate-50 pt-1 pb-2 space-y-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded-2xl border border-slate-200/90 shadow-sm">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-          <button
-            type="button"
-            data-testid="ops-subtab-load"
-            onClick={() => setSubTab('EXPENSES')}
-            className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
-              subTab === 'EXPENSES'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Gastos</span>
-          </button>
+      {/* ==================== BLOQUE FIJO ÚNICO AL HACER SCROLL (PESTAÑAS + CONTROLES EN UNA SOLA CAJA) ==================== */}
+      <div className="sticky top-[62px] md:top-[108px] z-20 bg-slate-50 pt-1 pb-2">
+        <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden">
+          <div className="px-3 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              data-testid="ops-subtab-load"
+              onClick={() => setSubTab('EXPENSES')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
+                subTab === 'EXPENSES'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Gastos</span>
+            </button>
 
-          <button
-            type="button"
-            data-testid="ops-subtab-withdrawals"
-            onClick={() => setSubTab('WITHDRAWALS')}
-            className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
-              subTab === 'WITHDRAWALS'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Banknote className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Retiros</span>
-          </button>
+            <button
+              type="button"
+              data-testid="ops-subtab-withdrawals"
+              onClick={() => setSubTab('WITHDRAWALS')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
+                subTab === 'WITHDRAWALS'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Banknote className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Movimientos</span>
+            </button>
 
-          <button
-            type="button"
-            data-testid="ops-subtab-budgets"
-            onClick={() => setSubTab('BUDGETS')}
-            className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
-              subTab === 'BUDGETS'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Presupuestos</span>
-          </button>
+            <button
+              type="button"
+              data-testid="ops-subtab-budgets"
+              onClick={() => setSubTab('BUDGETS')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
+                subTab === 'BUDGETS'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Presupuestos</span>
+            </button>
 
-          <button
-            type="button"
-            data-testid="ops-subtab-excel"
-            onClick={() => setSubTab('EXCEL_SYNC')}
-            className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
-              subTab === 'EXCEL_SYNC'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Excel</span>
-          </button>
-        </div>
-
-        {subTab === 'EXPENSES' && (
-          <button
-            type="button"
-            data-testid="open-add-expense-modal-btn"
-            onClick={() => {
-              setEditingGroup(null);
-              setIsExpenseModalOpen(true);
-            }}
-            className="pressable inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Añadir Gasto</span>
-          </button>
-        )}
-        </div>
-
-        {/* Controles fijos de Gastos */}
-        {subTab === 'EXPENSES' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div>
-              <h3 className="text-sm font-extrabold text-slate-900">
-                Registro de Gastos ({filteredMovements.length})
-              </h3>
-              <p className="text-xs text-slate-500">
-                Fecha de actividad, referencia LCR y estado
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="relative w-36 sm:w-44">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Buscar..."
-                  value={ledgerSearch}
-                  onChange={(e) => setLedgerSearch(e.target.value)}
-                  className="w-full pl-8 pr-2.5 py-1.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none"
-                />
-              </div>
-              {(
-                [
-                  { id: 'ALL', label: 'Todos' },
-                  { id: 'PENDING_LCR', label: 'Pend. LCR' },
-                  { id: 'PROJECTED', label: 'Proyectados' },
-                ] as const
-              ).map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setLedgerFilter(f.id)}
-                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border whitespace-nowrap transition ${
-                    ledgerFilter === f.id
-                      ? 'bg-slate-900 border-slate-900 text-white'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              data-testid="ops-subtab-excel"
+              onClick={() => setSubTab('EXCEL_SYNC')}
+              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
+                subTab === 'EXCEL_SYNC'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Excel</span>
+            </button>
           </div>
-        )}
 
-        {/* Controles fijos de Retiros */}
-        {subTab === 'WITHDRAWALS' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
-                  Retiros y Salidas ({filteredWithdrawals.length})
+          {/* Controles fijos de Gastos */}
+          {subTab === 'EXPENSES' && (
+            <div className="border-t border-slate-200 px-4 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-center">
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                  <span>Registro de Gastos</span>
+                  <span className="text-xs font-bold text-slate-400 tabular-nums">
+                    {filteredMovements.length}
+                  </span>
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Retiros en efectivo, tarjeta y transferencias
-                </p>
               </div>
 
-              <div className="flex items-center gap-1 sm:w-80">
-                {(
-                  [
-                    { id: 'ALL', label: 'Todos' },
-                    { id: 'EFECTIVO', label: 'Efectivo' },
-                    { id: 'DIRECTO', label: 'Tarjeta / Transf.' },
-                  ] as const
-                ).map((f) => (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
+                  {(
+                    [
+                      { id: 'ALL', label: 'Todos' },
+                      { id: 'PENDING_LCR', label: 'Pend. LCR' },
+                      { id: 'PROJECTED', label: 'Proyectados' },
+                    ] as const
+                  ).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setLedgerFilter(f.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                        ledgerFilter === f.id
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative flex-1 sm:flex-none sm:w-56 md:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por propósito, proveedor o ref..."
+                    value={ledgerSearch}
+                    onChange={(e) => setLedgerSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  data-testid="open-add-expense-modal-btn"
+                  onClick={() => {
+                    setEditingGroup(null);
+                    setIsExpenseModalOpen(true);
+                  }}
+                  className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Añadir Gasto</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Controles fijos de Movimientos */}
+          {subTab === 'WITHDRAWALS' && (
+            <div className="border-t border-slate-200 px-4 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-center">
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                  <span>Movimientos Tarjeta y Transferencias</span>
+                  <span className="text-xs font-bold text-slate-400 tabular-nums">
+                    {filteredWithdrawals.length}
+                  </span>
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5 overflow-x-auto max-w-full">
+                  {(
+                    [
+                      { id: 'ALL', label: 'Todos' },
+                      { id: 'EFECTIVO', label: 'Retiros' },
+                      { id: 'DIRECTO_TARJETA', label: 'Tarjeta' },
+                      { id: 'TRANSFERENCIA', label: 'Transf.' },
+                      { id: 'DEPOSITO', label: 'Depósitos' },
+                    ] as const
+                  ).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setWithdrawalTypeFilter(f.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                        withdrawalTypeFilter === f.id
+                          ? 'bg-slate-900 text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative flex-1 sm:flex-none sm:w-56 md:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por ref., propósito o monto..."
+                    value={withdrawalSearch}
+                    onChange={(e) => setWithdrawalSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  data-testid="open-add-movement-modal-btn"
+                  onClick={() => setIsMovementModalOpen(true)}
+                  className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nuevo Movimiento</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Controles fijos de Presupuestos (fusionados con la barra superior como Gastos y Movimientos) */}
+          {subTab === 'BUDGETS' && (
+            <div className="border-t border-slate-200 px-4 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                  <span>Presupuestos ({selectedYear})</span>
+                </h3>
+                {selectedYear > new Date().getFullYear() && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-900 border border-sky-200">
+                    Modo proyección
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between lg:justify-end gap-3">
+                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
                   <button
-                    key={f.id}
                     type="button"
-                    onClick={() => setWithdrawalTypeFilter(f.id)}
-                    className={`flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold border transition ${
-                      withdrawalTypeFilter === f.id
-                        ? 'bg-slate-900 border-slate-900 text-white'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    data-testid="budget-subtab-incomes"
+                    onClick={() => setBudgetSubTab('INCOMES')}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                      budgetSubTab === 'INCOMES'
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                     }`}
                   >
-                    {f.label}
+                    1. Ingresos del Año
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    data-testid="budget-subtab-distribution"
+                    onClick={() => setBudgetSubTab('DISTRIBUTION')}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                      budgetSubTab === 'DISTRIBUTION'
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    2. Distribución por Organización
+                  </button>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block leading-none">
+                    Total Anual
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-900 tabular-nums">
+                    {formatCurrency(budgetYearSummary.annualTotalAvailable)}
+                  </span>
+                </div>
               </div>
             </div>
-
-            <form
-              onSubmit={handleAddWithdrawal}
-              className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center"
-            >
-              <input
-                type="text"
-                data-testid="new-withdrawal-shortcut-input"
-                placeholder="MMDD-MONTO (ej: 1105-20000)"
-                value={newWithdrawalShortcut}
-                onChange={(e) => setNewWithdrawalShortcut(e.target.value)}
-                className="sm:col-span-3 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white"
-              />
-              <input
-                type="text"
-                placeholder="Propósito del retiro"
-                value={newWithdrawalPurpose}
-                onChange={(e) => setNewWithdrawalPurpose(e.target.value)}
-                className="sm:col-span-4 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-              />
-              <input
-                type="text"
-                value={newWithdrawalResponsible}
-                onChange={(e) => setNewWithdrawalResponsible(e.target.value)}
-                className="sm:col-span-3 px-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white"
-              />
-              <button
-                type="submit"
-                data-testid="submit-new-withdrawal-btn"
-                className="sm:col-span-2 pressable px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold whitespace-nowrap"
-              >
-                + Nuevo Retiro
-              </button>
-            </form>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ==================== PESTAÑA 1: GASTOS (FLUJO CONTINUO SIN DOBLE SCROLL) ==================== */}
@@ -1375,8 +1503,16 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         <BudgetManagementSection
           year={selectedYear}
           budgets={budgets}
+          budgetIncomes={budgetIncomes}
+          expenses={allExpenses ?? expenses}
           onSaveBudgetAllocation={onSaveBudgetAllocation || (async () => {})}
+          onSaveOpeningBalance={onSaveOpeningBalance || (async () => {})}
+          onSaveQuarterIncomes={onSaveQuarterIncomes || (async () => {})}
+          onResetFutureYearProjection={onResetFutureYearProjection || (async () => {})}
           onSavedToast={triggerToast}
+          controlledSubTab={budgetSubTab}
+          onControlledSubTabChange={setBudgetSubTab}
+          hideHeader
         />
       )}
 
@@ -1413,6 +1549,14 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         onSave={handleSaveModalExpense}
         onDelete={onDeleteExpenseGroup}
         onCreateSupplier={onCreateSupplier}
+      />
+
+      {/* ==================== MODAL DE NUEVO MOVIMIENTO ==================== */}
+      <NewMovementModal
+        isOpen={isMovementModalOpen}
+        defaultResponsible="Pablo Lamela"
+        onClose={() => setIsMovementModalOpen(false)}
+        onSave={handleSaveNewMovement}
       />
     </div>
   );

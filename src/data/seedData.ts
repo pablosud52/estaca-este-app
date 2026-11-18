@@ -397,8 +397,8 @@ export const SEED_ACTIVITIES: ActivityRecord[] = [
 ];
 
 export const SEED_CASH_WITHDRAWALS: CashWithdrawalRecord[] = [
-  { id: 1, withdrawal_ref: '1205-55000', withdrawal_date: '2026-05-12', amount: 55000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividades de Estaca', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
-  { id: 2, withdrawal_ref: '1226-30000', withdrawal_date: '2026-12-26', amount: 30000.00, responsible_person: 'Pablo Lamela', purpose: 'Campamento y suministros', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 1, withdrawal_ref: '1205-55000', withdrawal_date: '2025-12-05', amount: 55000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividades de Estaca', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
+  { id: 2, withdrawal_ref: '1226-30000', withdrawal_date: '2025-12-26', amount: 30000.00, responsible_person: 'Pablo Lamela', purpose: 'Campamento y suministros', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
   { id: 3, withdrawal_ref: '0131-48000', withdrawal_date: '2026-01-31', amount: 48000.00, responsible_person: 'Pablo Lamela', purpose: 'PFJ - Transporte', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
   { id: 4, withdrawal_ref: '0221-60000', withdrawal_date: '2026-02-21', amount: 60000.00, responsible_person: 'Pablo Lamela', purpose: 'Actividad Mujeres Jóvenes', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },
   { id: 5, withdrawal_ref: '0307-60000', withdrawal_date: '2026-03-07', amount: 60000.00, responsible_person: 'Pablo Lamela', purpose: 'Retiro General', status: 'CERRADO_EN_CERO', return_date: null, returned_amount: 0 },

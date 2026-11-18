@@ -174,12 +174,22 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
 
     const openPrimariaBtn = page.getByTestId('inspect-org-PRIMARIA');
     await expect(openPrimariaBtn).toHaveText('ABRIR PRIMARIA');
+    await openPrimariaBtn.scrollIntoViewIfNeeded();
     await openPrimariaBtn.click();
 
     await expect(page.getByTestId('leader-view')).toBeVisible();
     await expect(page.getByTestId('available-balance-amount')).toHaveText('$ 15.491,00');
+    const scrollAfterOpen = await page.evaluate(() => window.scrollY);
+    expect(scrollAfterOpen).toBe(0);
 
-    await page.getByTestId('back-to-hub-btn').click();
+    if (isMobile) {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await expect(page.getByTestId('drawer-nav-summary')).toHaveCount(0);
+      await page.getByTestId('drawer-back-to-hub-btn').click();
+    } else {
+      await expect(page.getByTestId('leader-nav-summary')).toHaveCount(0);
+      await page.getByTestId('back-to-hub-btn').click();
+    }
     await expect(page.getByTestId('presidency-hub-view')).toBeVisible();
 
     if (!isMobile) {

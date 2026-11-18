@@ -518,9 +518,9 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             )
           : computedParticipants.map(() => 0);
 
-      // En efectivo con 2 retiros, repartimos las asignaciones proporcionalmente o en la fila principal si es 1
+      // En efectivo con 2 retiros, se unen con un espacio para poder copiar directo a LCR
       const finalRefNumber = isCashMode
-        ? cashCoverage.allocations.map((a) => a.withdrawal_ref).join(' + ')
+        ? cashCoverage.allocations.map((a) => a.withdrawal_ref).join(' ')
         : isDirectOrTransfer
         ? directRefNumber.trim() || null
         : null;

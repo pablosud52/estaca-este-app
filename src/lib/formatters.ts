@@ -173,7 +173,7 @@ export const ORGANIZATION_LABELS: Record<OrganizationCode, string> = {
   JAS: 'Jóvenes Adultos Solteros',
   AS: 'Adultos Solteros',
   CFS: 'Centro FamilySearch',
-  ESTACA: 'Fondos Generales de Estaca',
+  ESTACA: 'Presupuesto propio de Estaca',
   TODAS: 'Todas las Organizaciones',
 };
 

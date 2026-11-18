@@ -27,7 +27,6 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
       await page.getByTestId('leader-nav-calendar').click();
     }
     await expect(page.getByTestId('calendar-general-view')).toBeVisible();
-    await expect(page.getByTestId('calendar-rbac-confidentiality-banner')).toBeVisible();
 
     const scrollContainer = page.getByTestId('calendar-view-scroll-container');
 
@@ -46,9 +45,11 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
       })
       .toBeGreaterThan(0);
 
-    // Filtrar por [ Jóvenes (HJ + MJ) ]: Líder de Primaria ve el Campeonato de Vóley HHJJ y MMJJ ($ 10.000,00) y Campamento Anual HJ y MJ ($ 63.976,00), pero SIN monto de costo
+    // Filtrar por HJ y MJ desde las casillas (el botón rápido "Jóvenes" está oculto para Primaria)
     await page.getByTestId('calendar-org-filter-trigger').click();
-    await page.getByTestId('calendar-filter-jovenes').click();
+    await page.getByTestId('calendar-filter-org-HJ').click();
+    await page.getByTestId('calendar-filter-org-MJ').click();
+    await page.getByTestId('calendar-org-filter-trigger').click();
     await expect(scrollContainer.getByText('Campeonato de Vóley HHJJ y MMJJ')).toBeVisible();
     await expect(scrollContainer.getByText('Campamento Anual HJ y MJ')).toBeVisible();
     await expect(page.getByTestId('calendar-confidential-budget-amount')).toHaveCount(0);

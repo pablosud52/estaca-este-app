@@ -63,8 +63,11 @@ interface AdminOperationsCenterProps {
   onDeleteExpenseGroup?: (ids: number[]) => Promise<void>;
   onReconcileLcrExpense: (id: number) => Promise<void>;
   onReconcileLcrExpenseGroup?: (ids: number[]) => Promise<void>;
-  onCreateWithdrawal: (withdrawal: Omit<CashWithdrawalRecord, 'id'>) => Promise<void>;
-  onCloseWithdrawalInZero: (id: number, returnAmount: number, returnDate: string) => Promise<void>;
+  onCreateWithdrawal: (
+    withdrawal: Omit<CashWithdrawalRecord, 'id'>,
+    targetWithdrawalRef?: string
+  ) => Promise<void>;
+  onCloseWithdrawalInZero?: (id: number, returnAmount: number, returnDate: string) => Promise<void>;
   onCreateSupplier: (supplier: Omit<SupplierRecord, 'id'>) => Promise<void>;
   onSaveBudgetAllocation?: (
     allocation: Omit<BudgetAllocation, 'id' | 'total_assigned'> & { id?: number }
@@ -117,7 +120,6 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   onReconcileLcrExpense,
   onReconcileLcrExpenseGroup,
   onCreateWithdrawal,
-  onCloseWithdrawalInZero,
   onCreateSupplier,
   onSaveBudgetAllocation,
   onSaveOpeningBalance,
@@ -157,13 +159,6 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   const [withdrawalSearch, setWithdrawalSearch] = useState('');
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
 
-  // Confirmación de Cierre de Retiro en $0,00
-  const [closingWithdrawalId, setClosingWithdrawalId] = useState<number | null>(null);
-  const [closingReturnDate, setClosingReturnDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
-  const [closingReturnAmount, setClosingReturnAmount] = useState('');
-
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const triggerToast = (msg: string) => {
@@ -176,7 +171,10 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   // =========================================================================
   const reconciliationStats = useMemo(() => {
     const appliedExpenses = expenses.filter((e) => isExpenseApplied(e));
-    const cashWithdrawalsOnly = withdrawals.filter(
+    const yearWithdrawals = withdrawals.filter((w) =>
+      w.withdrawal_date.startsWith(String(selectedYear))
+    );
+    const cashWithdrawalsOnly = yearWithdrawals.filter(
       (w) => !w.movement_type || w.movement_type === 'EFECTIVO'
     );
 
@@ -198,7 +196,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       });
     });
 
-    const withdrawalDetails = withdrawals.map((w) => {
+    const withdrawalDetails = yearWithdrawals.map((w) => {
       const mType: MovementType = w.movement_type || 'EFECTIVO';
       const renderedAmount =
         mType === 'EFECTIVO' ? renderedByRef.get(w.withdrawal_ref) || 0 : Number(w.amount);
@@ -207,9 +205,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
           ? Number(w.amount) - renderedAmount - Number(w.returned_amount || 0)
           : 0;
       const pendingToRender =
-        w.status === 'CERRADO_EN_CERO' || mType !== 'EFECTIVO'
-          ? 0
-          : Math.max(0, Number(rawPending.toFixed(2)));
+        mType !== 'EFECTIVO' ? 0 : Math.max(0, Number(rawPending.toFixed(2)));
 
       return {
         ...w,
@@ -220,7 +216,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     });
 
     const openWithdrawals = withdrawalDetails.filter(
-      (w) => w.movementType === 'EFECTIVO' && w.status === 'PENDIENTE_JUSTIFICAR'
+      (w) => w.movementType === 'EFECTIVO' && w.pendingToRender > 0
     );
     const totalUnjustifiedWithdrawalsAmount = openWithdrawals.reduce(
       (acc, w) => acc + w.pendingToRender,
@@ -246,10 +242,51 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         ? 'ROJO'
         : 'AMBAR';
 
+    // Presupuesto Global disponible del año seleccionado
+    const yearBudgets = budgets.filter((b) => Number(b.year) === selectedYear);
+    const totalAssigned = yearBudgets.reduce(
+      (acc, b) =>
+        acc +
+        Number(b.t1_assigned) +
+        Number(b.t2_assigned) +
+        Number(b.t3_assigned) +
+        Number(b.t4_assigned),
+      0
+    );
+    const appliedNonReimbursableSpent = appliedExpenses
+      .filter(
+        (e) =>
+          !e.is_reimbursable_oai &&
+          getExpenseEffectiveDate(e).startsWith(String(selectedYear))
+      )
+      .reduce((acc, e) => acc + Number(e.net_amount), 0);
+    const globalBudgetAvailable = Number(
+      (totalAssigned - appliedNonReimbursableSpent).toFixed(2)
+    );
+
+    // Monto en efectivo: total retirado en efectivo menos gastos en efectivo y depósitos/devoluciones
+    const cashWithdrawalRefs = new Set(cashWithdrawalsOnly.map((w) => w.withdrawal_ref));
+    let totalCashExpenses = 0;
+    cashWithdrawalRefs.forEach((ref) => {
+      totalCashExpenses += renderedByRef.get(ref) || 0;
+    });
+    const totalCashDeposits = Number(totalReturnedDeposits.toFixed(2));
+    const cashOnHand = Number(
+      (totalWithdrawn - totalCashExpenses - totalCashDeposits).toFixed(2)
+    );
+    const cashAfterPendingLcr = Number((cashOnHand - pendingLcrTotalAmount).toFixed(2));
+
     return {
       totalWithdrawn,
       totalRenderedInWithdrawals,
       totalReturnedDeposits,
+      totalCashExpenses,
+      totalCashDeposits,
+      cashOnHand,
+      cashAfterPendingLcr,
+      totalAssigned,
+      appliedNonReimbursableSpent,
+      globalBudgetAvailable,
       withdrawalDetails,
       openWithdrawals,
       totalUnjustifiedWithdrawalsAmount,
@@ -259,7 +296,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       totalPendingDifference,
       semaphoreState,
     };
-  }, [withdrawals, expenses]);
+  }, [withdrawals, expenses, budgets, selectedYear]);
 
   const openWithdrawalOptions: OpenWithdrawalOption[] = useMemo(
     () =>
@@ -404,8 +441,11 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     );
   };
 
-  const handleSaveNewMovement = async (movement: Omit<CashWithdrawalRecord, 'id'>) => {
-    await onCreateWithdrawal(movement);
+  const handleSaveNewMovement = async (
+    movement: Omit<CashWithdrawalRecord, 'id'>,
+    targetWithdrawalRef?: string
+  ) => {
+    await onCreateWithdrawal(movement, targetWithdrawalRef);
     triggerToast(
       `${MOVEMENT_TYPE_LABELS[movement.movement_type || 'EFECTIVO']} ${movement.withdrawal_ref} (${formatCurrency(
         movement.amount
@@ -437,9 +477,6 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
             <h2 className="text-base sm:text-lg font-extrabold text-white">
               Administración de Finanzas
             </h2>
-            <p className="text-xs text-slate-400">
-              Salidas del presupuesto, gastos por actividad y conciliación LCR
-            </p>
           </div>
 
           <div
@@ -470,44 +507,35 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
-          <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80">
+          <div
+            data-testid="monitor-card-global-budget"
+            className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80"
+          >
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Total Retirado (Efectivo)
+              Presupuesto Global
             </span>
             <p
-              data-testid="monitor-total-withdrawn"
-              className="text-lg font-extrabold text-white tabular-nums mt-1"
+              data-testid="monitor-global-budget-amount"
+              className="text-lg font-extrabold text-emerald-300 tabular-nums mt-1"
             >
-              {formatCurrency(reconciliationStats.totalWithdrawn)}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-1 tabular-nums">
-              Rendido: {formatCurrency(reconciliationStats.totalRenderedInWithdrawals)}
+              {formatCurrency(reconciliationStats.globalBudgetAvailable)}
             </p>
           </div>
 
           <div
-            data-testid="monitor-card-unjustified-withdrawals"
+            data-testid="monitor-card-cash-on-hand"
             className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
-                Retiros sin Justificar
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 tabular-nums">
-                {reconciliationStats.openWithdrawals.length} abiertos
-              </span>
-            </div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+              Monto en Efectivo
+            </span>
             <p
-              data-testid="monitor-unjustified-withdrawals-amount"
-              className="text-lg font-extrabold text-amber-300 tabular-nums mt-1"
+              data-testid="monitor-cash-on-hand-amount"
+              className={`text-lg font-extrabold tabular-nums mt-1 ${
+                reconciliationStats.cashOnHand < 0 ? 'text-rose-300' : 'text-white'
+              }`}
             >
-              {formatCurrency(reconciliationStats.totalUnjustifiedWithdrawalsAmount)}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-1 truncate">
-              {reconciliationStats.openWithdrawals
-                .slice(0, 2)
-                .map((w) => w.withdrawal_ref)
-                .join(' • ') || 'Todos cerrados'}
+              {formatCurrency(reconciliationStats.cashOnHand)}
             </p>
           </div>
 
@@ -517,7 +545,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-rose-300">
-                Sin Justificar en LCR
+                Pendientes en LCR
               </span>
               <span
                 data-testid="monitor-pending-lcr-count"
@@ -532,34 +560,24 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
             >
               {formatCurrency(reconciliationStats.pendingLcrTotalAmount)}
             </p>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Proyectado: {formatCurrency(reconciliationStats.projectedTotalAmount)}
+            <p
+              data-testid="monitor-cash-after-pending-lcr"
+              className={`text-[11px] mt-1 tabular-nums font-semibold ${
+                reconciliationStats.cashAfterPendingLcr < 0
+                  ? 'text-rose-300'
+                  : 'text-slate-400'
+              }`}
+            >
+              Efectivo − Pend. LCR:{' '}
+              {formatCurrency(reconciliationStats.cashAfterPendingLcr)}
             </p>
           </div>
 
           <div
-            data-testid="monitor-card-difference-semaphore"
-            className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80"
-          >
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Diferencia Estimada
-            </span>
-            <p
-              data-testid="monitor-difference-amount"
-              className={`text-lg font-extrabold tabular-nums mt-1 ${
-                reconciliationStats.totalPendingDifference === 0
-                  ? 'text-emerald-400'
-                  : 'text-amber-300'
-              }`}
-            >
-              {formatCurrency(reconciliationStats.totalPendingDifference)}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-1">
-              {reconciliationStats.totalPendingDifference === 0
-                ? 'Extracto y LCR 100% cuadrados'
-                : 'Al asentar LCR y cerrar retiros'}
-            </p>
-          </div>
+            data-testid="monitor-card-placeholder"
+            aria-hidden="true"
+            className="p-3.5 rounded-2xl bg-slate-800/40 border border-dashed border-slate-700/70 min-h-[92px]"
+          />
         </div>
       </div>
 
@@ -854,7 +872,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
           {/* Controles fijos de Presupuestos (fusionados con la barra superior como Gastos y Movimientos) */}
           {subTab === 'BUDGETS' && (
-            <div className="border-t border-slate-200 px-4 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="border-t border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-start gap-6 sm:gap-8">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                   <span>Presupuestos ({selectedYear})</span>
@@ -866,42 +884,31 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between lg:justify-end gap-3">
-                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
-                  <button
-                    type="button"
-                    data-testid="budget-subtab-incomes"
-                    onClick={() => setBudgetSubTab('INCOMES')}
-                    className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
-                      budgetSubTab === 'INCOMES'
-                        ? 'bg-slate-900 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                    }`}
-                  >
-                    1. Ingresos del Año
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="budget-subtab-distribution"
-                    onClick={() => setBudgetSubTab('DISTRIBUTION')}
-                    className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
-                      budgetSubTab === 'DISTRIBUTION'
-                        ? 'bg-slate-900 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                    }`}
-                  >
-                    2. Distribución por Organización
-                  </button>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block leading-none">
-                    Total Anual
-                  </span>
-                  <span className="text-sm font-extrabold text-slate-900 tabular-nums">
-                    {formatCurrency(budgetYearSummary.annualTotalAvailable)}
-                  </span>
-                </div>
+              <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
+                <button
+                  type="button"
+                  data-testid="budget-subtab-incomes"
+                  onClick={() => setBudgetSubTab('INCOMES')}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                    budgetSubTab === 'INCOMES'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  1. Ingresos del Año
+                </button>
+                <button
+                  type="button"
+                  data-testid="budget-subtab-distribution"
+                  onClick={() => setBudgetSubTab('DISTRIBUTION')}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                    budgetSubTab === 'DISTRIBUTION'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  2. Distribución por Organización
+                </button>
               </div>
             </div>
           )}
@@ -926,8 +933,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                         <th className="py-3 px-3 whitespace-nowrap">Fecha</th>
                         <th className="py-3 px-3 whitespace-nowrap">Referencia</th>
                         <th className="py-3 px-3 whitespace-nowrap">Organización</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Fecha Act.</th>
                         <th className="py-3 px-3">Propósito</th>
-                        <th className="py-3 px-3 whitespace-nowrap">Proveedor</th>
+                        <th className="py-3 px-3 whitespace-nowrap w-40 max-w-[160px]">Proveedor</th>
                         <th className="py-3 pl-3 pr-4 text-right whitespace-nowrap">Monto</th>
                         <th className="py-3 pr-4 w-10 text-right" aria-label="Editar" />
                       </tr>
@@ -973,9 +981,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                 )}
                               </td>
 
-                              {/* 1. Fecha */}
+                              {/* 1. Fecha Contable */}
                               <td className="py-3 px-3 font-bold text-slate-800 tabular-nums whitespace-nowrap align-middle">
-                                {formatDate(m.effectiveDate)}
+                                {formatDate(m.accountingDate)}
                               </td>
 
                               {/* 2. N° Referencia */}
@@ -983,7 +991,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                 <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                                   {!m.isApplied
                                     ? 'PROYECTADO'
-                                    : m.primary.ref_number || 'DIRECTO'}
+                                    : m.primary.ref_number
+                                    ? m.primary.ref_number.replace(/\s*\+\s*/g, ' ')
+                                    : 'DIRECTO'}
                                 </span>
                               </td>
 
@@ -994,7 +1004,12 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                   : ORGANIZATION_SHORT_LABELS[m.primary.organization]}
                               </td>
 
-                              {/* 4. Propósito (etiqueta pendiente arriba del propósito) */}
+                              {/* 4. Fecha Actividad (en gris) */}
+                              <td className="py-3 px-3 text-slate-400 tabular-nums whitespace-nowrap align-middle">
+                                {formatDate(m.effectiveDate)}
+                              </td>
+
+                              {/* 5. Propósito (etiqueta pendiente arriba del propósito) */}
                               <td className="py-3 px-3 align-middle">
                                 <div className="flex flex-col items-start gap-1">
                                   {isDueProjected ? (
@@ -1021,8 +1036,8 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                 </div>
                               </td>
 
-                              {/* 5. Proveedor */}
-                              <td className="py-3 px-3 text-slate-600 align-middle">
+                              {/* 6. Proveedor */}
+                              <td className="py-3 px-3 text-slate-600 align-middle max-w-[160px] truncate" title={m.isApplied ? m.primary.supplier_name : undefined}>
                                 {m.isApplied ? m.primary.supplier_name : '—'}
                               </td>
 
@@ -1077,7 +1092,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                             {m.isShared && isExpanded && (
                               <tr className="bg-slate-50/90">
                                 <td />
-                                <td colSpan={7} className="py-2.5 px-3">
+                                <td colSpan={8} className="py-2.5 px-3">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[11px] font-bold text-slate-500 mr-1">
                                       Detalle por organización:
@@ -1147,7 +1162,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                 <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                                   {!m.isApplied
                                     ? 'PROYECTADO'
-                                    : m.primary.ref_number || 'DIRECTO'}
+                                    : m.primary.ref_number
+                                    ? m.primary.ref_number.replace(/\s*\+\s*/g, ' ')
+                                    : 'DIRECTO'}
                                 </span>
                                 <span className="font-bold text-slate-700">
                                   {m.isShared
@@ -1268,120 +1285,57 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {filteredWithdrawals.map((w) => {
-                      const isClosingThis = closingWithdrawalId === w.id;
                       const isCash = w.movementType === 'EFECTIVO';
-                      const isOpen = isCash && w.status === 'PENDIENTE_JUSTIFICAR';
+                      const isOpen = isCash && w.pendingToRender > 0;
                       return (
-                        <React.Fragment key={w.id}>
-                          <tr
-                            data-testid={`withdrawal-row-${w.withdrawal_ref}`}
-                            className={`transition ${
-                              isOpen ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50/70'
-                            }`}
-                          >
-                            <td className="py-3 px-4 font-bold text-slate-800 tabular-nums whitespace-nowrap">
-                              {formatDate(w.withdrawal_date)}
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                                {w.withdrawal_ref}
+                        <tr
+                          key={w.id}
+                          data-testid={`withdrawal-row-${w.withdrawal_ref}`}
+                          className={`transition ${
+                            isOpen ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50/70'
+                          }`}
+                        >
+                          <td className="py-3 px-4 font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                            {formatDate(w.withdrawal_date)}
+                          </td>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                              {w.withdrawal_ref}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-slate-700 whitespace-nowrap">
+                            {MOVEMENT_TYPE_LABELS[w.movementType]}
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-slate-900">
+                            {w.purpose || '—'}
+                          </td>
+                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                            {w.responsible_person}
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold tabular-nums whitespace-nowrap">
+                            {isCash ? (
+                              <span className={w.pendingToRender > 0 ? 'text-amber-700' : 'text-slate-400'}>
+                                {formatCurrency(w.pendingToRender)}
                               </span>
-                            </td>
-                            <td className="py-3 px-3 font-semibold text-slate-700 whitespace-nowrap">
-                              {MOVEMENT_TYPE_LABELS[w.movementType]}
-                            </td>
-                            <td className="py-3 px-3 font-semibold text-slate-900">
-                              {w.purpose || '—'}
-                            </td>
-                            <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                              {w.responsible_person}
-                            </td>
-                            <td className="py-3 px-3 text-right font-bold tabular-nums whitespace-nowrap">
-                              {isCash ? (
-                                <span className={w.pendingToRender > 0 ? 'text-amber-700' : 'text-slate-400'}>
-                                  {formatCurrency(w.pendingToRender)}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">$ 0,00</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-right font-extrabold text-slate-900 tabular-nums whitespace-nowrap">
-                              {formatCurrency(w.amount)}
-                            </td>
-                            <td className="py-3 pr-4 text-right whitespace-nowrap">
-                              {isOpen && !isClosingThis ? (
-                                <button
-                                  type="button"
-                                  data-testid={`close-withdrawal-btn-${w.withdrawal_ref}`}
-                                  onClick={() => {
-                                    setClosingWithdrawalId(w.id);
-                                    setClosingReturnDate(new Date().toISOString().slice(0, 10));
-                                    setClosingReturnAmount(w.pendingToRender.toFixed(2));
-                                  }}
-                                  className="pressable px-2.5 py-1 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white text-[10px] font-bold"
-                                >
-                                  Cerrar en $ 0,00
-                                </button>
-                              ) : (
-                                <span className="text-[11px] font-semibold text-slate-400">
-                                  Cerrado
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-
-                          {isClosingThis && (
-                            <tr className="bg-amber-50/80">
-                              <td colSpan={8} className="px-4 py-3">
-                                <div className="flex flex-wrap items-center justify-end gap-2">
-                                  <span className="text-xs font-bold text-slate-700 mr-2">
-                                    Confirmar devolución para cerrar {w.withdrawal_ref}:
-                                  </span>
-                                  <input
-                                    type="date"
-                                    value={closingReturnDate}
-                                    onChange={(e) => setClosingReturnDate(e.target.value)}
-                                    className="px-2.5 py-1 rounded-lg border border-slate-300 text-xs bg-white tabular-nums"
-                                  />
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={closingReturnAmount}
-                                    onChange={(e) => setClosingReturnAmount(e.target.value)}
-                                    className="w-28 px-2.5 py-1 rounded-lg border border-slate-300 text-xs bg-white tabular-nums text-right"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setClosingWithdrawalId(null)}
-                                    className="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-200/60"
-                                  >
-                                    Cancelar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const amt = parseFloat(closingReturnAmount);
-                                      await onCloseWithdrawalInZero(
-                                        w.id,
-                                        Number.isFinite(amt) ? amt : w.pendingToRender,
-                                        closingReturnDate
-                                      );
-                                      setClosingWithdrawalId(null);
-                                      triggerToast(
-                                        `Retiro ${w.withdrawal_ref} cerrado en $ 0,00 (${formatDate(
-                                          closingReturnDate
-                                        )}).`
-                                      );
-                                    }}
-                                    className="px-3 py-1 rounded-lg bg-emerald-800 text-white text-xs font-bold"
-                                  >
-                                    Confirmar cierre
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
+                            ) : (
+                              <span className="text-slate-400">$ 0,00</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right font-extrabold text-slate-900 tabular-nums whitespace-nowrap">
+                            {formatCurrency(w.amount)}
+                          </td>
+                          <td className="py-3 pr-4 text-right whitespace-nowrap">
+                            {isOpen ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                                Abierto
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-semibold text-slate-400">
+                                Cerrado
+                              </span>
+                            )}
+                          </td>
+                        </tr>
                       );
                     })}
                   </tbody>
@@ -1391,9 +1345,8 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               {/* VISTA MÓVIL: LECTURA COMPACTA VERTICAL */}
               <div className="md:hidden divide-y divide-slate-100">
                 {filteredWithdrawals.map((w) => {
-                  const isClosingThis = closingWithdrawalId === w.id;
                   const isCash = w.movementType === 'EFECTIVO';
-                  const isOpen = isCash && w.status === 'PENDIENTE_JUSTIFICAR';
+                  const isOpen = isCash && w.pendingToRender > 0;
                   return (
                     <div
                       key={`mob-w-${w.id}`}
@@ -1425,70 +1378,17 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                               Pend: <strong>{formatCurrency(w.pendingToRender)}</strong>
                             </p>
                           )}
-                          {isOpen && !isClosingThis && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setClosingWithdrawalId(w.id);
-                                setClosingReturnDate(new Date().toISOString().slice(0, 10));
-                                setClosingReturnAmount(w.pendingToRender.toFixed(2));
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
-                            >
-                              Cerrar en $ 0,00
-                            </button>
+                          {isOpen ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                              Abierto
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-semibold text-slate-400 block">
+                              Cerrado
+                            </span>
                           )}
                         </div>
                       </div>
-
-                      {isClosingThis && (
-                        <div className="pt-2 border-t border-amber-200 space-y-2">
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <input
-                              type="date"
-                              value={closingReturnDate}
-                              onChange={(e) => setClosingReturnDate(e.target.value)}
-                              className="px-2 py-1 rounded-lg border border-slate-300 text-[11px] bg-white tabular-nums"
-                            />
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={closingReturnAmount}
-                              onChange={(e) => setClosingReturnAmount(e.target.value)}
-                              className="px-2 py-1 rounded-lg border border-slate-300 text-[11px] bg-white tabular-nums text-right"
-                            />
-                          </div>
-                          <div className="flex justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setClosingWithdrawalId(null)}
-                              className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600"
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const amt = parseFloat(closingReturnAmount);
-                                await onCloseWithdrawalInZero(
-                                  w.id,
-                                  Number.isFinite(amt) ? amt : w.pendingToRender,
-                                  closingReturnDate
-                                );
-                                setClosingWithdrawalId(null);
-                                triggerToast(
-                                  `Retiro ${w.withdrawal_ref} cerrado en $ 0,00 (${formatDate(
-                                    closingReturnDate
-                                  )}).`
-                                );
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-800 text-white text-[10px] font-bold"
-                            >
-                              Confirmar cierre
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1555,6 +1455,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       <NewMovementModal
         isOpen={isMovementModalOpen}
         defaultResponsible="Pablo Lamela"
+        openWithdrawals={openWithdrawalOptions}
         onClose={() => setIsMovementModalOpen(false)}
         onSave={handleSaveNewMovement}
       />

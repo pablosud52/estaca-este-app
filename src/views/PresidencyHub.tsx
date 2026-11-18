@@ -30,6 +30,7 @@ import {
   formatCurrency,
   formatDate,
   getExpenseEffectiveDate,
+  getExpenseWithdrawalAllocations,
   getQuarterFromDate,
   isExpenseApplied,
   ORGANIZATION_LABELS,
@@ -217,16 +218,7 @@ export const PresidencyHub: React.FC = () => {
             net_amount: Number(e.net_amount),
           })) as ExpenseRecord[];
 
-          setExpenses((prev) => {
-            const prevById = new Map(prev.map((item) => [item.id, item]));
-            const localNewOnly = prev.filter(
-              (item) => !remoteExpenses.some((r) => r.id === item.id)
-            );
-            return [
-              ...localNewOnly,
-              ...remoteExpenses.map((item) => prevById.get(item.id) || item),
-            ];
-          });
+          setExpenses(remoteExpenses);
         }
 
         if (!activityRes.error && activityRes.data && activityRes.data.length > 0) {
@@ -1246,14 +1238,99 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const handleCreateWithdrawal = async (
-    newWithdrawal: Omit<CashWithdrawalRecord, 'id'>
+    newWithdrawal: Omit<CashWithdrawalRecord, 'id'>,
+    targetWithdrawalRef?: string
   ) => {
     const record: CashWithdrawalRecord = { ...newWithdrawal, id: Date.now() };
-    setWithdrawals((prev) => [record, ...prev]);
+
+    // Si es un Depósito, aplicarlo al retiro seleccionado (o en orden FIFO a los retiros abiertos del año)
+    const depositUpdates: Array<{
+      id: number;
+      returned_amount: number;
+      return_date: string;
+      status: 'CERRADO_EN_CERO' | 'PENDIENTE_JUSTIFICAR';
+    }> = [];
+
+    if (newWithdrawal.movement_type === 'DEPOSITO' && Number(newWithdrawal.amount) > 0) {
+      const yearPrefix = newWithdrawal.withdrawal_date.slice(0, 4);
+      const renderedByRef = new Map<string, number>();
+      expenses
+        .filter((e) => isExpenseApplied(e) && getExpenseEffectiveDate(e).startsWith(yearPrefix))
+        .forEach((exp) => {
+          getExpenseWithdrawalAllocations(exp).forEach((a) => {
+            renderedByRef.set(
+              a.withdrawal_ref,
+              Number(((renderedByRef.get(a.withdrawal_ref) || 0) + a.amount).toFixed(2))
+            );
+          });
+        });
+
+      const candidates = withdrawals
+        .filter(
+          (w) =>
+            (!w.movement_type || w.movement_type === 'EFECTIVO') &&
+            w.withdrawal_date.startsWith(yearPrefix)
+        )
+        .map((w) => {
+          const spent = renderedByRef.get(w.withdrawal_ref) || 0;
+          const pending = Math.max(
+            0,
+            Number((Number(w.amount) - spent - Number(w.returned_amount || 0)).toFixed(2))
+          );
+          return { w, pending };
+        })
+        .filter((item) => item.pending > 0)
+        .sort((a, b) => a.w.withdrawal_date.localeCompare(b.w.withdrawal_date));
+
+      const orderedTargets =
+        targetWithdrawalRef && targetWithdrawalRef !== 'AUTO'
+          ? [
+              ...candidates.filter((c) => c.w.withdrawal_ref === targetWithdrawalRef),
+              ...candidates.filter((c) => c.w.withdrawal_ref !== targetWithdrawalRef),
+            ]
+          : candidates;
+
+      let remainingDeposit = Number(newWithdrawal.amount);
+      for (const item of orderedTargets) {
+        if (remainingDeposit <= 0) break;
+        const applyAmt = Number(Math.min(remainingDeposit, item.pending).toFixed(2));
+        remainingDeposit = Number((remainingDeposit - applyAmt).toFixed(2));
+        const nextReturned = Number(
+          (Number(item.w.returned_amount || 0) + applyAmt).toFixed(2)
+        );
+        const nextPending = Number((item.pending - applyAmt).toFixed(2));
+        depositUpdates.push({
+          id: item.w.id,
+          returned_amount: nextReturned,
+          return_date: newWithdrawal.withdrawal_date,
+          status: nextPending <= 0 ? 'CERRADO_EN_CERO' : 'PENDIENTE_JUSTIFICAR',
+        });
+      }
+    }
+
+    setWithdrawals((prev) => {
+      const updated = prev.map((w) => {
+        const match = depositUpdates.find((u) => u.id === w.id);
+        return match ? { ...w, ...match } : w;
+      });
+      return [record, ...updated];
+    });
 
     if (!isSimulating) {
       try {
         await supabase.from('cash_withdrawals').insert([newWithdrawal]);
+        await Promise.all(
+          depositUpdates.map((u) =>
+            supabase
+              .from('cash_withdrawals')
+              .update({
+                returned_amount: u.returned_amount,
+                return_date: u.return_date,
+                status: u.status,
+              })
+              .eq('id', u.id)
+          )
+        );
       } catch {
         // Estado local ya actualizado
       }

@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Banknote, CreditCard, ArrowLeftRight, PiggyBank, X } from 'lucide-react';
-import { parseMmddMontoShortcut } from '../lib/formatters';
+import { formatCurrency, formatDate, parseMmddMontoShortcut } from '../lib/formatters';
 import { CashWithdrawalRecord, MovementType } from '../types/database';
+import { OpenWithdrawalOption } from './ExpenseFormModal';
 
 interface NewMovementModalProps {
   isOpen: boolean;
   defaultResponsible: string;
+  openWithdrawals?: OpenWithdrawalOption[];
   onClose: () => void;
-  onSave: (movement: Omit<CashWithdrawalRecord, 'id'>) => Promise<void>;
+  onSave: (
+    movement: Omit<CashWithdrawalRecord, 'id'>,
+    targetWithdrawalRef?: string
+  ) => Promise<void>;
 }
 
 const MOVEMENT_OPTIONS: Array<{
@@ -24,6 +29,7 @@ const MOVEMENT_OPTIONS: Array<{
 export const NewMovementModal: React.FC<NewMovementModalProps> = ({
   isOpen,
   defaultResponsible,
+  openWithdrawals = [],
   onClose,
   onSave,
 }) => {
@@ -34,6 +40,7 @@ export const NewMovementModal: React.FC<NewMovementModalProps> = ({
   const [amount, setAmount] = useState('');
   const [purpose, setPurpose] = useState('');
   const [responsible, setResponsible] = useState(defaultResponsible);
+  const [targetWithdrawalRef, setTargetWithdrawalRef] = useState<string>('AUTO');
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -46,6 +53,7 @@ export const NewMovementModal: React.FC<NewMovementModalProps> = ({
     setAmount('');
     setPurpose('');
     setResponsible(defaultResponsible || 'Pablo Lamela');
+    setTargetWithdrawalRef('AUTO');
     setError(null);
   }, [isOpen, defaultResponsible]);
 
@@ -88,17 +96,20 @@ export const NewMovementModal: React.FC<NewMovementModalProps> = ({
 
     setIsSaving(true);
     try {
-      await onSave({
-        withdrawal_ref: cleanRef,
-        withdrawal_date: date,
-        amount: parsedAmount,
-        responsible_person: responsible.trim() || defaultResponsible || 'Pablo Lamela',
-        purpose: purpose.trim() || 'Movimiento sin detalle',
-        movement_type: movementType,
-        status: movementType === 'EFECTIVO' ? 'PENDIENTE_JUSTIFICAR' : 'CERRADO_EN_CERO',
-        return_date: null,
-        returned_amount: 0,
-      });
+      await onSave(
+        {
+          withdrawal_ref: cleanRef,
+          withdrawal_date: date,
+          amount: parsedAmount,
+          responsible_person: responsible.trim() || defaultResponsible || 'Pablo Lamela',
+          purpose: purpose.trim() || 'Movimiento sin detalle',
+          movement_type: movementType,
+          status: movementType === 'EFECTIVO' ? 'PENDIENTE_JUSTIFICAR' : 'CERRADO_EN_CERO',
+          return_date: null,
+          returned_amount: 0,
+        },
+        movementType === 'DEPOSITO' ? targetWithdrawalRef : undefined
+      );
       onClose();
     } catch {
       setError('No se pudo guardar el movimiento. Intenta nuevamente.');
@@ -180,6 +191,29 @@ export const NewMovementModal: React.FC<NewMovementModalProps> = ({
                 onChange={(e) => handleShortcutChange(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-slate-500"
               />
+            </div>
+          )}
+
+          {movementType === 'DEPOSITO' && openWithdrawals.length > 0 && (
+            <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200/80">
+              <label className="block text-[11px] font-bold text-emerald-950 mb-1">
+                Aplicar depósito a retiro abierto
+              </label>
+              <select
+                value={targetWithdrawalRef}
+                onChange={(e) => setTargetWithdrawalRef(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-emerald-300 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              >
+                <option value="AUTO">
+                  Automático (cerrar retiros abiertos más antiguos primero)
+                </option>
+                {openWithdrawals.map((w) => (
+                  <option key={w.id} value={w.withdrawal_ref}>
+                    {w.withdrawal_ref} ({formatDate(w.withdrawal_date)}) — Pendiente:{' '}
+                    {formatCurrency(w.pendingToRender)}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 

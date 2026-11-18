@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar,
   ChevronDown,
@@ -9,9 +9,7 @@ import {
   TrendingUp,
   Wallet,
   CheckCircle2,
-  EyeOff,
   Building2,
-  ArrowLeft,
   LayoutDashboard,
   ShieldCheck,
   Users,
@@ -19,7 +17,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
 import {
-  canViewActivityBudget,
   consolidateLeaderExpenses,
   formatCurrency,
   formatDate,
@@ -39,7 +36,6 @@ import {
   QuarterSummary,
 } from '../types/database';
 import { ProposeActivityModal } from '../components/ProposeActivityModal';
-import { LcrSyncButton } from '../components/LcrSyncButton';
 import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
 import { SuppliersView } from './SuppliersView';
@@ -104,16 +100,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
   // Estado de secciones colapsables (desplegables) — cerradas por defecto para mantener pantalla limpia
   const [isExpensesOpen, setIsExpensesOpen] = useState<boolean>(false);
-  const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
   const [isQuartersOpen, setIsQuartersOpen] = useState<boolean>(false);
-
-  // Referencias para auto-enfoque suave del Calendario Anual en la próxima actividad futura
-  const calendarScrollRef = useRef<HTMLDivElement | null>(null);
-  const nextUpcomingActivityRef = useRef<HTMLDivElement | null>(null);
 
   // Filtros internos de acordeones
   const [quarterFilter, setQuarterFilter] = useState<'TODOS' | QuarterCode>('TODOS');
-  const [calendarScope, setCalendarScope] = useState<'ORG' | 'ESTACA_ALL'>('ORG');
 
   // Navegación principal (Resumen, Calendario General, Proveedores) y Drawer móvil
   const [activeTab, setActiveTab] = useState<'SUMMARY' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY'>('SUMMARY');
@@ -126,13 +116,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     setIsMobileDrawerOpen(false);
   };
 
-  const handleManualCalendarSync = async () => {
-    const syncRes = await syncLcrCalendarWithShield({
-      currentActivities: activities,
-      attemptLiveFetch: true,
-    });
-    setActivities(syncRes.activities);
-  };
+  // Posicionar la vista siempre al inicio de la página al entrar a una organización o cambiar de sección
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  }, [baseOrg, activeTab]);
 
   // Sincronización con Supabase en tiempo real con fallback resiliente a SEED
   useEffect(() => {
@@ -419,52 +406,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     return nextOwn || nextAny || orgActs[orgActs.length - 1] || null;
   }, [activities, baseOrg, canUseSeminario, activeYear]);
 
-  // Lista completa de actividades del año en el acordeón de Calendario Anual:
-  // En vista 'ORG' incluye TODAS las actividades del año de la organización + las generales de Estaca a las que asisten.
-  // En vista 'ESTACA_ALL' incluye todas las organizaciones de la Estaca (con confidencialidad de presupuestos).
-  const displayedCalendarActivities = useMemo(() => {
-    const baseList = activities
-      .filter(
-        (a) =>
-          a.status !== 'CANCELADA' &&
-          a.status !== 'RECHAZADA' &&
-          a.event_date.startsWith(String(activeYear))
-      )
-      .sort((a, b) => a.event_date.localeCompare(b.event_date));
-
-    if (calendarScope === 'ORG') {
-      return baseList.filter(
-        (a) => isOwnOrgOrYouthJointActivity(a) || a.organization === 'ESTACA'
-      );
-    }
-    return baseList;
-  }, [activities, calendarScope, baseOrg, canUseSeminario, activeYear]);
-
-  // ID de la primera actividad futura (o del día actual) para el auto-enfoque suave en el calendario
-  const firstUpcomingActivityId = useMemo(() => {
-    const found = displayedCalendarActivities.find((a) => a.event_date >= referenceToday);
-    return found ? found.id : null;
-  }, [displayedCalendarActivities]);
-
-  // Auto-scroll suave al abrir el calendario o cambiar filtro para posicionar la vista en la próxima actividad futura
-  useEffect(() => {
-    if (!isCalendarOpen) return;
-    const timer = setTimeout(() => {
-      const container = calendarScrollRef.current;
-      const target = nextUpcomingActivityRef.current;
-      if (container && target) {
-        // Posiciona dejando ~85px hacia arriba para que se vea la actividad pasada inmediatamente anterior con su estado "Realizada"
-        const targetOffset = Math.max(0, target.offsetTop - 85);
-        container.scrollTo({
-          top: targetOffset,
-          behavior: 'smooth',
-        });
-      }
-    }, 180);
-
-    return () => clearTimeout(timer);
-  }, [isCalendarOpen, calendarScope, baseOrg, activeYear, firstUpcomingActivityId]);
-
   const handleCreateProposal = async (proposal: {
     title: string;
     event_date: string;
@@ -533,7 +474,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       }
     }
 
-    setIsCalendarOpen(true);
     setToastMessage(
       proposal.organization === 'SEMINARIO'
         ? `Propuesta "${proposal.title}" vinculada a Seminario (MJ y HJ).`
@@ -563,7 +503,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-2">
-            {/* Izquierda: Menú Hamburguesa (móvil) + Botón Panel (espejo) + Organización */}
+            {/* Izquierda: Menú Hamburguesa (móvil) + Estaca + Organización */}
             <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
@@ -594,17 +534,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
               <div className="flex flex-col space-y-0.5 min-w-0">
                 <div className="flex items-center gap-2">
-                  {onBackToHub && (
-                    <button
-                      type="button"
-                      data-testid="back-to-hub-btn"
-                      onClick={onBackToHub}
-                      className="pressable inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex-shrink-0"
-                    >
-                      <ArrowLeft className="w-3.5 h-3.5" />
-                      <span>Panel</span>
-                    </button>
-                  )}
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm truncate">
                     Estaca Montevideo Uruguay Este
                   </span>
@@ -653,19 +582,31 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             aria-label="Navegación principal del líder"
             className="hidden md:flex mt-3 pt-2.5 border-t border-slate-100 items-center gap-2"
           >
-            <button
-              type="button"
-              data-testid="leader-nav-summary"
-              onClick={() => setActiveTab('SUMMARY')}
-              className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                activeTab === 'SUMMARY'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4 text-emerald-400" />
-              <span>Mi Organización</span>
-            </button>
+            {onBackToHub ? (
+              <button
+                type="button"
+                data-testid="back-to-hub-btn"
+                onClick={onBackToHub}
+                className="pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-slate-100 text-slate-700 hover:bg-slate-200/80"
+              >
+                <LayoutDashboard className="w-4 h-4 text-emerald-500" />
+                <span>Panel</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="leader-nav-summary"
+                onClick={() => setActiveTab('SUMMARY')}
+                className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
+                  activeTab === 'SUMMARY'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4 text-emerald-400" />
+                <span>Panel</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -753,19 +694,34 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               </div>
 
               <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  data-testid="drawer-nav-summary"
-                  onClick={() => selectTabAndCloseDrawer('SUMMARY')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
-                    activeTab === 'SUMMARY'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
-                  }`}
-                >
-                  <LayoutDashboard className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Mi Organización</span>
-                </button>
+                {onBackToHub ? (
+                  <button
+                    type="button"
+                    data-testid="drawer-back-to-hub-btn"
+                    onClick={() => {
+                      setIsMobileDrawerOpen(false);
+                      onBackToHub();
+                    }}
+                    className="pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition bg-slate-100 text-slate-800 hover:bg-slate-200/70"
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>Panel</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="drawer-nav-summary"
+                    onClick={() => selectTabAndCloseDrawer('SUMMARY')}
+                    className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
+                      activeTab === 'SUMMARY'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
+                    }`}
+                  >
+                    <LayoutDashboard className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                    <span>Panel</span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -826,6 +782,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             activitiesProp={activities}
             onActivitiesUpdate={setActivities}
             onBack={() => setActiveTab('SUMMARY')}
+            onProposeActivity={() => setIsProposeOpen(true)}
             embedded
           />
         </main>
@@ -1046,15 +1003,12 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                           <div
                             key={exp.id}
                             data-testid="expense-row"
-                            className="p-3 bg-white hover:bg-slate-50/70 flex items-center justify-between gap-3"
+                            className="p-3 bg-white hover:bg-slate-50/70 space-y-1"
                           >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                                 <span className="text-[11px] font-bold text-slate-500 tabular-nums">
                                   {formatDate(getExpenseEffectiveDate(exp))}
-                                </span>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                                  {getQuarterFromDate(getExpenseEffectiveDate(exp))}
                                 </span>
                                 {exp.external_reimbursement > 0 && (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
@@ -1062,26 +1016,33 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs font-bold text-slate-900 mt-1 leading-snug">
-                                {exp.concept}
-                              </p>
-                              <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                                {exp.supplier_name}
-                              </p>
+
+                              <span
+                                data-testid="expense-row-quarter"
+                                className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 flex-shrink-0"
+                              >
+                                {getQuarterFromDate(getExpenseEffectiveDate(exp))}
+                              </span>
                             </div>
 
-                            <div className="text-right flex-shrink-0">
-                              <p
-                                data-testid="expense-row-amount"
-                                className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums"
-                              >
-                                {formatCurrency(exp.net_amount)}
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-xs font-bold text-slate-900 leading-snug min-w-0 flex-1">
+                                {exp.concept}
                               </p>
-                              {exp.external_reimbursement > 0 && (
-                                <p className="text-[10px] text-slate-400 tabular-nums">
-                                  Factura: {formatCurrency(exp.gross_amount)}
+
+                              <div className="text-right flex-shrink-0">
+                                <p
+                                  data-testid="expense-row-amount"
+                                  className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums"
+                                >
+                                  {formatCurrency(exp.net_amount)}
                                 </p>
-                              )}
+                                {exp.external_reimbursement > 0 && (
+                                  <p className="text-[10px] text-slate-400 tabular-nums">
+                                    Factura: {formatCurrency(exp.gross_amount)}
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1204,216 +1165,6 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               No hay próximas actividades programadas. Usa el botón superior para proponer una nueva actividad.
             </div>
           )}
-        </section>
-
-        {/* 3. CALENDARIO ANUAL DE ACTIVIDADES (ACORDEÓN COLAPSABLE CON REGLA DE CONFIDENCIALIDAD #9) */}
-        <section
-          aria-label="Calendario Anual de Actividades"
-          className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
-        >
-          <button
-            type="button"
-            data-testid="accordion-calendar-trigger"
-            aria-expanded={isCalendarOpen}
-            onClick={() => setIsCalendarOpen((prev) => !prev)}
-            className="pressable w-full p-5 flex items-center justify-between gap-3 text-left hover:bg-slate-50/70"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-extrabold text-slate-900">
-                    Calendario Anual de Actividades
-                  </h2>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 tabular-nums">
-                    {displayedCalendarActivities.length}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Agenda de tu organización y eventos generales de Estaca
-                </p>
-              </div>
-            </div>
-
-            <ChevronDown
-              className={`w-5 h-5 text-slate-400 transition-transform duration-200 ease-out-expo ${
-                isCalendarOpen ? 'rotate-180 text-slate-700' : ''
-              }`}
-            />
-          </button>
-
-          <div
-            data-testid="accordion-calendar-content"
-            className="accordion-content"
-            data-open={isCalendarOpen}
-          >
-            <div className="accordion-inner">
-              <div className="px-5 pb-5 pt-1 border-t border-slate-100 space-y-3">
-                {/* Barra de Sincronización con LCR */}
-                <div className="flex items-center justify-end pt-2">
-                  <LcrSyncButton onSync={handleManualCalendarSync} />
-                </div>
-
-                {/* Selector Mi Organización vs Toda la Estaca (para verificar Regla Sagrada #9) */}
-                <div className="flex items-center justify-between gap-2 pt-2">
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80 w-full">
-                    <button
-                      type="button"
-                      data-testid="calendar-scope-org"
-                      onClick={() => setCalendarScope('ORG')}
-                      className={`pressable flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition ${
-                        calendarScope === 'ORG'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Mi Organización ({ORGANIZATION_SHORT_LABELS[baseOrg]}
-                      {canUseSeminario ? ' + Sem' : ''})
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="calendar-scope-all"
-                      onClick={() => setCalendarScope('ESTACA_ALL')}
-                      className={`pressable flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition ${
-                        calendarScope === 'ESTACA_ALL'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Agenda General Estaca
-                    </button>
-                  </div>
-                </div>
-
-                {calendarScope === 'ESTACA_ALL' && user.role === 'LIDER' && (
-                  <div
-                    data-testid="confidentiality-notice"
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600"
-                  >
-                    <EyeOff className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                    <span>
-                      Por confidencialidad, los importes presupuestados de otras organizaciones permanecen ocultos.
-                    </span>
-                  </div>
-                )}
-
-                {displayedCalendarActivities.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400">
-                    No hay actividades registradas en esta vista.
-                  </div>
-                ) : (
-                  <div
-                    ref={calendarScrollRef}
-                    data-testid="calendar-scroll-container"
-                    className="relative max-h-96 overflow-y-auto scroll-smooth pr-1 space-y-2.5"
-                  >
-                    {displayedCalendarActivities.map((act) => {
-                      const isPast = act.event_date < referenceToday;
-                      const isFirstUpcoming = act.id === firstUpcomingActivityId;
-                      const canSeeCost = canViewActivityBudget(
-                        user.role,
-                        baseOrg,
-                        act.organization
-                      );
-
-                      return (
-                        <div
-                          key={act.id}
-                          ref={isFirstUpcoming ? nextUpcomingActivityRef : null}
-                          data-testid={`calendar-activity-${act.organization}`}
-                          data-past={isPast ? 'true' : 'false'}
-                          data-upcoming-anchor={isFirstUpcoming ? 'true' : 'false'}
-                          className={`p-3.5 rounded-2xl border transition ${
-                            isPast
-                              ? 'border-slate-200/60 bg-slate-100/60 opacity-65'
-                              : isFirstUpcoming
-                              ? 'border-emerald-400/90 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-sm'
-                              : 'border-slate-200/80 bg-slate-50/60 hover:bg-slate-50'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-slate-200/80 text-slate-800">
-                                  <Building2 className="w-3 h-3" />
-                                  {ORGANIZATION_SHORT_LABELS[act.organization]}
-                                </span>
-
-                                {isPast ? (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-600">
-                                    Realizada
-                                  </span>
-                                ) : isFirstUpcoming ? (
-                                  <span
-                                    data-testid="calendar-next-upcoming-badge"
-                                    className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-700 text-white"
-                                  >
-                                    Próxima actividad
-                                  </span>
-                                ) : act.status === 'PROPUESTA' ? (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200">
-                                    Propuesta Enviada
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                                    Aprobada
-                                  </span>
-                                )}
-
-                                {/* Regla Sagrada #9: Distintivo 💰 Con Presupuesto estrictamente confidencial */}
-                                {canSeeCost && (act.has_budget || act.estimated_cost > 0) && (
-                                  <span
-                                    data-testid="confidential-budget-badge"
-                                    className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-900 text-emerald-100"
-                                  >
-                                    💰 Con Presupuesto
-                                  </span>
-                                )}
-                              </div>
-
-                              <h3
-                                className={`text-xs sm:text-sm font-extrabold mt-1.5 ${
-                                  isPast ? 'text-slate-600' : 'text-slate-900'
-                                }`}
-                              >
-                                {act.title}
-                              </h3>
-                            </div>
-
-                            {/* Monto visible solo si tiene permiso (Regla Sagrada #9) */}
-                            {canSeeCost && act.estimated_cost > 0 && (
-                              <span
-                                data-testid="confidential-budget-amount"
-                                className={`text-xs font-extrabold tabular-nums px-2.5 py-1 rounded-xl border flex-shrink-0 ${
-                                  isPast
-                                    ? 'text-slate-600 bg-slate-200/70 border-slate-300'
-                                    : 'text-emerald-900 bg-emerald-100/80 border-emerald-200'
-                                }`}
-                              >
-                                {formatCurrency(act.estimated_cost)}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
-                            <span className="font-bold text-slate-700 tabular-nums">
-                              {formatDate(act.event_date)}
-                            </span>
-                            {act.start_time && (
-                              <span className="tabular-nums">{act.start_time} hs</span>
-                            )}
-                            <span className="text-slate-500">{act.location}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </section>
       </main>
       )}

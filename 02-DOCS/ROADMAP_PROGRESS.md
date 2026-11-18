@@ -209,3 +209,8 @@ flowchart TD
 - [ ] Abrir el editor de Google Apps Script vinculado e importar los archivos de `gas/`.
 - [ ] Implementar la Web App y verificar el flujo de autenticación con cuentas de líderes y presidencia.
 - [ ] Probar la instalación como PWA en dispositivo móvil.
+
+---
+
+### 📋 Pendientes de Mejora (Backlog)
+- [ ] **Botón / Modal de copiado rápido para LCR (Gastos):** Evaluar agregar un botón limpio por fila en Registro de Gastos que abra un modal con los datos del gasto listos para LCR (referencia, fecha, proveedor, propósito, monto) y botones individuales de copiar y pegar en cada campo, evitando llenar la tabla de botones.

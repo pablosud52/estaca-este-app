@@ -6,6 +6,7 @@ import {
   Clock,
   EyeOff,
   MapPin,
+  Plus,
   Search,
   SlidersHorizontal,
   X,
@@ -70,6 +71,7 @@ interface CalendarViewProps {
   activitiesProp?: ActivityRecord[];
   onActivitiesUpdate?: (updated: ActivityRecord[]) => void;
   onBack?: () => void;
+  onProposeActivity?: () => void;
   embedded?: boolean;
 }
 
@@ -78,6 +80,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   activitiesProp,
   onActivitiesUpdate,
   onBack,
+  onProposeActivity,
   embedded = false,
 }) => {
   const { user } = useAuth();
@@ -247,6 +250,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const baseUserOrg: OrganizationCode =
     user.organization === 'TODAS' ? 'ESTACA' : user.organization;
 
+  const canSeeYouthQuickFilter =
+    user.role === 'ADMIN' ||
+    user.role === 'PRESIDENCIA' ||
+    baseUserOrg === 'HJ' ||
+    baseUserOrg === 'MJ';
+
   const isOrgFiltered =
     selectedOrgs.length > 0 && selectedOrgs.length < SELECTABLE_ORGS.length;
 
@@ -278,37 +287,24 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
                 Calendario {selectedYear}
               </h1>
-              {user.role === 'LIDER' && (
-                <div
-                  data-testid="calendar-rbac-confidentiality-banner"
-                  className="inline-flex items-center gap-1 text-[11px] text-slate-500 mt-0.5"
-                >
-                  <EyeOff className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                  <span>
-                    Solo ves costos de{' '}
-                    <strong className="font-bold text-slate-700">
-                      {ORGANIZATION_SHORT_LABELS[baseUserOrg]}
-                    </strong>
-                  </span>
-                </div>
-              )}
             </div>
           </div>
 
           <LcrSyncButton onSync={handleManualSync} />
         </div>
 
-        {/* Barra de controles destacada: Selector multi-organización + Buscador */}
+        {/* Barra de controles destacada: Selector multi-organización + Proponer Actividad + Buscador */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+          <div className="flex items-center gap-2">
           {/* Selector desplegable multi-organización (móvil y web) */}
-          <div ref={orgMenuRef} className="relative sm:w-64 flex-shrink-0">
+          <div ref={orgMenuRef} className="relative flex-1 sm:flex-none sm:w-64 min-w-0">
             <button
               type="button"
               data-testid="calendar-org-filter-trigger"
               aria-haspopup="listbox"
               aria-expanded={isOrgMenuOpen}
               onClick={() => setIsOrgMenuOpen((prev) => !prev)}
-              className={`w-full flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs font-bold shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 transition ${
+              className={`w-full h-[34px] flex items-center justify-between gap-2 rounded-xl px-3 text-xs font-bold shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 transition ${
                 isOrgFiltered
                   ? 'bg-slate-100 border border-slate-700 text-slate-900'
                   : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
@@ -332,7 +328,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             {isOrgMenuOpen && (
               <div
                 data-testid="calendar-org-filter-popover"
-                className="absolute left-0 right-0 sm:w-72 mt-1.5 z-30 bg-white rounded-2xl border border-slate-200 shadow-lg p-2.5 space-y-2"
+                className="absolute left-0 w-[min(calc(100vw-3rem),18rem)] sm:w-72 mt-1.5 z-30 bg-white rounded-2xl border border-slate-200 shadow-lg p-2.5 space-y-2"
               >
                 <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-slate-100">
                   <button
@@ -351,23 +347,25 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   >
                     Todas
                   </button>
-                  <button
-                    type="button"
-                    data-testid="calendar-filter-jovenes"
-                    onClick={() => {
-                      setSelectedOrgs(['HJ', 'MJ']);
-                      setIsOrgMenuOpen(false);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                      selectedOrgs.length === 2 &&
-                      selectedOrgs.includes('HJ') &&
-                      selectedOrgs.includes('MJ')
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    Jóvenes (HJ + MJ)
-                  </button>
+                  {canSeeYouthQuickFilter && (
+                    <button
+                      type="button"
+                      data-testid="calendar-filter-jovenes"
+                      onClick={() => {
+                        setSelectedOrgs(['HJ', 'MJ']);
+                        setIsOrgMenuOpen(false);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                        selectedOrgs.length === 2 &&
+                        selectedOrgs.includes('HJ') &&
+                        selectedOrgs.includes('MJ')
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      Jóvenes (HJ + MJ)
+                    </button>
+                  )}
                   {user.role === 'LIDER' && (
                     <button
                       type="button"
@@ -406,6 +404,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 </div>
               </div>
             )}
+          </div>
+
+          {onProposeActivity && (
+            <button
+              type="button"
+              data-testid="calendar-propose-btn"
+              onClick={onProposeActivity}
+              className="pressable h-[34px] inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-[10px] sm:text-xs font-bold px-2.5 sm:px-3 rounded-xl shadow-sm flex-shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="flex flex-col sm:flex-row sm:gap-1 items-start sm:items-center leading-[1.1] sm:leading-4 text-left">
+                <span>Proponer</span>
+                <span>Actividad</span>
+              </span>
+            </button>
+          )}
           </div>
 
           {/* Buscador en tiempo real por nombre de actividad o lugar */}

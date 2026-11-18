@@ -33,23 +33,8 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await expect(page.getByTestId('leader-quarter-spent-T1')).toHaveText('$ 33.908,00');
     await expect(page.getByTestId('leader-quarter-card-T1')).not.toContainText('Disp:');
 
-    // Abrir también el calendario en MJ para capturar la vista completa (Tarjeta + Trimestres + Calendario con auto-enfoque)
-    await page.getByTestId('accordion-calendar-trigger').click();
-    const mjScrollContainer = page.getByTestId('calendar-scroll-container');
-    await expect
-      .poll(async () => {
-        return await mjScrollContainer.evaluate((el) => el.scrollTop);
-      })
-      .toBeGreaterThan(0);
-
-    const artifactDir =
-      'C:/Users/Pablo/.gemini/antigravity/brain/62fbf75c-7edb-420d-8e4a-03d04293c255';
-    await page.evaluate(() => window.scrollTo(0, 0));
-    if (testInfo.project.name === 'Desktop Chrome') {
-      await page.screenshot({ path: `${artifactDir}/leader_mj_desktop.png`, fullPage: true });
-    } else if (testInfo.project.name === 'Mobile Chrome') {
-      await page.screenshot({ path: `${artifactDir}/leader_mj_mobile.png`, fullPage: true });
-    }
+    // Verificar que el antiguo acordeón de Calendario Anual ya no existe en el resumen del líder
+    await expect(page.getByTestId('accordion-calendar-trigger')).toHaveCount(0);
 
     // Verificar Selector de Año para Líder (solo 2026 y 2027) y leyenda en 2027
     const yearSelect = page.getByTestId('year-selector-dropdown');
@@ -71,13 +56,14 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await page.getByTestId('accordion-expenses-trigger').click();
     await expect(expensesAccordion).toHaveAttribute('data-open', 'true');
 
-    // Verificar formato dd/mm/aaaa y gasto neto de MeetUp ($ 4.750,00 sobre factura de $ 10.750,00)
+    // Verificar formato dd/mm/aaaa, trimestre sobre monto y gasto neto de MeetUp ($ 4.750,00 sobre factura de $ 10.750,00)
     await expect(page.getByText('10/09/2026')).toBeVisible();
+    await expect(page.getByTestId('expense-row-quarter').first()).toBeVisible();
     await expect(page.getByText('$ 4.750,00')).toBeVisible();
     await expect(page.getByText('Factura: $ 10.750,00')).toBeVisible();
   });
 
-  test('3. Calendario Anual: Carga completa (Org + Estaca, pasadas y futuras), auto-enfoque y Regla Sagrada #9 de Confidencialidad', async ({
+  test('3. Calendario independiente para Líderes: botón Proponer Actividad, filtro Jóvenes oculto para Primaria y confidencialidad', async ({
     page,
   }, testInfo) => {
     // Cambiar al perfil de Líder de Primaria (Lucía Fernández)
@@ -90,37 +76,28 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     // Primaria NO debe ver la línea de Seminario
     await expect(page.getByTestId('seminario-joint-fund-line')).toHaveCount(0);
 
-    // Abrir acordeón de Calendario: debe cargar tanto eventos de Primaria como generales de Estaca, pasados y futuros
-    await page.getByTestId('accordion-calendar-trigger').click();
-    const scrollContainer = page.getByTestId('calendar-scroll-container');
+    // Entrar al Calendario independiente desde el menú hamburguesa (móvil) o barra superior (desktop)
+    const isMobile = (testInfo.project.name || '').toLowerCase().includes('mobile');
+    if (isMobile) {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await page.getByTestId('drawer-nav-calendar').click();
+    } else {
+      await page.getByTestId('leader-nav-calendar').click();
+    }
+
+    await expect(page.getByTestId('calendar-general-view')).toBeVisible();
+    await expect(page.getByTestId('calendar-propose-btn')).toBeVisible();
+
+    // Verificar que el acceso rápido "Jóvenes (HJ + MJ)" NO aparece para Primaria
+    await page.getByTestId('calendar-org-filter-trigger').click();
+    await expect(page.getByTestId('calendar-filter-jovenes')).toHaveCount(0);
+    await page.getByTestId('calendar-filter-all').click();
+
+    const scrollContainer = page.getByTestId('calendar-view-scroll-container');
     await expect(
       scrollContainer.getByText('Viaje al Templo niños que avanzan a HJ/MJ')
     ).toBeVisible();
     await expect(scrollContainer.getByText('Conferencia de Estaca Octubre')).toBeVisible();
-    await expect(
-      scrollContainer.getByText('Presentación Primaria Colonia Nicolich')
-    ).toBeVisible();
-    await expect(scrollContainer.getByText('Consejo de Estaca')).toBeVisible();
-
-    // Verificar auto-scroll hacia la próxima actividad futura (data-upcoming-anchor="true")
-    await expect
-      .poll(async () => {
-        return await scrollContainer.evaluate((el) => el.scrollTop);
-      })
-      .toBeGreaterThan(0);
-
-    const artifactDir =
-      'C:/Users/Pablo/.gemini/antigravity/brain/62fbf75c-7edb-420d-8e4a-03d04293c255';
-    await page.evaluate(() => window.scrollTo(0, 0));
-    if (testInfo.project.name === 'Desktop Chrome') {
-      await page.screenshot({ path: `${artifactDir}/leader_primaria_desktop.png`, fullPage: true });
-    } else if (testInfo.project.name === 'Mobile Chrome') {
-      await page.screenshot({ path: `${artifactDir}/leader_primaria_mobile.png`, fullPage: true });
-    }
-
-    // Cambiar a "Agenda General Estaca" y verificar confidencialidad de presupuestos de otras organizaciones
-    await page.getByTestId('calendar-scope-all').click();
-    await expect(page.getByTestId('confidentiality-notice')).toBeVisible();
 
     // Eventos de AS ($ 15.000,00) y HJ ($ 10.000,00) se ven informativos pero SIN monto visible para Primaria
     await expect(scrollContainer.getByText('Actividad AS de Fin de Año')).toBeVisible();

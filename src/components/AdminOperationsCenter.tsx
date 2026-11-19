@@ -20,6 +20,7 @@ import {
   getExpenseEffectiveDate,
   getExpenseWithdrawalAllocations,
   isExpenseApplied,
+  ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
 } from '../lib/formatters';
 import {
@@ -1088,29 +1089,40 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                               </td>
                             </tr>
 
-                            {/* Sub-fila desplegable con el aporte de cada organización */}
-                            {m.isShared && isExpanded && (
-                              <tr className="bg-slate-50/90">
-                                <td />
-                                <td colSpan={8} className="py-2.5 px-3">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[11px] font-bold text-slate-500 mr-1">
-                                      Detalle por organización:
-                                    </span>
-                                    {m.records.map((r) => (
-                                      <span
-                                        key={r.id}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-800 tabular-nums"
-                                      >
-                                        <span>{ORGANIZATION_SHORT_LABELS[r.organization]}</span>
-                                        <span className="text-slate-500">·</span>
-                                        <span>{formatCurrency(r.gross_amount)}</span>
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
+                            {/* Sub-filas desplegables con el mismo esquema de columnas */}
+                            {m.isShared &&
+                              isExpanded &&
+                              m.records.map((r) => (
+                                <tr
+                                  key={r.id}
+                                  className="bg-slate-50/80 text-xs border-t border-slate-100/80"
+                                >
+                                  {/* Flecha */}
+                                  <td />
+                                  {/* Fecha */}
+                                  <td />
+                                  {/* Referencia */}
+                                  <td />
+                                  {/* Organización */}
+                                  <td className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap align-middle">
+                                    {ORGANIZATION_LABELS[r.organization]}
+                                  </td>
+                                  {/* Fecha Act. */}
+                                  <td />
+                                  {/* Propósito (en gris, ya cargado arriba) */}
+                                  <td className="py-2.5 px-3 text-slate-400 align-middle">
+                                    {r.concept}
+                                  </td>
+                                  {/* Proveedor */}
+                                  <td />
+                                  {/* Monto */}
+                                  <td className="py-2.5 pl-3 pr-2 text-right font-bold text-slate-700 tabular-nums whitespace-nowrap align-middle">
+                                    {formatCurrency(r.gross_amount)}
+                                  </td>
+                                  {/* Editar */}
+                                  <td />
+                                </tr>
+                              ))}
                           </React.Fragment>
                         );
                       })}

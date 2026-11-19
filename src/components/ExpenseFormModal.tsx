@@ -153,16 +153,34 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       });
     }
 
-    return [...openWithdrawals]
-      .map((w) => ({
-        ...w,
-        effectiveAvailable: Number(
-          (w.pendingToRender + (editedMap.get(w.withdrawal_ref) || 0)).toFixed(2)
-        ),
-      }))
+    const openRefs = new Set(openWithdrawals.map((w) => w.withdrawal_ref));
+    const list = openWithdrawals.map((w) => ({
+      ...w,
+      effectiveAvailable: Number(
+        (w.pendingToRender + (editedMap.get(w.withdrawal_ref) || 0)).toFixed(2)
+      ),
+    }));
+
+    // Preservar retiros cerrados o de años anteriores ya vinculados al gasto que se edita
+    const currentGross = parseFloat(grossAmount.replace(',', '.')) || 0;
+    editedMap.forEach((amt, ref) => {
+      if (!openRefs.has(ref) && amt > 0) {
+        list.push({
+          id: -Math.abs(ref.split('').reduce((h, c) => h * 31 + c.charCodeAt(0), 7)),
+          withdrawal_ref: ref,
+          withdrawal_date: '0000-00-00',
+          amount: amt,
+          pendingToRender: 0,
+          purpose: 'Retiro cerrado / histórico',
+          effectiveAvailable: Number(Math.max(amt, currentGross).toFixed(2)),
+        });
+      }
+    });
+
+    return list
       .filter((w) => w.effectiveAvailable > 0)
       .sort((a, b) => a.withdrawal_date.localeCompare(b.withdrawal_date));
-  }, [openWithdrawals, editGroup]);
+  }, [openWithdrawals, editGroup, grossAmount]);
 
   // Inicializar formulario al abrir
   useEffect(() => {

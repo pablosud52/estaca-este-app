@@ -92,7 +92,7 @@ export const ConsultaView: React.FC = () => {
         {activeTab === 'DIRECTORY' && <LeadersDirectoryView />}
         {activeTab === 'CALENDAR' && (
           <CalendarView
-            selectedYear={2026}
+            selectedYear={new Date().getFullYear()}
             activitiesProp={activities}
             onActivitiesUpdate={setActivities}
             embedded

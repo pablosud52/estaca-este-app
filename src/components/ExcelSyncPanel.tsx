@@ -139,7 +139,7 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
   const handleExportExcel = () => {
     setErrorMessage(null);
     const wb = buildWorkbook();
-    XLSX.writeFile(wb, 'DB_Finanzas_Calendario_Estaca_2026.xlsx');
+    XLSX.writeFile(wb, `DB_Finanzas_Calendario_Estaca_${new Date().getFullYear()}.xlsx`);
     setStatusMessage(
       `Respaldo Excel exportado con éxito (${expenses.length} gastos, ${withdrawals.length} retiros y ${activities.length} actividades).`
     );

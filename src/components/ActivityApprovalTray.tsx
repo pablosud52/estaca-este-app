@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BellRing,
   Calendar,
   CheckCircle2,
@@ -13,14 +14,24 @@ import {
   X,
   Building2,
 } from 'lucide-react';
-import { formatCurrency, formatDate, ORGANIZATION_LABELS, ORGANIZATION_SHORT_LABELS } from '../lib/formatters';
-import { ActivityRecord } from '../types/database';
+import {
+  formatCurrency,
+  formatDate,
+  isExpenseApplied,
+  ORGANIZATION_LABELS,
+  ORGANIZATION_SHORT_LABELS,
+} from '../lib/formatters';
+import { ActivityRecord, ExpenseRecord, OrganizationCode } from '../types/database';
 
 interface ActivityApprovalTrayProps {
   activities: ActivityRecord[];
+  expenses?: ExpenseRecord[];
   canApprove: boolean;
+  isSuperAdmin?: boolean;
   userFullName: string;
   userCalling: string;
+  mode?: 'WAITING' | 'APPROVED' | 'BOTH';
+  missingFromLcrIds?: Set<number>;
   onApproveActivity: (id: number) => Promise<void>;
   onRejectActivity: (id: number, reason?: string) => Promise<void>;
   onEditAndApproveActivity: (
@@ -34,16 +45,39 @@ interface ActivityApprovalTrayProps {
       estimated_cost: number;
     }
   ) => Promise<void>;
+  onUpdateApprovedActivity?: (
+    id: number,
+    updates: {
+      title: string;
+      event_date: string;
+      start_time: string | null;
+      location: string;
+      organization: OrganizationCode;
+      description: string;
+      estimated_cost: number;
+    }
+  ) => Promise<void>;
+  onDeleteActivity?: (id: number) => Promise<void>;
+  onCancelActivity?: (id: number) => Promise<void>;
+  onKeepActivity?: (id: number) => Promise<void>;
 }
 
 export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
   activities,
+  expenses = [],
   canApprove,
+  isSuperAdmin = false,
   userFullName,
   userCalling,
+  mode = 'BOTH',
+  missingFromLcrIds = new Set<number>(),
   onApproveActivity,
   onRejectActivity,
   onEditAndApproveActivity,
+  onUpdateApprovedActivity,
+  onDeleteActivity,
+  onCancelActivity,
+  onKeepActivity,
 }) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -56,6 +90,88 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
+
+  // Modales y estado para la tabla Aprobados
+  const [cancelModalAct, setCancelModalAct] = useState<ActivityRecord | null>(null);
+  const [editApprovedAct, setEditApprovedAct] = useState<ActivityRecord | null>(null);
+  const [appTitle, setAppTitle] = useState('');
+  const [appDate, setAppDate] = useState('');
+  const [appTime, setAppTime] = useState('');
+  const [appLocation, setAppLocation] = useState('');
+  const [appOrg, setAppOrg] = useState<OrganizationCode>('ESTACA');
+  const [appDesc, setAppDesc] = useState('');
+  const [appCost, setAppCost] = useState('');
+  const [modalBusy, setModalBusy] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<number | null>(null);
+  const [missingCursor, setMissingCursor] = useState(0);
+  const rowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
+
+  const renderedExpenseActivityIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const exp of expenses) {
+      if (exp.activity_id && isExpenseApplied(exp)) {
+        set.add(exp.activity_id);
+      }
+    }
+    return set;
+  }, [expenses]);
+
+  const missingOrderedList = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return activities
+      .filter((a) => missingFromLcrIds.has(a.id))
+      .sort((a, b) => {
+        const aFuture = a.event_date >= today ? 0 : 1;
+        const bFuture = b.event_date >= today ? 0 : 1;
+        if (aFuture !== bFuture) return aFuture - bFuture;
+        return a.event_date.localeCompare(b.event_date);
+      });
+  }, [activities, missingFromLcrIds]);
+
+  const handleJumpToNextMissing = () => {
+    if (missingOrderedList.length === 0) return;
+    const idx = missingCursor % missingOrderedList.length;
+    const target = missingOrderedList[idx];
+    setMissingCursor((c) => c + 1);
+    const el = rowRefs.current[target.id];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedId(target.id);
+      setTimeout(() => setHighlightedId(null), 2200);
+    }
+  };
+
+  const openEditApprovedModal = (act: ActivityRecord) => {
+    setEditApprovedAct(act);
+    setAppTitle(act.title);
+    setAppDate(act.event_date);
+    setAppTime(act.start_time || '');
+    setAppLocation(act.location);
+    setAppOrg(act.organization);
+    setAppDesc(act.description || '');
+    setAppCost(String(act.estimated_cost || 0));
+  };
+
+  const handleSaveApprovedEdit = async () => {
+    if (!editApprovedAct || !onUpdateApprovedActivity) return;
+    const parsed = Number(String(appCost).replace(',', '.'));
+    const safeCost = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    setModalBusy(true);
+    try {
+      await onUpdateApprovedActivity(editApprovedAct.id, {
+        title: appTitle.trim() || editApprovedAct.title,
+        event_date: appDate || editApprovedAct.event_date,
+        start_time: appTime.trim() ? appTime.trim() : null,
+        location: appLocation.trim() || 'Centro de Estaca',
+        organization: appOrg,
+        description: appDesc.trim(),
+        estimated_cost: safeCost,
+      });
+      setEditApprovedAct(null);
+    } finally {
+      setModalBusy(false);
+    }
+  };
 
   // Regla sagrada de aprobación:
   // Eventos de LCR (origin === 'lcr') ya vienen aprobados institucionalmente y NUNCA van a la bandeja.
@@ -114,69 +230,27 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
 
   return (
     <section
-      aria-label="Bandeja de Aprobación de Actividades"
+      aria-label="Aprobaciones y Agenda"
       data-testid="activity-approval-tray"
-      className="space-y-5"
+      className="space-y-4"
     >
-      {/* Cabecera de la Bandeja */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/90 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center flex-shrink-0">
-            <BellRing className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
-                Bandeja de Aprobación de Actividades
-              </h2>
-              <span
-                data-testid="tray-pending-count-badge"
-                className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full tabular-nums ${
-                  pendingProposals.length > 0
-                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                    : 'bg-emerald-100 text-emerald-800'
-                }`}
-              >
-                {pendingProposals.length} pendiente{pendingProposals.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Revisión ejecutiva de eventos y presupuestos propuestos por las organizaciones de la Estaca.
-            </p>
-          </div>
-        </div>
-
-        {/* Estado de Permiso Granular (PROJECT_CONTEXT.md §2 y §4.2) */}
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          {canApprove ? (
-            <span
-              data-testid="approval-permission-active"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Firma Autorizada ({userCalling})</span>
-            </span>
-          ) : (
-            <span
-              data-testid="approval-permission-readonly"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold"
-            >
-              <Lock className="w-3.5 h-3.5 text-slate-500" />
-              <span>Modo Lectura ({userFullName})</span>
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Aviso si el secretario no tiene permiso de aprobar */}
-      {!canApprove && (
+      {/* Aviso compacto si el secretario no tiene permiso de aprobar */}
+      {mode !== 'APPROVED' && !canApprove && (
         <div
           data-testid="readonly-presidency-notice"
-          className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 flex items-center gap-3"
+          className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2.5"
         >
-          <Lock className="w-4 h-4 text-amber-700 flex-shrink-0" />
-          <span>
-            Tu perfil en Presidencia tiene acceso de consulta ejecutiva. La acción de aprobar, editar o rechazar propuestas está reservada al Presidente, Consejeros, Secretario Financiero o secretarios con delegación expresa.
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Lock className="w-4 h-4 text-amber-700 flex-shrink-0" />
+            <span>
+              Tu perfil en Presidencia tiene acceso de consulta ejecutiva. La acción de aprobar, editar o rechazar propuestas está reservada al Presidente, Consejeros, Secretario Financiero o secretarios con delegación expresa.
+            </span>
+          </div>
+          <span
+            data-testid="approval-permission-readonly"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-slate-700 text-[11px] font-bold shrink-0"
+          >
+            Modo Lectura ({userFullName})
           </span>
         </div>
       )}
@@ -193,23 +267,16 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
         </div>
       )}
 
-      {/* Lista de Propuestas Pendientes */}
-      {pendingProposals.length === 0 ? (
-        <div
-          data-testid="empty-pending-proposals"
-          className="bg-white rounded-3xl p-8 text-center border border-slate-200/90 shadow-sm"
-        >
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto mb-3">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-          <h3 className="text-sm font-extrabold text-slate-900">
-            ¡Bandeja al día! No hay propuestas pendientes
-          </h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Todas las solicitudes de actividades enviadas por los líderes han sido revisadas.
+      {/* Lista de Propuestas Esperando Aprobación */}
+      {mode !== 'APPROVED' && pendingProposals.length === 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 px-5 py-8 text-center">
+          <p className="text-xs font-semibold text-slate-500">
+            No hay actividades esperando aprobación.
           </p>
         </div>
-      ) : (
+      )}
+
+      {mode !== 'APPROVED' && pendingProposals.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {pendingProposals.map((proposal) => {
             const isEditing = editingId === proposal.id;
@@ -467,47 +534,403 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
         </div>
       )}
 
-      {/* Historial Reciente de Actividades Aprobadas / Resueltas */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200/90">
-        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">
-          Agenda Oficial Aprobada y Resuelta ({resolvedActivities.length})
-        </h3>
-        <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto pr-1">
-          {resolvedActivities.map((act) => (
-            <div
-              key={act.id}
-              data-testid={`resolved-activity-${act.id}`}
-              className="py-3 flex items-center justify-between gap-3"
+      {/* Tabla limpia: Aprobados */}
+      {mode !== 'WAITING' && (
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+            Aprobados ({resolvedActivities.length})
+          </h3>
+
+          {missingOrderedList.length > 0 && (
+            <button
+              type="button"
+              data-testid="approved-missing-lcr-alert"
+              onClick={handleJumpToNextMissing}
+              className="px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold hover:bg-amber-100 transition inline-flex items-center gap-1.5"
             >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                    {ORGANIZATION_SHORT_LABELS[act.organization]}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                      act.status === 'APROBADA'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-rose-100 text-rose-800'
-                    }`}
-                  >
-                    {act.status === 'APROBADA' ? 'Aprobada' : 'Rechazada'}
-                  </span>
-                  <span className="text-xs font-bold text-slate-900 truncate">{act.title}</span>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
-                  {formatDate(act.event_date)} • {act.location}
-                </p>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <span className="text-xs font-extrabold text-slate-800 tabular-nums">
-                  {act.estimated_cost > 0 ? formatCurrency(act.estimated_cost) : 'Sin costo'}
-                </span>
-              </div>
-            </div>
-          ))}
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <span>
+                {missingOrderedList.length === 1
+                  ? '1 evento ya no está en LCR · Ir al evento'
+                  : `${missingOrderedList.length} eventos ya no están en LCR · Ir al próximo`}
+              </span>
+            </button>
+          )}
+
+          <div className="hidden sm:block w-12" />
+        </div>
+        <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 sticky top-0 border-b border-slate-200 z-10">
+              <tr>
+                <th className="py-2.5 px-3 whitespace-nowrap">Fecha</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Horario</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Estado</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">Organización</th>
+                <th className="py-2.5 px-3">Actividad</th>
+                <th className="py-2.5 px-3 max-w-[150px]">Lugar</th>
+                <th className="py-2.5 pl-3 pr-3 text-right whitespace-nowrap">Monto</th>
+                <th className="py-2.5 pl-2 pr-4 text-right whitespace-nowrap">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {resolvedActivities.map((act) => {
+                const isMissingLcr = missingFromLcrIds.has(act.id);
+                const hasRendered = renderedExpenseActivityIds.has(act.id);
+                const isLocked = hasRendered && !isSuperAdmin;
+                const isHighlighted = highlightedId === act.id;
+
+                return (
+                <tr
+                  key={act.id}
+                  ref={(el) => {
+                    rowRefs.current[act.id] = el;
+                  }}
+                  data-testid={`resolved-activity-${act.id}`}
+                  className={`transition ${
+                    isHighlighted
+                      ? 'bg-amber-50'
+                      : 'hover:bg-slate-50/80'
+                  }`}
+                >
+                  <td className="py-2.5 px-3 text-slate-600 tabular-nums whitespace-nowrap">
+                    {formatDate(act.event_date)}
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-600 tabular-nums whitespace-nowrap">
+                    {act.start_time
+                      ? act.end_time
+                        ? `${act.start_time} - ${act.end_time}`
+                        : act.start_time
+                      : '—'}
+                  </td>
+                  <td className="py-2.5 px-3 whitespace-nowrap">
+                    {isMissingLcr ? (
+                      <span
+                        data-testid={`missing-lcr-status-${act.id}`}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-200"
+                      >
+                        No está en LCR
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                          act.status === 'APROBADA'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-rose-100 text-rose-800'
+                        }`}
+                      >
+                        {act.status === 'APROBADA' ? 'Aprobada' : 'Rechazada'}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2.5 px-3 whitespace-nowrap">
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                      {ORGANIZATION_SHORT_LABELS[act.organization]}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 font-semibold text-slate-900">
+                    {act.title}
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-500 max-w-[150px] truncate" title={act.location}>
+                    {act.location}
+                  </td>
+                  <td className="py-2.5 pl-3 pr-3 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                    {act.estimated_cost > 0 ? formatCurrency(act.estimated_cost) : 'Sin costo'}
+                  </td>
+                  <td className="py-2.5 pl-2 pr-4 text-right whitespace-nowrap">
+                    <div className="inline-flex items-center gap-1.5">
+                      {onUpdateApprovedActivity && (
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          onClick={() => openEditApprovedModal(act)}
+                          title={
+                            isLocked
+                              ? 'Bloqueado: tiene gastos rendidos (solo Super Admin)'
+                              : 'Editar actividad'
+                          }
+                          className={`p-1.5 rounded-lg transition ${
+                            isLocked
+                              ? 'text-slate-300 cursor-not-allowed'
+                              : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                      {(onDeleteActivity || onCancelActivity || onKeepActivity) && (
+                        <button
+                          type="button"
+                          data-testid={`cancel-action-btn-${act.id}`}
+                          onClick={() => setCancelModalAct(act)}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition ${
+                            isMissingLcr
+                              ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                              : 'text-slate-600 bg-slate-100 hover:bg-slate-200'
+                          }`}
+                        >
+                          Cancelado
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
+      )}
+
+      {/* Modal: Opciones de Cancelado / Eliminación */}
+      {cancelModalAct && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          onClick={() => !modalBusy && setCancelModalAct(null)}
+        >
+          <div
+            data-testid="cancel-activity-modal"
+            className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Gestionar evento
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {cancelModalAct.title} ({formatDate(cancelModalAct.event_date)})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !modalBusy && setCancelModalAct(null)}
+                className="text-slate-400 hover:text-slate-700 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {renderedExpenseActivityIds.has(cancelModalAct.id) && !isSuperAdmin && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
+                <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <span>
+                  Este evento ya tiene gastos rendidos. No se puede eliminar ni modificar (solo el Super Admin puede hacerlo).
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {onDeleteActivity && (
+                <button
+                  type="button"
+                  disabled={
+                    modalBusy ||
+                    (renderedExpenseActivityIds.has(cancelModalAct.id) && !isSuperAdmin)
+                  }
+                  onClick={async () => {
+                    setModalBusy(true);
+                    try {
+                      await onDeleteActivity(cancelModalAct.id);
+                      setCancelModalAct(null);
+                    } finally {
+                      setModalBusy(false);
+                    }
+                  }}
+                  className="w-full text-left px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition disabled:opacity-45 disabled:cursor-not-allowed"
+                >
+                  1. Eliminar definitivamente
+                </button>
+              )}
+
+              {onCancelActivity && (
+                <button
+                  type="button"
+                  disabled={
+                    modalBusy ||
+                    (renderedExpenseActivityIds.has(cancelModalAct.id) && !isSuperAdmin)
+                  }
+                  onClick={async () => {
+                    setModalBusy(true);
+                    try {
+                      await onCancelActivity(cancelModalAct.id);
+                      setCancelModalAct(null);
+                    } finally {
+                      setModalBusy(false);
+                    }
+                  }}
+                  className="w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition disabled:opacity-45 disabled:cursor-not-allowed"
+                >
+                  2. Marcar como Cancelado (conserva el historial)
+                </button>
+              )}
+
+              {onKeepActivity && (
+                <button
+                  type="button"
+                  disabled={modalBusy}
+                  onClick={async () => {
+                    setModalBusy(true);
+                    try {
+                      await onKeepActivity(cancelModalAct.id);
+                      setCancelModalAct(null);
+                    } finally {
+                      setModalBusy(false);
+                    }
+                  }}
+                  className="w-full text-left px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition disabled:opacity-45"
+                >
+                  3. Mantener en el calendario
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Evento Aprobado */}
+      {editApprovedAct && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          onClick={() => !modalBusy && setEditApprovedAct(null)}
+        >
+          <div
+            data-testid="edit-approved-modal"
+            className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Editar actividad aprobada
+                </h4>
+                {editApprovedAct.ical_uid &&
+                  !editApprovedAct.ical_uid.startsWith('PROPUESTA_LIDER') &&
+                  !editApprovedAct.ical_uid.startsWith('NO_LCR_') && (
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Al estar vinculada a LCR, la fecha y el título pueden volver a actualizarse desde LCR.
+                    </p>
+                  )}
+              </div>
+              <button
+                type="button"
+                onClick={() => !modalBusy && setEditApprovedAct(null)}
+                className="text-slate-400 hover:text-slate-700 p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Título
+                </label>
+                <input
+                  type="text"
+                  value={appTitle}
+                  onChange={(e) => setAppTitle(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Fecha
+                </label>
+                <input
+                  type="date"
+                  value={appDate}
+                  onChange={(e) => setAppDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Horario (opcional)
+                </label>
+                <input
+                  type="time"
+                  value={appTime}
+                  onChange={(e) => setAppTime(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Organización
+                </label>
+                <select
+                  value={appOrg}
+                  onChange={(e) => setAppOrg(e.target.value as OrganizationCode)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none"
+                >
+                  {(Object.keys(ORGANIZATION_LABELS) as OrganizationCode[]).map((orgKey) => (
+                    <option key={orgKey} value={orgKey}>
+                      {ORGANIZATION_LABELS[orgKey]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Presupuesto estimado ($)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={appCost}
+                  onChange={(e) => setAppCost(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none tabular-nums"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Lugar
+                </label>
+                <input
+                  type="text"
+                  value={appLocation}
+                  onChange={(e) => setAppLocation(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  Descripción
+                </label>
+                <input
+                  type="text"
+                  value={appDesc}
+                  onChange={(e) => setAppDesc(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={modalBusy}
+                onClick={() => setEditApprovedAct(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={modalBusy}
+                onClick={handleSaveApprovedEdit}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {modalBusy ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

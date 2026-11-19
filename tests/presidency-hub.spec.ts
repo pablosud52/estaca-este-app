@@ -228,7 +228,8 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
     await page.getByTestId('dev-role-trigger').click();
     await page.getByTestId('switch-role-presidencia-consejero1-01').click();
     await navigateToHubTab(page, 'APPROVALS');
-    await expect(page.getByTestId('empty-pending-proposals')).toBeVisible();
+    await expect(page.getByTestId('activity-approval-tray')).toBeVisible();
+    await expect(page.locator('[data-testid^="proposal-card-"]')).toHaveCount(0);
 
     // 2. Un líder local (MJ) propone una actividad -> pasa a la bandeja de aprobación (origen = 'propuesta_lider')
     await page.getByTestId('dev-role-trigger').click();
@@ -254,7 +255,7 @@ test.describe('Paso 6.3: Hub Ejecutivo (Principio Menos es Más y Matemática Ex
     await page.locator('[data-testid^="save-edit-approve-btn-"]').first().click();
 
     await expect(page.getByTestId('approval-feedback-banner')).toContainText('$ 30.500,00');
-    await expect(page.getByTestId('empty-pending-proposals')).toBeVisible();
+    await expect(page.locator('[data-testid^="proposal-card-"]')).toHaveCount(0);
   });
 
   test('4. Permiso granular en Presidencia: Secretario de Estaca visualiza Bandeja en modo solo lectura', async ({

@@ -20,7 +20,10 @@ import {
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
 } from '../lib/formatters';
-import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
+import {
+  isActivityPendingLcr,
+  syncLcrCalendarWithShield,
+} from '../services/lcrSyncService';
 import { ActivityRecord, OrganizationCode } from '../types/database';
 import { LcrSyncButton } from '../components/LcrSyncButton';
 
@@ -73,15 +76,19 @@ interface CalendarViewProps {
   onBack?: () => void;
   onProposeActivity?: () => void;
   embedded?: boolean;
+  onlyPendingLcr?: boolean;
+  onClearPendingLcrFilter?: () => void;
 }
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
-  selectedYear = 2026,
+  selectedYear = new Date().getFullYear(),
   activitiesProp,
   onActivitiesUpdate,
   onBack,
   onProposeActivity,
   embedded = false,
+  onlyPendingLcr = false,
+  onClearPendingLcrFilter,
 }) => {
   const { user } = useAuth();
   const [localActivities, setLocalActivities] = useState<ActivityRecord[]>(
@@ -137,15 +144,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     const result = await syncLcrCalendarWithShield({
       currentActivities: localActivities,
       attemptLiveFetch: true,
+      bypassDbShield: true,
     });
     setLocalActivities(result.activities);
     if (onActivitiesUpdate) {
       onActivitiesUpdate(result.activities);
     }
+    return result;
   };
 
   // Fecha de referencia actual para separar eventos pasados (atenuados arriba) de la próxima actividad futura
-  const referenceToday = '2026-11-08';
+  const referenceToday = new Date().toISOString().slice(0, 10);
 
   const matchesSelectedOrganizations = (act: ActivityRecord): boolean => {
     if (selectedOrgs.length === 0 || selectedOrgs.length === SELECTABLE_ORGS.length) {
@@ -174,6 +183,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     return selectedOrgs.includes(act.organization as SelectableOrg);
   };
 
+  const canSeePendingLcrBadge = (act: ActivityRecord): boolean => {
+    if (!isActivityPendingLcr(act)) return false;
+    if (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') return true;
+    if (user.role === 'LIDER') {
+      if (act.organization === baseUserOrg) return true;
+      if (act.organization === 'SEMINARIO' && (baseUserOrg === 'HJ' || baseUserOrg === 'MJ')) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // Lista anual filtrada por año, organizaciones seleccionadas y buscador en tiempo real
   const filteredActivities = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -181,7 +202,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     return localActivities
       .filter((act) => {
         if (act.status === 'CANCELADA' || act.status === 'RECHAZADA') return false;
-        if (!act.event_date.startsWith(String(selectedYear))) return false;
+        if (onlyPendingLcr) {
+          if (!isActivityPendingLcr(act)) return false;
+        } else if (!act.event_date.startsWith(String(selectedYear))) {
+          return false;
+        }
         if (!matchesSelectedOrganizations(act)) return false;
 
         // Buscador en tiempo real por título o lugar
@@ -199,7 +224,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         return true;
       })
       .sort((a, b) => a.event_date.localeCompare(b.event_date));
-  }, [localActivities, selectedYear, selectedOrgs, searchQuery]);
+  }, [localActivities, selectedYear, selectedOrgs, searchQuery, onlyPendingLcr]);
 
   // ID del evento más próximo a la fecha actual para auto-enfoque
   const firstUpcomingId = useMemo(() => {
@@ -451,6 +476,26 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
       {/* Marco independiente para las tarjetas de eventos (scroll propio sin mover la cabecera) */}
       <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-card">
+        {onlyPendingLcr && (
+          <div
+            data-testid="calendar-pending-lcr-banner"
+            className="mb-3 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2"
+          >
+            <span className="text-xs font-semibold text-slate-700">
+              Mostrando solo actividades aprobadas pendientes de cargar en LCR
+            </span>
+            {onClearPendingLcrFilter && (
+              <button
+                type="button"
+                data-testid="calendar-clear-pending-lcr-btn"
+                onClick={onClearPendingLcrFilter}
+                className="text-xs font-bold text-slate-900 hover:underline"
+              >
+                Ver todo el calendario
+              </button>
+            )}
+          </div>
+        )}
         {filteredActivities.length === 0 ? (
           <div
             data-testid="calendar-empty-state"
@@ -503,26 +548,37 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       {ORGANIZATION_SHORT_LABELS[act.organization]}
                     </span>
 
-                    {isPast ? (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-600">
-                        Realizada
-                      </span>
-                    ) : isNextUpcoming ? (
-                      <span
-                        data-testid="calendar-view-upcoming-badge"
-                        className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-slate-900 text-white"
-                      >
-                        Próxima actividad
-                      </span>
-                    ) : act.status === 'PROPUESTA' ? (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200">
-                        Propuesta de Líder
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">
-                        Aprobada LCR
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {canSeePendingLcrBadge(act) && (
+                        <span
+                          data-testid="calendar-pending-lcr-badge"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200"
+                        >
+                          Pendiente en LCR
+                        </span>
+                      )}
+
+                      {isPast ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-600">
+                          Realizada
+                        </span>
+                      ) : isNextUpcoming ? (
+                        <span
+                          data-testid="calendar-view-upcoming-badge"
+                          className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-slate-900 text-white"
+                        >
+                          Próxima actividad
+                        </span>
+                      ) : act.status === 'PROPUESTA' ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200">
+                          Propuesta de Líder
+                        </span>
+                      ) : !canSeePendingLcrBadge(act) ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                          Aprobada LCR
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/* Título, descripción y detalles */}

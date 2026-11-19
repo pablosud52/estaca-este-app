@@ -48,12 +48,15 @@ import {
   SupplierRecord,
 } from '../types/database';
 import { OrgDistributionChart, OrgSummaryStat } from '../components/OrgDistributionChart';
-import { ActivityApprovalTray } from '../components/ActivityApprovalTray';
+import { CalendarControlPanel } from '../components/CalendarControlPanel';
+import {
+  isActivityPendingLcr,
+  syncLcrCalendarWithShield,
+} from '../services/lcrSyncService';
 import { UserManagementPanel } from '../components/UserManagementPanel';
 import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
 import { FinancialInfoSection } from '../components/FinancialInfoSection';
 import { computeYearIncomeSummary } from '../lib/budgetUtils';
-import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
 import { SuppliersView } from './SuppliersView';
 import { LeaderView } from './LeaderView';
@@ -112,6 +115,7 @@ export const PresidencyHub: React.FC = () => {
     'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS' | 'INFO'
   >('DASHBOARD');
   const [openUsersWithIncompleteFilter, setOpenUsersWithIncompleteFilter] = useState<boolean>(false);
+  const [calendarOnlyPendingLcr, setCalendarOnlyPendingLcr] = useState<boolean>(false);
   // Menú Drawer móvil (hamburguesa ☰ -> cruz ✕)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   // Menú desplegable Administración en escritorio
@@ -132,11 +136,15 @@ export const PresidencyHub: React.FC = () => {
     };
   }, [isAdminMenuOpen]);
 
-  // Año fiscal seleccionado: Presidencia y Admin pueden elegir 2025, 2026 y 2027; Líderes 2026 y 2027
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  // Año fiscal seleccionado: Presidencia y Admin ven año anterior, actual y siguiente; Líderes actual y siguiente
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const availableYears = useMemo(
-    () => (user.role === 'LIDER' ? [2026, 2027] : [2025, 2026, 2027]),
-    [user.role]
+    () =>
+      user.role === 'LIDER'
+        ? [currentYear, currentYear + 1]
+        : [currentYear - 1, currentYear, currentYear + 1],
+    [user.role, currentYear]
   );
 
   // Si el usuario entra a inspeccionar una organización en Modo Espejo
@@ -557,6 +565,11 @@ export const PresidencyHub: React.FC = () => {
     [activities]
   );
 
+  const pendingLcrCount = useMemo(
+    () => activities.filter(isActivityPendingLcr).length,
+    [activities]
+  );
+
   // Sincronización automática: si se reprograma una actividad en el calendario, actualiza la fecha de sus gastos proyectados enlazados
   useEffect(() => {
     const actMap = new Map(activities.map((a) => [a.id, a]));
@@ -723,6 +736,140 @@ export const PresidencyHub: React.FC = () => {
         has_budget: true,
         status: 'APROBADA',
       });
+    }
+  };
+
+  // Handlers del Panel de Control del Calendario (Presidencia y Admin)
+  const handleLinkWithLcrEvent = async (pendingActivityId: number, lcrActivityId: number) => {
+    const pendingAct = activities.find((a) => a.id === pendingActivityId);
+    const lcrAct = activities.find((a) => a.id === lcrActivityId);
+    if (!pendingAct || !lcrAct || !lcrAct.ical_uid) return;
+
+    const mergedRecord: ActivityRecord = {
+      ...pendingAct,
+      ical_uid: lcrAct.ical_uid,
+      event_date: lcrAct.event_date,
+      start_time: lcrAct.start_time ?? pendingAct.start_time ?? null,
+      end_time: lcrAct.end_time ?? pendingAct.end_time ?? null,
+      location: lcrAct.location || pendingAct.location,
+      description: lcrAct.description || pendingAct.description || null,
+      origin: 'lcr',
+    };
+
+    setActivities((prev) =>
+      prev
+        .filter((a) => a.id !== lcrActivityId)
+        .map((a) => (a.id === pendingActivityId ? mergedRecord : a))
+    );
+
+    if (!isSimulating) {
+      try {
+        await supabase.from('activities').delete().eq('id', lcrActivityId);
+        await supabase
+          .from('activities')
+          .update({
+            ical_uid: mergedRecord.ical_uid,
+            event_date: mergedRecord.event_date,
+            start_time: mergedRecord.start_time,
+            end_time: mergedRecord.end_time,
+            location: mergedRecord.location,
+            description: mergedRecord.description,
+          })
+          .eq('id', pendingActivityId);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleMarkNoLcrRequired = async (activityId: number) => {
+    const noLcrUid = `NO_LCR_${activityId}`;
+    setActivities((prev) =>
+      prev.map((a) => (a.id === activityId ? { ...a, ical_uid: noLcrUid } : a))
+    );
+    if (!isSimulating) {
+      try {
+        await supabase.from('activities').update({ ical_uid: noLcrUid }).eq('id', activityId);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleDeleteActivity = async (activityId: number) => {
+    setActivities((prev) => prev.filter((a) => a.id !== activityId));
+    if (!isSimulating) {
+      try {
+        await supabase.from('activities').delete().eq('id', activityId);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleCancelActivity = async (activityId: number) => {
+    setActivities((prev) =>
+      prev.map((a) => (a.id === activityId ? { ...a, status: 'CANCELADA' as const } : a))
+    );
+    if (!isSimulating) {
+      try {
+        await supabase.from('activities').update({ status: 'CANCELADA' }).eq('id', activityId);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleManualCalendarSync = async () => {
+    const result = await syncLcrCalendarWithShield({
+      currentActivities: activities,
+      attemptLiveFetch: true,
+      bypassDbShield: true,
+    });
+    setActivities(result.activities);
+  };
+
+  const handleUpdateApprovedActivity = async (
+    id: number,
+    updates: {
+      title: string;
+      event_date: string;
+      start_time: string | null;
+      location: string;
+      organization: OrganizationCode;
+      description: string;
+      estimated_cost: number;
+    }
+  ) => {
+    setActivities((prev) =>
+      prev.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              ...updates,
+              has_budget: updates.estimated_cost > 0,
+            }
+          : a
+      )
+    );
+    if (!isSimulating) {
+      try {
+        await supabase
+          .from('activities')
+          .update({
+            title: updates.title,
+            event_date: updates.event_date,
+            start_time: updates.start_time,
+            location: updates.location,
+            organization: updates.organization,
+            description: updates.description,
+            estimated_cost: updates.estimated_cost,
+            has_budget: updates.estimated_cost > 0,
+          })
+          .eq('id', id);
+      } catch {
+        // Estado local ya actualizado
+      }
     }
   };
 
@@ -1997,20 +2144,30 @@ export const PresidencyHub: React.FC = () => {
             onResetFutureYearProjection={handleResetFutureYearProjection}
           />
         ) : activeTab === 'APPROVALS' ? (
-          <ActivityApprovalTray
+          <CalendarControlPanel
             activities={activities}
+            expenses={expenses}
             canApprove={Boolean(user.can_approve_activities || (user.email && isSuperAdminEmail(user.email)))}
+            isSuperAdmin={Boolean(user.email && isSuperAdminEmail(user.email))}
             userFullName={user.full_name}
             userCalling={user.calling}
             onApproveActivity={handleApproveActivity}
             onRejectActivity={handleRejectActivity}
             onEditAndApproveActivity={handleEditAndApproveActivity}
+            onUpdateApprovedActivity={handleUpdateApprovedActivity}
+            onLinkWithLcrEvent={handleLinkWithLcrEvent}
+            onMarkNoLcrRequired={handleMarkNoLcrRequired}
+            onDeleteActivity={handleDeleteActivity}
+            onCancelActivity={handleCancelActivity}
+            onManualSync={handleManualCalendarSync}
           />
         ) : activeTab === 'CALENDAR' ? (
           <CalendarView
             selectedYear={selectedYear}
             activitiesProp={activities}
             onActivitiesUpdate={setActivities}
+            onlyPendingLcr={calendarOnlyPendingLcr}
+            onClearPendingLcrFilter={() => setCalendarOnlyPendingLcr(false)}
             embedded
           />
         ) : activeTab === 'SUPPLIERS' ? (
@@ -2042,6 +2199,46 @@ export const PresidencyHub: React.FC = () => {
                 </div>
                 <ChevronRight className="w-4 h-4 text-amber-700 flex-shrink-0 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition" />
               </button>
+            )}
+
+            {/* AVISOS DE CALENDARIO EN DOS RENGLONES APILADOS (1: Por aprobar · 2: Pendientes LCR) */}
+            {(pendingProposalsCount > 0 || pendingLcrCount > 0) && (
+              <div className="space-y-2" data-testid="presidency-calendar-alerts-stack">
+                {pendingProposalsCount > 0 && (
+                  <button
+                    type="button"
+                    data-testid="presidency-pending-approvals-banner"
+                    onClick={() => setActiveTab('APPROVALS')}
+                    className="pressable w-full text-left rounded-2xl bg-amber-50/90 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3 hover:bg-amber-100/70 transition group cursor-pointer"
+                  >
+                    <span className="text-xs sm:text-sm font-bold text-amber-950">
+                      {pendingProposalsCount === 1
+                        ? '1 actividad pendiente de aprobación'
+                        : `${pendingProposalsCount} actividades pendientes de aprobación`}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-amber-700 shrink-0 opacity-70 group-hover:opacity-100 transition" />
+                  </button>
+                )}
+
+                {pendingLcrCount > 0 && (
+                  <button
+                    type="button"
+                    data-testid="presidency-pending-lcr-banner"
+                    onClick={() => {
+                      setCalendarOnlyPendingLcr(true);
+                      setActiveTab('CALENDAR');
+                    }}
+                    className="pressable w-full text-left rounded-2xl bg-white border border-slate-200 px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition group cursor-pointer"
+                  >
+                    <span className="text-xs sm:text-sm font-bold text-slate-800">
+                      {pendingLcrCount === 1
+                        ? '1 actividad aprobada pendiente de cargar en LCR'
+                        : `${pendingLcrCount} actividades aprobadas pendientes de cargar en LCR`}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-slate-500 shrink-0 opacity-70 group-hover:opacity-100 transition" />
+                  </button>
+                )}
+              </div>
             )}
 
             {/* 1. TARJETA MAESTRA DE FONDOS (KPI PRINCIPAL) */}
@@ -2233,12 +2430,13 @@ export const PresidencyHub: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-4">
                 {executiveMetrics.orgStats.map((stat) => {
                   const isExpanded = Boolean(expandedOrgs[stat.organization]);
+                  const todayIso = new Date().toISOString().slice(0, 10);
                   const nextAct = activities
                     .filter(
                       (a) =>
                         a.organization === stat.organization &&
                         a.status === 'APROBADA' &&
-                        a.event_date >= '2026-11-01'
+                        a.event_date >= todayIso
                     )
                     .sort((a, b) => a.event_date.localeCompare(b.event_date))[0];
 

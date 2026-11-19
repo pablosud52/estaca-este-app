@@ -222,7 +222,7 @@ export function canViewActivityBudget(
  */
 export function parseMmddMontoShortcut(
   rawInput: string,
-  year = 2026
+  year = new Date().getFullYear()
 ): { isValid: boolean; date?: string; amount?: number; ref?: string } {
   const clean = rawInput.trim();
   const match = /^(\d{2})(\d{2})-(\d+(?:[.,]\d{1,2})?)$/.exec(clean);

@@ -28,7 +28,7 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
 }) => {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [title, setTitle] = useState('');
-  const [eventDate, setEventDate] = useState('2026-11-25');
+  const [eventDate, setEventDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState('19:00');
   const [location, setLocation] = useState('');
   const [estimatedCost, setEstimatedCost] = useState('');

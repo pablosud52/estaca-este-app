@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar,
   ChevronDown,
+  ChevronRight,
   Clock,
   MapPin,
   Plus,
@@ -36,7 +37,10 @@ import {
   QuarterSummary,
 } from '../types/database';
 import { ProposeActivityModal } from '../components/ProposeActivityModal';
-import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
+import {
+  isActivityPendingLcr,
+  syncLcrCalendarWithShield,
+} from '../services/lcrSyncService';
 import { CalendarView } from './CalendarView';
 import { SuppliersView } from './SuppliersView';
 import { LeadersDirectoryView } from './LeadersDirectoryView';
@@ -68,12 +72,16 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   onYearChange,
 }) => {
   const { user, isSimulating } = useAuth();
-  const [internalYear, setInternalYear] = useState<number>(2026);
+  const currentYear = new Date().getFullYear();
+  const [internalYear, setInternalYear] = useState<number>(currentYear);
   const activeYear = selectedYear ?? internalYear;
 
   const availableYears = useMemo(
-    () => (user.role === 'LIDER' ? [2026, 2027] : [2025, 2026, 2027]),
-    [user.role]
+    () =>
+      user.role === 'LIDER'
+        ? [currentYear, currentYear + 1]
+        : [currentYear - 1, currentYear, currentYear + 1],
+    [user.role, currentYear]
   );
 
   const handleYearSelect = (yr: number) => {
@@ -107,11 +115,24 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
   // Navegación principal (Resumen, Calendario General, Proveedores) y Drawer móvil
   const [activeTab, setActiveTab] = useState<'SUMMARY' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY'>('SUMMARY');
+  const [calendarOnlyPendingLcr, setCalendarOnlyPendingLcr] = useState<boolean>(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   const [isProposeOpen, setIsProposeOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const myPendingLcrCount = useMemo(
+    () =>
+      activities.filter((act) => {
+        if (!isActivityPendingLcr(act)) return false;
+        if (act.organization === baseOrg) return true;
+        if (canUseSeminario && act.organization === 'SEMINARIO') return true;
+        return false;
+      }).length,
+    [activities, baseOrg, canUseSeminario]
+  );
+
   const selectTabAndCloseDrawer = (tab: 'SUMMARY' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY') => {
+    setCalendarOnlyPendingLcr(false);
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
   };
@@ -365,7 +386,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   }, [financialSummary.orgExpenses, quarterFilter, activities]);
 
   // Fecha de referencia actual para separar actividades pasadas (realizadas) de las próximas futuras
-  const referenceToday = '2026-11-08';
+  const referenceToday = new Date().toISOString().slice(0, 10);
 
   // Determina si una actividad corresponde a la agenda propia de la organización (incluyendo Seminario y actividades conjuntas HJ/MJ)
   const isOwnOrgOrYouthJointActivity = (act: ActivityRecord): boolean => {
@@ -783,6 +804,8 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             onActivitiesUpdate={setActivities}
             onBack={() => setActiveTab('SUMMARY')}
             onProposeActivity={() => setIsProposeOpen(true)}
+            onlyPendingLcr={calendarOnlyPendingLcr}
+            onClearPendingLcrFilter={() => setCalendarOnlyPendingLcr(false)}
             embedded
           />
         </main>
@@ -810,6 +833,26 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-300 flex-shrink-0" />
             <span>{toastMessage}</span>
           </div>
+        )}
+
+        {/* Aviso limpio si hay actividades aprobadas de su organización pendientes de cargar en LCR */}
+        {myPendingLcrCount > 0 && (
+          <button
+            type="button"
+            data-testid="leader-pending-lcr-banner"
+            onClick={() => {
+              setCalendarOnlyPendingLcr(true);
+              setActiveTab('CALENDAR');
+            }}
+            className="pressable w-full text-left rounded-2xl bg-white border border-slate-200 px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition cursor-pointer"
+          >
+            <span className="text-xs font-bold text-slate-800">
+              {myPendingLcrCount === 1
+                ? '1 actividad aprobada pendiente de cargar en LCR'
+                : `${myPendingLcrCount} actividades aprobadas pendientes de cargar en LCR`}
+            </span>
+            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+          </button>
         )}
 
         {/* 1. TARJETA MAESTRA "PRESUPUESTO DISPONIBLE" (Unificada con Presidencia) */}

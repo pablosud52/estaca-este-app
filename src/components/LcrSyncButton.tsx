@@ -62,12 +62,13 @@ export function formatRemainingCooldown(seconds: number): string {
 }
 
 interface LcrSyncButtonProps {
-  onSync: () => Promise<void>;
+  onSync: () => Promise<void | { source?: string }>;
   className?: string;
 }
 
 export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className = '' }) => {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [usedFallback, setUsedFallback] = useState<boolean>(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(() => {
     const st = loadButtonState();
     const diff = Math.ceil((st.cooldownUntil - Date.now()) / 1000);
@@ -100,12 +101,16 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
     if (isSyncing || remainingSeconds > 0) return;
 
     setIsSyncing(true);
+    setUsedFallback(false);
     try {
       // Pequeña pausa visual mínima para que el usuario perciba el estado "Sincronizando..."
-      await Promise.all([
+      const [syncRes] = await Promise.all([
         onSync(),
         new Promise((resolve) => setTimeout(resolve, 350)),
       ]);
+      if (syncRes && typeof syncRes === 'object' && syncRes.source === 'lcr_fallback_ical') {
+        setUsedFallback(true);
+      }
     } finally {
       const prev = loadButtonState();
       const now = Date.now();
@@ -185,6 +190,14 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
               {formatRemainingCooldown(remainingSeconds)}
             </strong>
           </span>
+        </p>
+      )}
+      {usedFallback && !isSyncing && (
+        <p
+          data-testid="lcr-sync-fallback-warning"
+          className="mt-1 text-[11px] font-semibold text-amber-700"
+        >
+          Sin conexión directa a LCR (se mostró el respaldo local)
         </p>
       )}
     </div>

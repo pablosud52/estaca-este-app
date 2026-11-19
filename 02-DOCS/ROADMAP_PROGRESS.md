@@ -213,4 +213,10 @@ flowchart TD
 ---
 
 ### 📋 Pendientes de Mejora (Backlog)
+- [ ] **Revisión final de roles y permisos al concluir todas las secciones:** Revisar y pulir todos los roles (Super Admin, 2 Admins fijos, Presidencia, Editor de Finanzas, Líderes, Consulta) una vez terminados todos los paneles (ej. habilitar al Editor de Finanzas la edición del monto estimado de actividades aprobadas en Calendario).
+- [ ] **Nuevo rol/permiso "Editor de Finanzas" + Historial de Logs + Flujo de Proveedores:**
+  - Mantener 2 Admins fijos (Presidente y Secretario de Estaca) + Super Admin (`pablosud52@gmail.com`) sin habilitar rol Admin a nadie más.
+  - Crear permiso delegable **Editor de Finanzas** (siempre activo por defecto para Secretario Financiero y delegable por Admins a Presidencia; se desactiva automáticamente si la persona deja ese llamamiento).
+  - Agregar botón exclusivo para Admins **Historial / Logs** debajo de Finanzas (ingresos con día/hora, modificaciones en el sistema y registro de activación/desactivación del permiso Editor de Finanzas).
+  - En carga de gastos de Finanzas, reutilizar el modal del Panel de Proveedores como sugerencia no bloqueante (solo nombre del proveedor y opcionalmente rubro, sin trabar la carga del gasto). Esas sugerencias irán a una **pestaña propia dentro de la sección Proveedores**, con un contador discreto en la misma pestaña (sin alertas invasivas en el menú principal), para que un Admin las apruebe, complete o elimine (conservando el nombre en el gasto histórico si se descarta del directorio).
 - [ ] **Botón / Modal de copiado rápido para LCR (Gastos):** Evaluar agregar un botón limpio por fila en Registro de Gastos que abra un modal con los datos del gasto listos para LCR (referencia, fecha, proveedor, propósito, monto) y botones individuales de copiar y pegar en cada campo, evitando llenar la tabla de botones.

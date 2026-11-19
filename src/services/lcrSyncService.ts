@@ -7,15 +7,22 @@ import { ActivityRecord, OrganizationCode } from '../types/database';
  * URL oficial del feed iCal público de Estaca Montevideo Uruguay Este en LCR
  */
 export const OFFICIAL_LCR_ICAL_URL =
-  'https://churchofjesuschrist.org/church-calendar/services/ext/v3.0/export/ical/group/cd92d6817fa64d25bc2f55aec4fea180';
+  'https://www.churchofjesuschrist.org/church-calendar/services/ext/v3.0/export/ical/group/cd92d6817fa64d25bc2f55aec4fea180';
 
 /**
  * Tiempo mínimo entre consultas reales a los servidores de la Iglesia (Escudo de Base de Datos: 10 minutos)
  */
 export const DB_SHIELD_WINDOW_MS = 10 * 60 * 1000;
 
+/**
+ * Tiempo máximo de espera para la consulta en vivo al feed iCal de LCR (8 segundos)
+ */
+export const LIVE_FETCH_TIMEOUT_MS = 8000;
+
 export const LOCAL_SYNC_TIMESTAMP_KEY = 'estaca_lcr_last_synced_at_v1';
 export const LOCAL_SYNCED_ACTIVITIES_KEY = 'estaca_lcr_synced_activities_v1';
+export const LOCAL_LIVE_UIDS_KEY = 'estaca_lcr_live_uids_v1';
+export const LOCAL_LAST_SYNC_SOURCE_KEY = 'estaca_lcr_last_sync_source_v1';
 
 /**
  * Respaldo iCal RFC 5545 oficial con los eventos de LCR de la Estaca Montevideo Uruguay Este.
@@ -425,16 +432,110 @@ export async function fetchConsolidatedActivitiesFromSupabase(): Promise<Activit
 }
 
 /**
+ * Lee actividades previamente sincronizadas desde localStorage como respaldo offline.
+ */
+function loadCachedSyncedActivities(): ActivityRecord[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_SYNCED_ACTIVITIES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ActivityRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Persiste eventos nuevos o reprogramados de LCR en la tabla `public.activities` de Supabase.
+ * Preserva `organization`, `estimated_cost`, `has_budget` y `status` de registros existentes.
+ */
+async function persistLcrEventsToSupabase(parsedEvents: ParsedIcalEvent[]): Promise<void> {
+  if (parsedEvents.length === 0) return;
+
+  try {
+    const { data: existingRows, error: selectError } = await supabase
+      .from('activities')
+      .select('id, ical_uid, title');
+
+    if (selectError || !existingRows) return;
+
+    const byUid = new Map<string, number>();
+    const byTitle = new Map<string, number>();
+
+    for (const row of existingRows) {
+      if (row.ical_uid) {
+        byUid.set(row.ical_uid, row.id);
+      }
+      if (row.title) {
+        byTitle.set(String(row.title).trim().toLowerCase(), row.id);
+      }
+    }
+
+    const toInsert: Array<Record<string, unknown>> = [];
+    const toUpdate: Array<{ id: number; payload: Record<string, unknown> }> = [];
+
+    for (const ev of parsedEvents) {
+      const existingId = byUid.get(ev.uid) ?? byTitle.get(ev.title.trim().toLowerCase());
+      if (existingId !== undefined) {
+        toUpdate.push({
+          id: existingId,
+          payload: {
+            ical_uid: ev.uid,
+            title: ev.title,
+            event_date: ev.event_date,
+            start_time: ev.start_time,
+            end_time: ev.end_time,
+            location: ev.location,
+            description: ev.description,
+          },
+        });
+      } else {
+        toInsert.push({
+          ical_uid: ev.uid,
+          title: ev.title,
+          event_date: ev.event_date,
+          start_time: ev.start_time,
+          end_time: ev.end_time,
+          location: ev.location,
+          description: ev.description,
+          organization: ev.inferredOrg,
+          estimated_cost: 0,
+          has_budget: false,
+          status: 'APROBADA',
+        });
+      }
+    }
+
+    if (toInsert.length > 0) {
+      await supabase
+        .from('activities')
+        .upsert(toInsert, { onConflict: 'ical_uid', ignoreDuplicates: true });
+    }
+
+    if (toUpdate.length > 0) {
+      await Promise.all(
+        toUpdate.map((item) =>
+          supabase.from('activities').update(item.payload).eq('id', item.id)
+        )
+      );
+    }
+  } catch {
+    // Silencioso si no hay conexión o permisos de escritura
+  }
+}
+
+/**
  * Sincronización inteligente con Doble Escudo:
- * 1. Revisa `last_synced_at` en Supabase. Si han pasado menos de 10 minutos, no consulta los
- *    servidores de la Iglesia y lee directamente de Supabase (`skippedByDbShield = true`).
- * 2. Si pasaron >= 10 minutos (o no existe registro previo), consulta el feed iCal de LCR,
+ * 1. Revisa `last_synced_at` en Supabase. Si han pasado menos de 10 minutos (y no se fuerza
+ *    sincronización manual), no consulta los servidores de la Iglesia y lee de Supabase/caché (`skippedByDbShield = true`).
+ * 2. Si pasaron >= 10 minutos (o es sincronización manual), consulta el feed iCal de LCR,
  *    parsea con `ical.js` (RFC 5545), deduplica por `ical_uid` sin duplicar reprogramaciones,
- *    actualiza Supabase y registra el nuevo `last_synced_at`.
+ *    persiste los eventos nuevos/actualizados en Supabase y registra el nuevo `last_synced_at`.
  */
 export async function syncLcrCalendarWithShield(options?: {
   currentActivities?: ActivityRecord[];
   attemptLiveFetch?: boolean;
+  bypassDbShield?: boolean;
 }): Promise<LcrSyncResult> {
   const nowMs = Date.now();
   const lastSyncedAt = await getSharedLastSyncedAt();
@@ -442,13 +543,17 @@ export async function syncLcrCalendarWithShield(options?: {
     options?.currentActivities && options.currentActivities.length > 0
       ? options.currentActivities
       : await fetchConsolidatedActivitiesFromSupabase();
+  const shouldAttemptLiveFetch = options?.attemptLiveFetch ?? true;
 
-  // 1. Escudo de Base de Datos (Compartido: 10 minutos)
-  if (lastSyncedAt) {
+  // 1. Escudo de Base de Datos (Compartido: 10 minutos, omitido solo en pulsación manual)
+  if (lastSyncedAt && !options?.bypassDbShield) {
     const elapsedMs = nowMs - Date.parse(lastSyncedAt);
     if (!Number.isNaN(elapsedMs) && elapsedMs >= 0 && elapsedMs < DB_SHIELD_WINDOW_MS) {
+      const cached = loadCachedSyncedActivities();
+      const combinedBase =
+        cached.length > 0 ? ensureUniqueActivities([...baseActivities, ...cached]) : baseActivities;
       const parsedFallback = parseIcalFeedWithIcalJs(FALLBACK_OFFICIAL_ICS_PAYLOAD);
-      const { merged } = deduplicateAndMergeIcalEvents(baseActivities, parsedFallback);
+      const { merged } = deduplicateAndMergeIcalEvents(combinedBase, parsedFallback);
       return {
         activities: merged,
         lastSyncedAt,
@@ -459,14 +564,14 @@ export async function syncLcrCalendarWithShield(options?: {
     }
   }
 
-  // 2. Consultar el feed iCal público de la Iglesia (con timeout rápido de 450ms si se solicita explícitamente)
+  // 2. Consultar el feed iCal público de la Iglesia
   let rawIcs = FALLBACK_OFFICIAL_ICS_PAYLOAD;
   let source: 'lcr_live_ical' | 'lcr_fallback_ical' = 'lcr_fallback_ical';
 
-  if (options?.attemptLiveFetch) {
+  if (shouldAttemptLiveFetch) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 450);
+      const timeoutId = setTimeout(() => controller.abort(), LIVE_FETCH_TIMEOUT_MS);
       const response = await fetch(OFFICIAL_LCR_ICAL_URL, {
         method: 'GET',
         signal: controller.signal,
@@ -489,12 +594,22 @@ export async function syncLcrCalendarWithShield(options?: {
   const parsedEvents = parseIcalFeedWithIcalJs(rawIcs);
   const { merged, upsertedCount } = deduplicateAndMergeIcalEvents(baseActivities, parsedEvents);
 
-  // 4. Persistir cambios de reprogramación en Supabase (por ical_uid) y actualizar timestamp
+  // 4. Persistir eventos nuevos y reprogramaciones en Supabase (`public.activities`) y actualizar timestamp
   const newIsoTimestamp = new Date(nowMs).toISOString();
-  await saveSharedLastSyncedAt(newIsoTimestamp);
+  if (source === 'lcr_live_ical') {
+    await persistLcrEventsToSupabase(parsedEvents);
+    await saveSharedLastSyncedAt(newIsoTimestamp);
+  }
 
   try {
     localStorage.setItem(LOCAL_SYNCED_ACTIVITIES_KEY, JSON.stringify(merged));
+    localStorage.setItem(LOCAL_LAST_SYNC_SOURCE_KEY, source);
+    if (source === 'lcr_live_ical') {
+      localStorage.setItem(
+        LOCAL_LIVE_UIDS_KEY,
+        JSON.stringify(parsedEvents.map((e) => e.uid))
+      );
+    }
   } catch {
     // Ignorar
   }
@@ -506,4 +621,70 @@ export async function syncLcrCalendarWithShield(options?: {
     upsertedCount,
     source,
   };
+}
+
+/**
+ * Indica si una actividad ya aprobada en la plataforma aún no está vinculada a LCR
+ * (y no fue marcada como "No requiere LCR"). Nunca marca propuestas sin aprobar.
+ */
+export function isActivityPendingLcr(act: ActivityRecord): boolean {
+  if (act.status !== 'APROBADA') return false;
+  const uid = (act.ical_uid || '').trim();
+  if (uid.startsWith('NO_LCR_')) return false;
+  if (uid.startsWith('PROPUESTA_LIDER')) return true;
+  if (!uid && act.origin === 'propuesta_lider') return true;
+  return false;
+}
+
+/**
+ * Indica si una actividad fue marcada explícitamente como "No requiere LCR".
+ */
+export function isActivityNoLcr(act: ActivityRecord): boolean {
+  return (act.ical_uid || '').trim().startsWith('NO_LCR_');
+}
+
+/**
+ * Devuelve el estado resumido de la última sincronización con LCR y los UIDs vivos conocidos.
+ */
+export function getLocalLcrSyncMeta(): {
+  lastSyncedAt: string | null;
+  lastSource: string | null;
+  liveUids: string[];
+} {
+  try {
+    const lastSyncedAt = localStorage.getItem(LOCAL_SYNC_TIMESTAMP_KEY);
+    const lastSource = localStorage.getItem(LOCAL_LAST_SYNC_SOURCE_KEY);
+    const rawUids = localStorage.getItem(LOCAL_LIVE_UIDS_KEY);
+    const liveUids = rawUids ? (JSON.parse(rawUids) as string[]) : [];
+    return {
+      lastSyncedAt,
+      lastSource,
+      liveUids: Array.isArray(liveUids) ? liveUids : [],
+    };
+  } catch {
+    return { lastSyncedAt: null, lastSource: null, liveUids: [] };
+  }
+}
+
+/**
+ * Indica si un evento vinculado a LCR dejó de aparecer en la última lectura en vivo de LCR.
+ */
+export function isActivityMissingFromLcr(
+  act: ActivityRecord,
+  liveUids: string[],
+  lastSource: string | null
+): boolean {
+  if (lastSource !== 'lcr_live_ical' || liveUids.length === 0) return false;
+  if (act.status !== 'APROBADA') return false;
+  const uid = (act.ical_uid || '').trim();
+  if (
+    !uid ||
+    uid.startsWith('PROPUESTA_LIDER') ||
+    uid.startsWith('NO_LCR_') ||
+    uid.startsWith('ACT-2026-') ||
+    uid.startsWith('LCR-2026-')
+  ) {
+    return false;
+  }
+  return !liveUids.includes(uid);
 }

@@ -177,7 +177,7 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
     await page.getByTestId('calendar-org-filter-trigger').click();
     await page.getByTestId('calendar-filter-org-ESTACA').click();
     await expect(
-      scrollContainer.getByRole('heading', { name: 'Consejo de Estaca' })
+      scrollContainer.getByRole('heading', { name: 'Consejo de Estaca', exact: true })
     ).toBeVisible();
     await expect(
       scrollContainer.getByRole('heading', { name: 'Conferencia de Estaca Octubre' })

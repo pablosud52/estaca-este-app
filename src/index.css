@@ -128,6 +128,24 @@ dialog::backdrop {
   scrollbar-width: none;
 }
 
+/* Post-interaction form validation (validate-input-after-interaction) */
+.validated-field:user-invalid {
+  border-color: #dc2626;
+  background-color: #fef2f2;
+}
+
+.validated-field:user-invalid + .field-error-msg {
+  display: block;
+}
+
+.validated-field:user-valid {
+  border-color: #16a34a;
+}
+
+.field-error-msg {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pressable:active:not(:disabled) {
     transform: none;

@@ -220,8 +220,8 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     entry: StakeDirectoryEntry,
     cleanPhone: string,
     cleanEmail: string
-  ) => {
-    await updateDirectoryEntry(entry.id, {
+  ): Promise<boolean> => {
+    const res = await updateDirectoryEntry(entry.id, {
       first_name: draftFirstName.trim(),
       last_name: draftLastName.trim(),
       phone: cleanPhone,
@@ -232,9 +232,15 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
       has_app_access: cleanEmail ? entry.has_app_access : false,
     });
 
+    if (!res.ok) {
+      triggerToast(res.error || 'No se pudo guardar en la base de datos.', true);
+      return false;
+    }
+
     setEditingId(null);
     setDraftCleared(false);
     setDraftError(null);
+    return true;
   };
 
   const handleSaveEdit = async (entry: StakeDirectoryEntry) => {
@@ -308,8 +314,10 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     }
 
     // Caso 3: Guardado normal (incluye primera carga de un Presidente que estaba vacío)
-    await commitStandardSave(entry, cleanPhone, cleanEmail);
-    triggerToast(`Datos guardados para ${entry.calling}.`);
+    const saved = await commitStandardSave(entry, cleanPhone, cleanEmail);
+    if (saved) {
+      triggerToast(`Datos guardados para ${entry.calling}.`);
+    }
   };
 
   const handleToggleAccess = async (entry: StakeDirectoryEntry) => {
@@ -591,9 +599,9 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                       const { entry, cleanPhone, cleanEmail } = presidentModal;
                       setPresidentModal(null);
                       await commitStandardSave(entry, cleanPhone, cleanEmail);
-                      const cleared = await releasePresidencyCounselors(entry.slot_key);
+                      const { clearedCounselors } = await releasePresidencyCounselors(entry.slot_key);
                       triggerToast(
-                        `Nuevo Presidente/a guardado. Se vaciaron: ${cleared.join(', ')}.`
+                        `Nuevo Presidente/a guardado. Se vaciaron: ${clearedCounselors.join(', ')}.`
                       );
                     }}
                     className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold"

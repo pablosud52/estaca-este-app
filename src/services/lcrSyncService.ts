@@ -128,13 +128,14 @@ export interface LcrSyncResult {
  */
 export function inferOrganizationFromText(title: string, description?: string | null): OrganizationCode {
   const text = `${title} ${description || ''}`.toUpperCase();
+  if (text.includes('CHURCHWIDE EVENTS') || text.includes('CHURCHWIDE')) return 'CHURCHWIDE';
   if (text.includes('PRIMARIA')) return 'PRIMARIA';
   if (text.includes('SEMINARIO')) return 'SEMINARIO';
-  if (text.includes('MUJERES JÓVENES') || text.includes('MUJERES JOVENES') || text.includes('MMJJ')) {
-    if (text.includes('HOMBRES') || text.includes('HHJJ') || text.includes('HJ')) return 'HJ';
+  if (text.includes('MUJERES JÓVENES') || text.includes('MUJERES JOVENES') || text.includes('MMJJ') || text.includes('MM JJ')) {
+    if (text.includes('HOMBRES') || text.includes('HHJJ') || text.includes('HH YY') || text.includes('HH Y MM') || text.includes('HJ')) return 'HJ';
     return 'MJ';
   }
-  if (text.includes('HOMBRES JÓVENES') || text.includes('HOMBRES JOVENES') || text.includes('HHJJ') || text.includes('HJ')) {
+  if (text.includes('HOMBRES JÓVENES') || text.includes('HOMBRES JOVENES') || text.includes('HHJJ') || text.includes('HH Y MM') || text.includes('HJ')) {
     return 'HJ';
   }
   if (text.includes('SOCIEDAD DE SOCORRO') || text.includes('SOC. SOC.') || text.includes('SOC SOC')) {
@@ -144,7 +145,7 @@ export function inferOrganizationFromText(title: string, description?: string | 
   if (text.includes('ADULTOS SOLTEROS') || text.includes('ACTIVIDAD AS ') || text.includes('REUNIÓN AS')) {
     return 'AS';
   }
-  if (text.includes('FAMILYSEARCH') || text.includes('HISTORIA FAMILIAR') || text.includes('CFS')) {
+  if (text.includes('FAMILYSEARCH') || text.includes('FAMILY SEARCH') || text.includes('HISTORIA FAMILIAR') || text.includes('CFS')) {
     return 'CFS';
   }
   return 'ESTACA';
@@ -269,6 +270,9 @@ export function deduplicateAndMergeIcalEvents(
         upsertedCount += 1;
       }
 
+      const shouldRefineOrg =
+        target.organization === 'ESTACA' && parsed.inferredOrg !== 'ESTACA';
+
       const updated: ActivityRecord = {
         ...target,
         ical_uid: parsed.uid,
@@ -278,6 +282,7 @@ export function deduplicateAndMergeIcalEvents(
         end_time: parsed.end_time || target.end_time || null,
         location: parsed.location || target.location,
         description: parsed.description || target.description || null,
+        organization: shouldRefineOrg ? parsed.inferredOrg : target.organization,
         origin: 'lcr',
       };
 
@@ -455,19 +460,19 @@ async function persistLcrEventsToSupabase(parsedEvents: ParsedIcalEvent[]): Prom
   try {
     const { data: existingRows, error: selectError } = await supabase
       .from('activities')
-      .select('id, ical_uid, title');
+      .select('id, ical_uid, title, organization');
 
     if (selectError || !existingRows) return;
 
-    const byUid = new Map<string, number>();
-    const byTitle = new Map<string, number>();
+    const byUid = new Map<string, { id: number; organization?: string }>();
+    const byTitle = new Map<string, { id: number; organization?: string }>();
 
     for (const row of existingRows) {
       if (row.ical_uid) {
-        byUid.set(row.ical_uid, row.id);
+        byUid.set(row.ical_uid, { id: row.id, organization: row.organization });
       }
       if (row.title) {
-        byTitle.set(String(row.title).trim().toLowerCase(), row.id);
+        byTitle.set(String(row.title).trim().toLowerCase(), { id: row.id, organization: row.organization });
       }
     }
 
@@ -475,19 +480,23 @@ async function persistLcrEventsToSupabase(parsedEvents: ParsedIcalEvent[]): Prom
     const toUpdate: Array<{ id: number; payload: Record<string, unknown> }> = [];
 
     for (const ev of parsedEvents) {
-      const existingId = byUid.get(ev.uid) ?? byTitle.get(ev.title.trim().toLowerCase());
-      if (existingId !== undefined) {
+      const existing = byUid.get(ev.uid) ?? byTitle.get(ev.title.trim().toLowerCase());
+      if (existing !== undefined) {
+        const payload: Record<string, unknown> = {
+          ical_uid: ev.uid,
+          title: ev.title,
+          event_date: ev.event_date,
+          start_time: ev.start_time,
+          end_time: ev.end_time,
+          location: ev.location,
+          description: ev.description,
+        };
+        if (existing.organization === 'ESTACA' && ev.inferredOrg !== 'ESTACA') {
+          payload.organization = ev.inferredOrg;
+        }
         toUpdate.push({
-          id: existingId,
-          payload: {
-            ical_uid: ev.uid,
-            title: ev.title,
-            event_date: ev.event_date,
-            start_time: ev.start_time,
-            end_time: ev.end_time,
-            location: ev.location,
-            description: ev.description,
-          },
+          id: existing.id,
+          payload,
         });
       } else {
         toInsert.push({

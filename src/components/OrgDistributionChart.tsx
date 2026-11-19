@@ -54,6 +54,7 @@ const CHART_AXIS_LABELS: Record<OrganizationCode, string> = {
   AS: 'Adultos Solteros',
   CFS: 'FamilySearch',
   ESTACA: 'Estaca',
+  CHURCHWIDE: 'Churchwide Events',
   TODAS: 'Todas',
 };
 

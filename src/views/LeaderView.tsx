@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Building2,
   LayoutDashboard,
+  LogOut,
   ShieldCheck,
   Users,
 } from 'lucide-react';
@@ -71,7 +72,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   selectedYear,
   onYearChange,
 }) => {
-  const { user, isSimulating } = useAuth();
+  const { user, isSimulating, signOut, realAuthEmail } = useAuth();
   const currentYear = new Date().getFullYear();
   const [internalYear, setInternalYear] = useState<number>(currentYear);
   const activeYear = selectedYear ?? internalYear;
@@ -586,7 +587,10 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 </div>
               )}
 
-              <div className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs">
+              <div
+                title={realAuthEmail ? `Conectado como ${realAuthEmail}` : undefined}
+                className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs"
+              >
                 <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
                 <span
                   data-testid="header-user-name"
@@ -595,6 +599,19 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                   {user.full_name}
                 </span>
               </div>
+
+              {!onBackToHub && (
+                <button
+                  type="button"
+                  data-testid="leader-signout-btn"
+                  title={realAuthEmail ? `Salir (${realAuthEmail})` : 'Salir'}
+                  onClick={() => signOut()}
+                  className="pressable inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-700 border border-slate-200 text-xs font-bold transition"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Salir</span>
+                </button>
+              )}
             </div>
           </div>
 

@@ -30,7 +30,8 @@ import { LcrSyncButton } from '../components/LcrSyncButton';
 type SelectableOrg = Exclude<OrganizationCode, 'TODAS' | 'SEMINARIO'>;
 
 const SELECTABLE_ORGS: Array<{ code: SelectableOrg; label: string; dotClass: string }> = [
-  { code: 'ESTACA', label: 'Estaca General', dotClass: 'bg-slate-500' },
+  { code: 'ESTACA', label: 'Estaca General', dotClass: 'bg-teal-600' },
+  { code: 'CHURCHWIDE', label: 'Churchwide Events', dotClass: 'bg-slate-500' },
   { code: 'MJ', label: ORGANIZATION_LABELS.MJ, dotClass: 'bg-rose-500' },
   { code: 'HJ', label: ORGANIZATION_LABELS.HJ, dotClass: 'bg-blue-500' },
   { code: 'SS', label: ORGANIZATION_LABELS.SS, dotClass: 'bg-purple-500' },
@@ -41,7 +42,7 @@ const SELECTABLE_ORGS: Array<{ code: SelectableOrg; label: string; dotClass: str
 ];
 
 const ORG_CARD_STYLES: Record<OrganizationCode, { bg: string; border: string }> = {
-  ESTACA: { bg: 'bg-slate-100/80 hover:bg-slate-100', border: 'border-slate-300/80' },
+  ESTACA: { bg: 'bg-teal-50/75 hover:bg-teal-50', border: 'border-teal-200/90' },
   MJ: { bg: 'bg-rose-50/75 hover:bg-rose-50', border: 'border-rose-200/90' },
   HJ: { bg: 'bg-blue-50/75 hover:bg-blue-50', border: 'border-blue-200/90' },
   SEMINARIO: {
@@ -53,6 +54,7 @@ const ORG_CARD_STYLES: Record<OrganizationCode, { bg: string; border: string }> 
   JAS: { bg: 'bg-sky-50/75 hover:bg-sky-50', border: 'border-sky-200/90' },
   AS: { bg: 'bg-indigo-50/75 hover:bg-indigo-50', border: 'border-indigo-200/90' },
   CFS: { bg: 'bg-yellow-50/75 hover:bg-yellow-50', border: 'border-yellow-200/90' },
+  CHURCHWIDE: { bg: 'bg-slate-100/80 hover:bg-slate-100', border: 'border-slate-300/80' },
   TODAS: { bg: 'bg-slate-50/75', border: 'border-slate-200/90' },
 };
 
@@ -202,6 +204,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     return localActivities
       .filter((act) => {
         if (act.status === 'CANCELADA' || act.status === 'RECHAZADA') return false;
+        // Reuniones reservadas (Sumo Consejo, Presidencia de Estaca) solo visibles para Presidencia y Admin; Consejo de Estaca sí es visible para todos
+        if (user.role !== 'ADMIN' && user.role !== 'PRESIDENCIA') {
+          const text = `${act.title} ${act.description || ''}`.toUpperCase();
+          const isStakeCouncil = text.includes('CONSEJO DE ESTACA');
+          const isPrivateStakeMeeting =
+            !isStakeCouncil &&
+            (text.includes('SUMO CONSEJO') ||
+              text.includes('HIGH COUNCIL') ||
+              text.includes('PRESIDENCIA DE ESTACA') ||
+              text.includes('STAKE PRESIDENCY') ||
+              text.includes('REUNIÓN DE PRESIDENCIA') ||
+              text.includes('REUNION DE PRESIDENCIA'));
+          if (isPrivateStakeMeeting) return false;
+        }
         if (onlyPendingLcr) {
           if (!isActivityPendingLcr(act)) return false;
         } else if (!act.event_date.startsWith(String(selectedYear))) {

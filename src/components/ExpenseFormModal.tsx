@@ -126,7 +126,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
 
   const [isAddingSupplier, setIsAddingSupplier] = useState(false);
   const [newSupplierName, setNewSupplierName] = useState('');
-  const [newSupplierRut, setNewSupplierRut] = useState('');
+  const [newSupplierCategory, setNewSupplierCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -507,14 +507,14 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     if (!newSupplierName.trim()) return;
     await onCreateSupplier({
       commercial_name: newSupplierName.trim(),
-      rut: newSupplierRut.trim() || undefined,
-      category: 'Comercio General',
+      category: newSupplierCategory.trim() || 'Varios',
       official_invoice: true,
       rating: 5,
+      status: 'PENDIENTE',
     });
     setSupplierName(newSupplierName.trim());
     setNewSupplierName('');
-    setNewSupplierRut('');
+    setNewSupplierCategory('');
     setIsAddingSupplier(false);
   };
 
@@ -1094,28 +1094,39 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
           </div>
 
           {isRealExpense && isAddingSupplier && (
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                placeholder="Nombre comercial *"
-                value={newSupplierName}
-                onChange={(e) => setNewSupplierName(e.target.value)}
-                className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-              />
-              <input
-                type="text"
-                placeholder="RUT (opcional)"
-                value={newSupplierRut}
-                onChange={(e) => setNewSupplierRut(e.target.value)}
-                className="w-full sm:w-36 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-              />
-              <button
-                type="button"
-                onClick={handleQuickAddSupplier}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold"
-              >
-                Guardar
-              </button>
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  placeholder="Nombre del proveedor *"
+                  value={newSupplierName}
+                  onChange={(e) => setNewSupplierName(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                />
+                <input
+                  type="text"
+                  list="expense-supplier-categories"
+                  placeholder="Rubro (opcional)"
+                  value={newSupplierCategory}
+                  onChange={(e) => setNewSupplierCategory(e.target.value)}
+                  className="w-full sm:w-44 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                />
+                <datalist id="expense-supplier-categories">
+                  {Array.from(new Set(suppliers.map((s) => s.category).filter(Boolean))).map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
+                <button
+                  type="button"
+                  onClick={handleQuickAddSupplier}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                >
+                  Sugerir
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Se usará en este gasto y quedará pendiente para que un Administrador lo revise en Proveedores.
+              </p>
             </div>
           )}
 

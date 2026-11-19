@@ -1,9 +1,9 @@
 import React from 'react';
-import { ShieldAlert, PhoneCall, Mail } from 'lucide-react';
+import { ShieldAlert, PhoneCall, Mail, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export const UnauthorizedView: React.FC = () => {
-  const { user, switchProfileById } = useAuth();
+  const { user, switchProfileById, signOut, realAuthEmail, isAuthRequired } = useAuth();
 
   return (
     <div
@@ -34,7 +34,10 @@ export const UnauthorizedView: React.FC = () => {
         <div className="mt-5 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-2">
           <div className="flex items-center justify-center gap-2">
             <Mail className="w-3.5 h-3.5 text-slate-400" />
-            <span>Sesión detectada: <strong className="text-slate-700">{user.email}</strong></span>
+            <span>
+              Sesión detectada:{' '}
+              <strong className="text-slate-700">{realAuthEmail || user.email}</strong>
+            </span>
           </div>
           <div className="flex items-center justify-center gap-2 text-slate-400">
             <PhoneCall className="w-3.5 h-3.5" />
@@ -42,14 +45,26 @@ export const UnauthorizedView: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-6">
-          <button
-            type="button"
-            onClick={() => switchProfileById('lider-mj-01')}
-            className="pressable w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-sm hover:bg-slate-800"
-          >
-            Volver a Perfil de Prueba (Líder MJ)
-          </button>
+        <div className="mt-6 space-y-2">
+          {(realAuthEmail || isAuthRequired) ? (
+            <button
+              type="button"
+              data-testid="unauthorized-switch-account-btn"
+              onClick={() => signOut()}
+              className="pressable w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-sm hover:bg-slate-800"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Salir y probar con otra cuenta de Google</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => switchProfileById('lider-mj-01')}
+              className="pressable w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-sm hover:bg-slate-800"
+            >
+              Volver a Perfil de Prueba (Líder MJ)
+            </button>
+          )}
         </div>
       </div>
     </div>

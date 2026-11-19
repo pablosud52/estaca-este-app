@@ -1,13 +1,27 @@
 import React from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DevRoleSwitcher } from './components/DevRoleSwitcher';
+import { LoginView } from './components/LoginView';
 import { UnauthorizedView } from './components/UnauthorizedView';
 import { LeaderView } from './views/LeaderView';
 import { PresidencyHub } from './views/PresidencyHub';
 import { ConsultaView } from './views/ConsultaView';
 
 const AppRouter: React.FC = () => {
-  const { user } = useAuth();
+  const { user, authStatus } = useAuth();
+
+  if (authStatus === 'loading') {
+    return (
+      <div className="min-h-[100dvh] bg-slate-50 flex flex-col items-center justify-center px-5">
+        <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-800 animate-spin mb-3" />
+        <p className="text-xs font-bold text-slate-500">Verificando sesión...</p>
+      </div>
+    );
+  }
+
+  if (authStatus === 'unauthenticated') {
+    return <LoginView />;
+  }
 
   // 1. Usuario No Autorizado o Inactivo -> Mensaje Oficial de Bloqueo
   if (!user.is_active || user.role === 'NO_AUTORIZADO') {

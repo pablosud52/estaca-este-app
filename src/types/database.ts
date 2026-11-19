@@ -10,6 +10,7 @@ export type OrganizationCode =
   | 'AS'
   | 'CFS'
   | 'ESTACA'
+  | 'CHURCHWIDE'
   | 'TODAS';
 
 export type DirectoryOrgCode =
@@ -192,4 +193,5 @@ export interface SupplierRecord {
   rut?: string;
   frequency?: number;
   rating: number;
+  status?: 'ACTIVO' | 'PENDIENTE';
 }

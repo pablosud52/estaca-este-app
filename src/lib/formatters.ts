@@ -174,6 +174,7 @@ export const ORGANIZATION_LABELS: Record<OrganizationCode, string> = {
   AS: 'Adultos Solteros',
   CFS: 'Centro FamilySearch',
   ESTACA: 'Presupuesto propio de Estaca',
+  CHURCHWIDE: 'Churchwide Events',
   TODAS: 'Todas las Organizaciones',
 };
 
@@ -187,6 +188,7 @@ export const ORGANIZATION_SHORT_LABELS: Record<OrganizationCode, string> = {
   AS: 'Adultos Solteros',
   CFS: 'FamilySearch',
   ESTACA: 'Estaca',
+  CHURCHWIDE: 'Churchwide Events',
   TODAS: 'Todas',
 };
 

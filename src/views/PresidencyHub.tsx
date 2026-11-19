@@ -1,18 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle,
   Bell,
   BookOpen,
   Building2,
   Calendar,
   ChevronDown,
-  ChevronRight,
   FileEdit,
   LayoutDashboard,
+  LogOut,
   Shield,
   ShieldCheck,
   Users,
-  Wallet,
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +32,7 @@ import {
   getQuarterFromDate,
   isExpenseApplied,
   ORGANIZATION_LABELS,
+  ORGANIZATION_SHORT_LABELS,
 } from '../lib/formatters';
 import { supabase } from '../lib/supabase';
 import {
@@ -84,6 +83,7 @@ const OPEN_ORG_BUTTON_LABELS: Record<OrganizationCode, string> = {
   AS: 'ABRIR ADULTOS SOLTEROS',
   CFS: 'ABRIR CENTRO FAMILYSEARCH',
   ESTACA: 'ABRIR ESTACA',
+  CHURCHWIDE: 'ABRIR CHURCHWIDE EVENTS',
   TODAS: 'ABRIR ORGANIZACIÓN',
 };
 
@@ -108,7 +108,7 @@ const saveSessionProposals = (list: ActivityRecord[]) => {
 };
 
 export const PresidencyHub: React.FC = () => {
-  const { user, isSimulating, incompleteContactsCount } = useAuth();
+  const { user, isSimulating, incompleteContactsCount, signOut, realAuthEmail } = useAuth();
 
   // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | INFO
   const [activeTab, setActiveTab] = useState<
@@ -569,6 +569,88 @@ export const PresidencyHub: React.FC = () => {
     () => activities.filter(isActivityPendingLcr).length,
     [activities]
   );
+
+  // Indicadores unificados de alertas para Administración (Calendario, Directorio, Finanzas)
+  const hasCalendarAlert = pendingProposalsCount > 0 || pendingLcrCount > 0;
+  const hasDirectoryAlert = incompleteContactsCount > 0;
+  const hasFinanceAlert = executiveMetrics.pendingRenderTotal > 0;
+  const hasAnyAdminAlert = hasCalendarAlert || hasDirectoryAlert || hasFinanceAlert;
+
+  // Monto reservado en actividades del trimestre actual (se descuenta al cargar el gasto real vinculado)
+  const reservedMetrics = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const todayStr = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}`;
+    const currentQuarter = getQuarterFromDate(todayStr);
+    const targetQuarter: QuarterCode =
+      selectedYear === currentYear
+        ? currentQuarter
+        : selectedYear < currentYear
+        ? 'T4'
+        : 'T1';
+
+    const yearStr = String(selectedYear);
+    const appliedActivityIds = new Set<number>();
+    expenses.forEach((exp) => {
+      if (
+        exp.activity_id != null &&
+        isExpenseApplied(exp) &&
+        getExpenseEffectiveDate(exp).startsWith(yearStr)
+      ) {
+        appliedActivityIds.add(exp.activity_id);
+      }
+    });
+
+    const rejectedActivityIds = new Set<number>();
+    activities.forEach((act) => {
+      if (act.status === 'RECHAZADA') {
+        rejectedActivityIds.add(act.id);
+      }
+    });
+
+    const orgTotals = new Map<OrganizationCode, number>();
+    expenses.forEach((exp) => {
+      if (exp.expense_type !== 'PROYECTADO_ACTIVIDAD') return;
+      if (exp.is_reimbursable_oai) return;
+      const effDate = getExpenseEffectiveDate(exp);
+      if (!effDate.startsWith(yearStr)) return;
+      if (getQuarterFromDate(effDate) !== targetQuarter) return;
+      if (exp.activity_id != null) {
+        if (appliedActivityIds.has(exp.activity_id)) return;
+        if (rejectedActivityIds.has(exp.activity_id)) return;
+      }
+      const amount = Number(exp.net_amount ?? exp.gross_amount ?? 0);
+      if (amount <= 0) return;
+      orgTotals.set(
+        exp.organization,
+        Number(((orgTotals.get(exp.organization) || 0) + amount).toFixed(2))
+      );
+    });
+
+    const reservedByOrg = ALL_HUB_ORGS.filter((org) => (orgTotals.get(org) || 0) > 0).map(
+      (org) => ({
+        organization: org,
+        shortLabel: ORGANIZATION_SHORT_LABELS[org],
+        amount: orgTotals.get(org) || 0,
+      })
+    );
+
+    const reservedQuarterTotal = Number(
+      reservedByOrg.reduce((acc, item) => acc + item.amount, 0).toFixed(2)
+    );
+    const estimatedFreeBalance = Number(
+      (executiveMetrics.consolidatedAvailable - reservedQuarterTotal).toFixed(2)
+    );
+
+    return {
+      targetQuarter,
+      reservedQuarterTotal,
+      estimatedFreeBalance,
+      reservedByOrg,
+    };
+  }, [expenses, activities, selectedYear, executiveMetrics.consolidatedAvailable]);
 
   // Sincronización automática: si se reprograma una actividad en el calendario, actualiza la fecha de sus gastos proyectados enlazados
   useEffect(() => {
@@ -1518,12 +1600,70 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const handleCreateSupplier = async (newSupplier: Omit<SupplierRecord, 'id'>) => {
-    const record: SupplierRecord = { ...newSupplier, id: Date.now() };
+    const tempId = Date.now();
+    const record: SupplierRecord = { ...newSupplier, id: tempId };
     setSuppliers((prev) => [...prev, record]);
 
     if (!isSimulating) {
       try {
-        await supabase.from('suppliers').insert([newSupplier]);
+        const { data, error } = await supabase
+          .from('suppliers')
+          .insert([newSupplier])
+          .select()
+          .single();
+
+        if (error) {
+          // Fallback si la columna `status` aún no fue migrada en Supabase
+          const { status: _status, ...withoutStatus } = newSupplier;
+          const retry = await supabase
+            .from('suppliers')
+            .insert([withoutStatus])
+            .select()
+            .single();
+          if (retry.data) {
+            setSuppliers((prev) =>
+              prev.map((s) => (s.id === tempId ? ({ ...retry.data, status: newSupplier.status } as SupplierRecord) : s))
+            );
+          }
+        } else if (data) {
+          setSuppliers((prev) =>
+            prev.map((s) => (s.id === tempId ? (data as SupplierRecord) : s))
+          );
+        }
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleUpdateSupplier = async (id: number, updated: Omit<SupplierRecord, 'id'>) => {
+    setSuppliers((prev) =>
+      prev.map((s) => (s.id === id ? { ...updated, id } : s))
+    );
+
+    if (!isSimulating) {
+      try {
+        const { error } = await supabase
+          .from('suppliers')
+          .update(updated)
+          .eq('id', id);
+
+        if (error) {
+          const { status: _status, ...withoutStatus } = updated;
+          await supabase.from('suppliers').update(withoutStatus).eq('id', id);
+        }
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleDeleteSupplier = async (id: number) => {
+    setSuppliers((prev) => prev.filter((s) => s.id !== id));
+
+    if (!isSimulating) {
+      try {
+        await supabase.from('suppliers').delete().eq('id', id);
       } catch {
         // Estado local ya actualizado
       }
@@ -1589,8 +1729,14 @@ export const PresidencyHub: React.FC = () => {
                     }`}
                   />
                 </div>
-                {pendingProposalsCount > 0 && !isMobileDrawerOpen && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
+                {hasAnyAdminAlert && !isMobileDrawerOpen && (
+                  <span
+                    data-testid="mobile-menu-alert-dot"
+                    className="absolute -top-1 -right-1 flex h-3 w-3"
+                  >
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 ring-2 ring-white" />
+                  </span>
                 )}
               </button>
 
@@ -1623,7 +1769,10 @@ export const PresidencyHub: React.FC = () => {
                 </div>
               )}
 
-              <div className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs">
+              <div
+                title={realAuthEmail ? `Conectado como ${realAuthEmail}` : undefined}
+                className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs"
+              >
                 <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
                 <span
                   data-testid="hub-user-name"
@@ -1635,6 +1784,17 @@ export const PresidencyHub: React.FC = () => {
                   {user.role}
                 </span>
               </div>
+
+              <button
+                type="button"
+                data-testid="hub-signout-btn"
+                title={realAuthEmail ? `Salir (${realAuthEmail})` : 'Salir'}
+                onClick={() => signOut()}
+                className="pressable inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-700 border border-slate-200 text-xs font-bold transition"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Salir</span>
+              </button>
             </div>
           </div>
 
@@ -1747,8 +1907,14 @@ export const PresidencyHub: React.FC = () => {
                     }`}
                   />
                   <span>Administración</span>
-                  {(pendingProposalsCount > 0 || incompleteContactsCount > 0) && (
-                    <span className="w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white animate-pulse" />
+                  {hasAnyAdminAlert && (
+                    <span
+                      data-testid="admin-menu-alert-dot"
+                      className="relative flex h-2.5 w-2.5"
+                    >
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500 ring-2 ring-white" />
+                    </span>
                   )}
                   <ChevronDown
                     className={`w-3.5 h-3.5 transition-transform duration-200 ${
@@ -1784,12 +1950,23 @@ export const PresidencyHub: React.FC = () => {
                           <Calendar className="w-4 h-4 text-emerald-600" />
                           <span>Calendario</span>
                         </span>
-                        {pendingProposalsCount > 0 && (
-                          <span
-                            data-testid="nav-pending-count"
-                            className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums"
-                          >
-                            {pendingProposalsCount}
+                        {hasCalendarAlert && (
+                          <span className="inline-flex items-center gap-1.5">
+                            {pendingProposalsCount > 0 && (
+                              <span
+                                data-testid="nav-pending-count"
+                                className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums"
+                              >
+                                {pendingProposalsCount}
+                              </span>
+                            )}
+                            <span
+                              data-testid="admin-calendar-alert-dot"
+                              className="relative flex h-2 w-2"
+                            >
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                            </span>
                           </span>
                         )}
                       </button>
@@ -1813,9 +1990,18 @@ export const PresidencyHub: React.FC = () => {
                           <Users className="w-4 h-4 text-indigo-600" />
                           <span>Directorio</span>
                         </span>
-                        {incompleteContactsCount > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
-                            {incompleteContactsCount}
+                        {hasDirectoryAlert && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                              {incompleteContactsCount}
+                            </span>
+                            <span
+                              data-testid="admin-directory-alert-dot"
+                              className="relative flex h-2 w-2"
+                            >
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                            </span>
                           </span>
                         )}
                       </button>
@@ -1858,6 +2044,15 @@ export const PresidencyHub: React.FC = () => {
                           <FileEdit className="w-4 h-4 text-emerald-600" />
                           <span>Finanzas</span>
                         </span>
+                        {hasFinanceAlert && (
+                          <span
+                            data-testid="admin-finance-alert-dot"
+                            className="relative flex h-2 w-2"
+                          >
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                          </span>
+                        )}
                       </button>
 
                       {/* 5. Información / Normativas */}
@@ -2012,9 +2207,20 @@ export const PresidencyHub: React.FC = () => {
                           <Calendar className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                           <span>Calendario</span>
                         </span>
-                        {pendingProposalsCount > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums">
-                            {pendingProposalsCount}
+                        {hasCalendarAlert && (
+                          <span className="inline-flex items-center gap-1.5">
+                            {pendingProposalsCount > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums">
+                                {pendingProposalsCount}
+                              </span>
+                            )}
+                            <span
+                              data-testid="drawer-calendar-alert-dot"
+                              className="relative flex h-2 w-2"
+                            >
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                            </span>
                           </span>
                         )}
                       </button>
@@ -2037,9 +2243,18 @@ export const PresidencyHub: React.FC = () => {
                           <Users className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                           <span>Directorio</span>
                         </span>
-                        {incompleteContactsCount > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
-                            {incompleteContactsCount}
+                        {hasDirectoryAlert && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                              {incompleteContactsCount}
+                            </span>
+                            <span
+                              data-testid="drawer-directory-alert-dot"
+                              className="relative flex h-2 w-2"
+                            >
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                            </span>
                           </span>
                         )}
                       </button>
@@ -2064,14 +2279,25 @@ export const PresidencyHub: React.FC = () => {
                         type="button"
                         data-testid="drawer-admin-operations-btn"
                         onClick={() => selectTabAndCloseDrawer('OPERATIONS')}
-                        className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                        className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                           activeTab === 'OPERATIONS'
                             ? 'bg-emerald-900 text-white shadow-sm'
                             : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
                         }`}
                       >
-                        <FileEdit className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                        <span>Finanzas</span>
+                        <span className="inline-flex items-center gap-3">
+                          <FileEdit className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span>Finanzas</span>
+                        </span>
+                        {hasFinanceAlert && (
+                          <span
+                            data-testid="drawer-finance-alert-dot"
+                            className="relative flex h-2 w-2"
+                          >
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                          </span>
+                        )}
                       </button>
 
                       {/* 5. Información / Normativas */}
@@ -2173,137 +2399,99 @@ export const PresidencyHub: React.FC = () => {
         ) : activeTab === 'SUPPLIERS' ? (
           <SuppliersView
             suppliers={suppliers}
+            canManage={user.role === 'ADMIN' || Boolean(user.email && isSuperAdminEmail(user.email))}
+            onCreateSupplier={handleCreateSupplier}
+            onUpdateSupplier={handleUpdateSupplier}
+            onDeleteSupplier={handleDeleteSupplier}
             onBack={() => setActiveTab('DASHBOARD')}
             embedded
           />
         ) : (
           <>
-            {/* ALERTA ACCIONABLE DE CONTACTOS INCOMPLETOS EN PRESIDENCIA */}
-            {incompleteContactsCount > 0 && (
-              <button
-                type="button"
-                data-testid="presidency-incomplete-contacts-alert"
-                onClick={() => {
-                  setOpenUsersWithIncompleteFilter(true);
-                  setActiveTab('USERS');
-                }}
-                className="pressable w-full text-left rounded-2xl bg-amber-50 border-2 border-amber-400 p-3.5 sm:px-5 flex items-center justify-between gap-3 shadow-sm animate-pulse hover:bg-amber-100/80 transition group cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5 text-amber-950 min-w-0">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                  <p className="text-xs sm:text-sm font-extrabold truncate sm:whitespace-normal">
-                    {incompleteContactsCount === 1
-                      ? '1 contacto en el Directorio incompleto.'
-                      : `${incompleteContactsCount} contactos en el Directorio incompletos.`}
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-amber-700 flex-shrink-0 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition" />
-              </button>
-            )}
-
-            {/* AVISOS DE CALENDARIO EN DOS RENGLONES APILADOS (1: Por aprobar · 2: Pendientes LCR) */}
-            {(pendingProposalsCount > 0 || pendingLcrCount > 0) && (
-              <div className="space-y-2" data-testid="presidency-calendar-alerts-stack">
-                {pendingProposalsCount > 0 && (
-                  <button
-                    type="button"
-                    data-testid="presidency-pending-approvals-banner"
-                    onClick={() => setActiveTab('APPROVALS')}
-                    className="pressable w-full text-left rounded-2xl bg-amber-50/90 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3 hover:bg-amber-100/70 transition group cursor-pointer"
-                  >
-                    <span className="text-xs sm:text-sm font-bold text-amber-950">
-                      {pendingProposalsCount === 1
-                        ? '1 actividad pendiente de aprobación'
-                        : `${pendingProposalsCount} actividades pendientes de aprobación`}
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-amber-700 shrink-0 opacity-70 group-hover:opacity-100 transition" />
-                  </button>
-                )}
-
-                {pendingLcrCount > 0 && (
-                  <button
-                    type="button"
-                    data-testid="presidency-pending-lcr-banner"
-                    onClick={() => {
-                      setCalendarOnlyPendingLcr(true);
-                      setActiveTab('CALENDAR');
-                    }}
-                    className="pressable w-full text-left rounded-2xl bg-white border border-slate-200 px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition group cursor-pointer"
-                  >
-                    <span className="text-xs sm:text-sm font-bold text-slate-800">
-                      {pendingLcrCount === 1
-                        ? '1 actividad aprobada pendiente de cargar en LCR'
-                        : `${pendingLcrCount} actividades aprobadas pendientes de cargar en LCR`}
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-slate-500 shrink-0 opacity-70 group-hover:opacity-100 transition" />
-                  </button>
-                )}
-              </div>
-            )}
-
             {/* 1. TARJETA MAESTRA DE FONDOS (KPI PRINCIPAL) */}
             <section aria-label="Presupuesto Disponible">
               <div
                 data-testid="kpi-available-balance-card"
-                className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 p-6 sm:p-8 text-white shadow-xl border border-slate-800"
+                className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 p-5 sm:p-8 text-white shadow-xl border border-slate-800"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs sm:text-sm font-extrabold uppercase tracking-wider text-emerald-300">
-                    PRESUPUESTO DISPONIBLE
-                  </span>
-                  <div className="w-9 h-9 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300">
-                    <Wallet className="w-5 h-5" />
-                  </div>
-                </div>
+                <div className="flex items-start justify-between gap-3 sm:gap-6">
+                  {/* Columna izquierda: Disponible, Reservado en actividades y Saldo libre estimado */}
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[11px] sm:text-sm font-extrabold uppercase tracking-wider text-emerald-300">
+                      PRESUPUESTO DISPONIBLE
+                    </span>
 
-                <p
-                  data-testid="kpi-consolidated-available-amount"
-                  className="text-3xl sm:text-5xl font-extrabold tracking-tight tabular-nums mt-3 text-white"
-                >
-                  {formatCurrency(executiveMetrics.consolidatedAvailable)}
-                </p>
-
-                {selectedYear === 2027 &&
-                  executiveMetrics.totalConsolidatedAssigned === 0 && (
                     <p
-                      data-testid="pending-budget-2027-legend"
-                      className="text-xs sm:text-sm text-amber-300/95 font-semibold mt-2"
+                      data-testid="kpi-consolidated-available-amount"
+                      className="text-2xl sm:text-5xl font-extrabold tracking-tight tabular-nums mt-1.5 sm:mt-3 text-white"
                     >
-                      Presupuesto 2027 pendiente de asignación
+                      {formatCurrency(executiveMetrics.consolidatedAvailable)}
                     </p>
+
+                    {selectedYear === 2027 &&
+                      executiveMetrics.totalConsolidatedAssigned === 0 && (
+                        <p
+                          data-testid="pending-budget-2027-legend"
+                          className="text-xs sm:text-sm text-amber-300/95 font-semibold mt-2"
+                        >
+                          Presupuesto 2027 pendiente de asignación
+                        </p>
+                      )}
+
+                    <div className="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-slate-800/80 space-y-1 text-[11px] sm:text-sm">
+                      <div className="flex items-center justify-between gap-2 max-w-sm">
+                        <span className="text-slate-300 font-medium">
+                          Reservado en actividades ({reservedMetrics.targetQuarter})
+                        </span>
+                        <span
+                          data-testid="kpi-reserved-quarter-amount"
+                          className="font-bold text-amber-200 tabular-nums"
+                        >
+                          {formatCurrency(reservedMetrics.reservedQuarterTotal)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 max-w-sm">
+                        <span className="text-emerald-200 font-semibold">
+                          Saldo libre estimado
+                        </span>
+                        <span
+                          data-testid="kpi-estimated-free-amount"
+                          className="font-extrabold text-emerald-300 tabular-nums"
+                        >
+                          {formatCurrency(reservedMetrics.estimatedFreeBalance)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Columna derecha: Referencia compacta por organización en el trimestre actual */}
+                  {reservedMetrics.reservedByOrg.length > 0 && (
+                    <div
+                      data-testid="kpi-reserved-org-list"
+                      className="flex-shrink-0 border-l border-slate-800/80 pl-3 sm:pl-5 min-w-[115px] sm:min-w-[205px]"
+                    >
+                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                        Reservado ({reservedMetrics.targetQuarter})
+                      </p>
+                      <div className="space-y-1">
+                        {reservedMetrics.reservedByOrg.map((item) => (
+                          <div
+                            key={item.organization}
+                            data-testid={`kpi-reserved-org-${item.organization}`}
+                            className="flex items-center justify-between gap-2 text-[11px] sm:text-xs"
+                          >
+                            <span className="font-semibold text-slate-300 truncate">
+                              {item.shortLabel}
+                            </span>
+                            <span className="font-bold text-amber-200 tabular-nums flex-shrink-0">
+                              {formatCurrency(item.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
-
-                {/* Alerta de pendientes de rendir (sin mencionar siglas técnicas) */}
-                {executiveMetrics.pendingRenderTotal > 0 && (
-                  <div className="mt-5 pt-4 border-t border-slate-800/90 space-y-1.5">
-                    <button
-                      type="button"
-                      data-testid="kpi-pending-render-alert"
-                      onClick={() => {
-                        if (user.role === 'ADMIN') {
-                          setActiveTab('OPERATIONS');
-                        }
-                      }}
-                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-amber-500/15 border border-amber-400/40 text-amber-200 text-xs sm:text-sm font-extrabold tabular-nums ${
-                        user.role === 'ADMIN'
-                          ? 'hover:bg-amber-500/25 cursor-pointer pressable'
-                          : 'cursor-default'
-                      }`}
-                    >
-                      <span>
-                        ⚠️ {formatCurrency(executiveMetrics.pendingRenderTotal)} pendientes de
-                        rendir
-                      </span>
-                    </button>
-                    <p
-                      data-testid="kpi-pending-render-note"
-                      className="text-[11px] sm:text-xs text-slate-300/90 block"
-                    >
-                      ℹ️ Este importe ya está contemplado en el presupuesto disponible mostrado
-                      arriba.
-                    </p>
-                  </div>
-                )}
+                </div>
               </div>
             </section>
 

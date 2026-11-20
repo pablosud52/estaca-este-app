@@ -43,32 +43,11 @@ export const LoginView: React.FC = () => {
             Estaca Montevideo Uruguay Este
           </span>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-            Sistema de Finanzas y Calendario
+            Sistema para Líderes de la Estaca
           </h1>
-          <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-            Ingresá con tu cuenta de Google autorizada para acceder a tu organización.
-          </p>
         </div>
 
         <div className="mt-6 space-y-4">
-          <label className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              data-testid="login-remember-checkbox"
-              checked={rememberMe}
-              onChange={(e) => handleRememberChange(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
-            />
-            <span className="text-left">
-              <span className="block text-xs font-bold text-slate-800">
-                Recordarme en este dispositivo
-              </span>
-              <span className="block text-[11px] text-slate-500 mt-0.5">
-                Desmárcalo si estás usando una computadora compartida.
-              </span>
-            </span>
-          </label>
-
           {errorMsg && (
             <p className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 text-center">
               {errorMsg}
@@ -85,11 +64,24 @@ export const LoginView: React.FC = () => {
             <LogIn className="w-4 h-4" />
             <span>{isLoading ? 'Conectando con Google...' : 'Ingresar con Google'}</span>
           </button>
+
+          <label className="flex items-center justify-center gap-2.5 py-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              data-testid="login-remember-checkbox"
+              checked={rememberMe}
+              onChange={(e) => handleRememberChange(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+            />
+            <span className="text-xs font-bold text-slate-700">
+              Recordarme en este dispositivo
+            </span>
+          </label>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-[11px] text-slate-500">
+        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-[11px] text-slate-500">
           <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
-          <span>Acceso exclusivo para líderes habilitados (@gmail.com)</span>
+          <span>Acceso exclusivo para líderes habilitados</span>
         </div>
       </div>
     </div>

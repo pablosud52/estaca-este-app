@@ -104,15 +104,17 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     if (isMobile) {
       await page.getByTestId('mobile-menu-toggle').click();
       await page.getByTestId('drawer-nav-dashboard').click();
+      await expect(page.getByTestId('mobile-menu-alert-dot')).toBeVisible();
+      await page.getByTestId('mobile-menu-toggle').click();
+      await expect(page.getByTestId('drawer-directory-alert-dot')).toBeVisible();
+      await page.getByTestId('drawer-admin-users-btn').click();
     } else {
       await page.getByTestId('hub-nav-dashboard').click();
+      await expect(page.getByTestId('admin-menu-alert-dot')).toBeVisible();
+      await page.getByTestId('hub-admin-menu-trigger').click();
+      await expect(page.getByTestId('admin-directory-alert-dot')).toBeVisible();
+      await page.getByTestId('hub-admin-users-btn').click();
     }
-    const incompleteAlert = page.getByTestId('presidency-incomplete-contacts-alert');
-    await expect(incompleteAlert).toBeVisible();
-    await expect(incompleteAlert).toContainText('1 contacto en el Directorio incompleto.');
-
-    // Probar que al tocar todo el cartel se ingresa directamente a Gestión de Usuarios
-    await incompleteAlert.click();
     await expect(page.getByTestId('user-management-panel')).toBeVisible();
   });
 

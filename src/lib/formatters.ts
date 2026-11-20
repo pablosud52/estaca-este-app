@@ -185,7 +185,7 @@ export const ORGANIZATION_SHORT_LABELS: Record<OrganizationCode, string> = {
   SS: 'Soc. Socorro',
   PRIMARIA: 'Primaria',
   JAS: 'JAS',
-  AS: 'Adultos Solteros',
+  AS: 'AS',
   CFS: 'FamilySearch',
   ESTACA: 'Estaca',
   CHURCHWIDE: 'Churchwide Events',

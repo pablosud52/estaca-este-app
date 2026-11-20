@@ -603,36 +603,57 @@ export const PresidencyHub: React.FC = () => {
       }
     });
 
-    const rejectedActivityIds = new Set<number>();
+    const orgTotals = new Map<OrganizationCode, number>();
+    const countedActivityIds = new Set<number>();
+
+    // 1. Actividades del calendario futuras/vigentes en el trimestre actual con presupuesto estimado y sin gasto real cargado
     activities.forEach((act) => {
-      if (act.status === 'RECHAZADA') {
-        rejectedActivityIds.add(act.id);
-      }
+      if (act.status === 'RECHAZADA') return;
+      if (!act.event_date || !act.event_date.startsWith(yearStr)) return;
+      if (selectedYear === currentYear && act.event_date < todayStr) return;
+      if (getQuarterFromDate(act.event_date) !== targetQuarter) return;
+      if (appliedActivityIds.has(act.id)) return;
+      const estimated = Number(act.estimated_cost || 0);
+      if (estimated <= 0) return;
+
+      const targetOrg: OrganizationCode = ALL_HUB_ORGS.includes(act.organization)
+        ? act.organization
+        : 'ESTACA';
+      orgTotals.set(
+        targetOrg,
+        Number(((orgTotals.get(targetOrg) || 0) + estimated).toFixed(2))
+      );
+      countedActivityIds.add(act.id);
     });
 
-    const orgTotals = new Map<OrganizationCode, number>();
+    // 2. Gastos proyectados huérfanos (sin actividad vinculada en el calendario) vigentes en el trimestre actual
     expenses.forEach((exp) => {
       if (exp.expense_type !== 'PROYECTADO_ACTIVIDAD') return;
       if (exp.is_reimbursable_oai) return;
       const effDate = getExpenseEffectiveDate(exp);
       if (!effDate.startsWith(yearStr)) return;
+      if (selectedYear === currentYear && effDate < todayStr) return;
       if (getQuarterFromDate(effDate) !== targetQuarter) return;
       if (exp.activity_id != null) {
         if (appliedActivityIds.has(exp.activity_id)) return;
-        if (rejectedActivityIds.has(exp.activity_id)) return;
+        if (countedActivityIds.has(exp.activity_id)) return;
       }
       const amount = Number(exp.net_amount ?? exp.gross_amount ?? 0);
       if (amount <= 0) return;
+      const targetOrg: OrganizationCode = ALL_HUB_ORGS.includes(exp.organization)
+        ? exp.organization
+        : 'ESTACA';
       orgTotals.set(
-        exp.organization,
-        Number(((orgTotals.get(exp.organization) || 0) + amount).toFixed(2))
+        targetOrg,
+        Number(((orgTotals.get(targetOrg) || 0) + amount).toFixed(2))
       );
     });
 
     const reservedByOrg = ALL_HUB_ORGS.filter((org) => (orgTotals.get(org) || 0) > 0).map(
       (org) => ({
         organization: org,
-        shortLabel: ORGANIZATION_SHORT_LABELS[org],
+        // En esta columna compacta "Soc. Socorro" empujaría la línea divisoria y partiría "RESERVADO ACTIVIDADES T4" en móvil
+        shortLabel: org === 'SS' ? 'Soc. Soc.' : ORGANIZATION_SHORT_LABELS[org],
         amount: orgTotals.get(org) || 0,
       })
     );
@@ -2438,57 +2459,68 @@ export const PresidencyHub: React.FC = () => {
                         </p>
                       )}
 
-                    <div className="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-slate-800/80 space-y-1 text-[11px] sm:text-sm">
-                      <div className="flex items-center justify-between gap-2 max-w-sm">
-                        <span className="text-slate-300 font-medium">
-                          Reservado en actividades ({reservedMetrics.targetQuarter})
-                        </span>
-                        <span
+                    <div className="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-slate-800/80 space-y-2.5">
+                      <div>
+                        <p className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-300">
+                          Reservado Actividades {reservedMetrics.targetQuarter}
+                        </p>
+                        <p
                           data-testid="kpi-reserved-quarter-amount"
-                          className="font-bold text-amber-200 tabular-nums"
+                          className="text-base sm:text-xl font-extrabold text-amber-200 tabular-nums mt-0.5"
                         >
                           {formatCurrency(reservedMetrics.reservedQuarterTotal)}
-                        </span>
+                        </p>
                       </div>
-                      <div className="flex items-center justify-between gap-2 max-w-sm">
-                        <span className="text-emerald-200 font-semibold">
+
+                      <div>
+                        <p
+                          data-testid="kpi-estimated-free-label"
+                          className={`text-[11px] sm:text-xs font-bold uppercase tracking-wider ${
+                            reservedMetrics.estimatedFreeBalance < 0
+                              ? 'text-rose-400'
+                              : 'text-emerald-300'
+                          }`}
+                        >
                           Saldo libre estimado
-                        </span>
-                        <span
+                        </p>
+                        <p
                           data-testid="kpi-estimated-free-amount"
-                          className="font-extrabold text-emerald-300 tabular-nums"
+                          className={`text-base sm:text-xl font-extrabold tabular-nums mt-0.5 ${
+                            reservedMetrics.estimatedFreeBalance < 0
+                              ? 'text-rose-400'
+                              : 'text-emerald-300'
+                          }`}
                         >
                           {formatCurrency(reservedMetrics.estimatedFreeBalance)}
-                        </span>
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Columna derecha: Referencia compacta por organización en el trimestre actual */}
+                  {/* Columna derecha: Tabla compacta por organización en el trimestre actual */}
                   {reservedMetrics.reservedByOrg.length > 0 && (
-                    <div
-                      data-testid="kpi-reserved-org-list"
-                      className="flex-shrink-0 border-l border-slate-800/80 pl-3 sm:pl-5 min-w-[115px] sm:min-w-[205px]"
-                    >
-                      <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                        Reservado ({reservedMetrics.targetQuarter})
-                      </p>
-                      <div className="space-y-1">
-                        {reservedMetrics.reservedByOrg.map((item) => (
-                          <div
-                            key={item.organization}
-                            data-testid={`kpi-reserved-org-${item.organization}`}
-                            className="flex items-center justify-between gap-2 text-[11px] sm:text-xs"
-                          >
-                            <span className="font-semibold text-slate-300 truncate">
-                              {item.shortLabel}
-                            </span>
-                            <span className="font-bold text-amber-200 tabular-nums flex-shrink-0">
-                              {formatCurrency(item.amount)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
+                    <div className="flex-shrink-0 border-l border-slate-700/80 pl-2.5 sm:pl-5 self-stretch flex flex-col justify-center">
+                      <table
+                        data-testid="kpi-reserved-org-list"
+                        aria-label={`Reservado Actividades ${reservedMetrics.targetQuarter} por organización`}
+                        className="text-[11px] sm:text-xs border-collapse"
+                      >
+                        <tbody>
+                          {reservedMetrics.reservedByOrg.map((item) => (
+                            <tr
+                              key={item.organization}
+                              data-testid={`kpi-reserved-org-${item.organization}`}
+                            >
+                              <td className="pr-2 sm:pr-4 py-0.5 font-semibold text-slate-300 whitespace-nowrap">
+                                {item.shortLabel}
+                              </td>
+                              <td className="py-0.5 font-bold text-amber-200 tabular-nums text-right whitespace-nowrap">
+                                {formatCurrency(item.amount, false)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

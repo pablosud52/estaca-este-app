@@ -6,6 +6,7 @@ import {
   Calendar,
   ChevronDown,
   FileEdit,
+  History,
   LayoutDashboard,
   LogOut,
   Shield,
@@ -14,7 +15,14 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { canApproveCalendar, canEditFinances, canManageUsers } from '../lib/permissions';
+import {
+  canApproveCalendar,
+  canEditFinances,
+  canManageUsers,
+  canViewLogs,
+} from '../lib/permissions';
+import { AuditLogsPanel } from '../components/AuditLogsPanel';
+import { recordAuditLog } from '../services/auditLogService';
 import {
   INITIAL_OPENING_BALANCE_2026,
   isSuperAdminEmail,
@@ -112,9 +120,17 @@ const saveSessionProposals = (list: ActivityRecord[]) => {
 export const PresidencyHub: React.FC = () => {
   const { user, isSimulating, incompleteContactsCount, signOut, realAuthEmail } = useAuth();
 
-  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | INFO
+  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | LOGS | INFO
   const [activeTab, setActiveTab] = useState<
-    'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS' | 'INFO'
+    | 'DASHBOARD'
+    | 'APPROVALS'
+    | 'CALENDAR'
+    | 'SUPPLIERS'
+    | 'DIRECTORY'
+    | 'USERS'
+    | 'OPERATIONS'
+    | 'LOGS'
+    | 'INFO'
   >('DASHBOARD');
   const [openUsersWithIncompleteFilter, setOpenUsersWithIncompleteFilter] = useState<boolean>(false);
   const [calendarOnlyPendingLcr, setCalendarOnlyPendingLcr] = useState<boolean>(false);
@@ -577,6 +593,7 @@ export const PresidencyHub: React.FC = () => {
   const userCanManageUsers = canManageUsers(user);
   const userCanEditFinances = canEditFinances(user);
   const userCanApproveCalendar = canApproveCalendar(user);
+  const userCanViewLogs = canViewLogs(user);
 
   // Indicadores unificados de alertas para Administración (solo visibles para quien puede resolverlas)
   const hasCalendarAlert = userCanApproveCalendar && (pendingProposalsCount > 0 || pendingLcrCount > 0);
@@ -768,9 +785,16 @@ export const PresidencyHub: React.FC = () => {
     if (targetAct && Number(targetAct.estimated_cost || 0) > 0) {
       await createProjectedForActivity({ ...targetAct, status: 'APROBADA' });
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'APPROVE',
+      section: 'CALENDARIO',
+      summary: `Aprobó actividad: ${targetAct?.title || `#${id}`}`,
+    });
   };
 
   const handleRejectActivity = async (id: number, reason?: string) => {
+    const targetAct = activities.find((a) => a.id === id);
     setActivities((prev) => {
       const updated = prev.map((a) =>
         a.id === id
@@ -793,6 +817,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'REJECT',
+      section: 'CALENDARIO',
+      summary: `Rechazó actividad: ${targetAct?.title || `#${id}`}${reason ? ` (${reason})` : ''}`,
+    });
   };
 
   const handleEditAndApproveActivity = async (
@@ -1139,6 +1169,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'CREATE',
+      section: 'FINANZAS',
+      summary: `Registró gasto "${newExpense.concept}" por ${formatCurrency(newExpense.gross_amount)} en ${ORGANIZATION_SHORT_LABELS[newExpense.organization]}`,
+    });
   };
 
   const handleCreateMultipleExpenses = async (
@@ -1158,6 +1194,15 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    if (expensesList.length > 0) {
+      const total = expensesList.reduce((acc, item) => acc + Number(item.gross_amount || 0), 0);
+      void recordAuditLog({
+        actor: user,
+        actionType: 'CREATE',
+        section: 'FINANZAS',
+        summary: `Registró gasto compartido "${expensesList[0].concept}" por ${formatCurrency(total)} (${expensesList.length} organizaciones)`,
+      });
+    }
   };
 
   const handleReconcileLcrExpense = async (id: number) => {
@@ -1171,6 +1216,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'RECONCILE',
+      section: 'FINANZAS',
+      summary: `Concilió comprobante en LCR (#${id})`,
+    });
   };
 
   const handleReconcileLcrExpenseGroup = async (ids: number[]) => {
@@ -1185,6 +1236,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'RECONCILE',
+      section: 'FINANZAS',
+      summary: `Concilió movimiento en LCR (${ids.length} registro${ids.length > 1 ? 's' : ''})`,
+    });
   };
 
   const handleSaveExpenseGroup = async (
@@ -1803,6 +1860,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'CREATE',
+      section: 'PROVEEDORES',
+      summary: `Agregó proveedor "${newSupplier.commercial_name}" (${newSupplier.category || 'Varios'})`,
+    });
   };
 
   const handleUpdateSupplier = async (id: number, updated: Omit<SupplierRecord, 'id'>) => {
@@ -1825,9 +1888,16 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'PROVEEDORES',
+      summary: `Actualizó proveedor "${updated.commercial_name}"`,
+    });
   };
 
   const handleDeleteSupplier = async (id: number) => {
+    const target = suppliers.find((s) => s.id === id);
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
 
     if (!isSimulating) {
@@ -1837,10 +1907,25 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'DELETE',
+      section: 'PROVEEDORES',
+      summary: `Eliminó proveedor "${target?.commercial_name || `#${id}`}"`,
+    });
   };
 
   const selectTabAndCloseDrawer = (
-    tab: 'DASHBOARD' | 'APPROVALS' | 'CALENDAR' | 'SUPPLIERS' | 'DIRECTORY' | 'USERS' | 'OPERATIONS' | 'INFO'
+    tab:
+      | 'DASHBOARD'
+      | 'APPROVALS'
+      | 'CALENDAR'
+      | 'SUPPLIERS'
+      | 'DIRECTORY'
+      | 'USERS'
+      | 'OPERATIONS'
+      | 'LOGS'
+      | 'INFO'
   ) => {
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
@@ -2060,6 +2145,7 @@ export const PresidencyHub: React.FC = () => {
                     activeTab === 'APPROVALS' ||
                     activeTab === 'USERS' ||
                     activeTab === 'OPERATIONS' ||
+                    activeTab === 'LOGS' ||
                     activeTab === 'INFO'
                       ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
                       : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-200/90'
@@ -2070,6 +2156,7 @@ export const PresidencyHub: React.FC = () => {
                       activeTab === 'APPROVALS' ||
                       activeTab === 'USERS' ||
                       activeTab === 'OPERATIONS' ||
+                      activeTab === 'LOGS' ||
                       activeTab === 'INFO'
                         ? 'text-emerald-300'
                         : 'text-emerald-700'
@@ -2226,7 +2313,29 @@ export const PresidencyHub: React.FC = () => {
                         )}
                       </button>
 
-                      {/* 5. Información / Normativas */}
+                      {/* 5. Historial / Logs (exclusivo Admins) */}
+                      {userCanViewLogs && (
+                        <button
+                          type="button"
+                          data-testid="hub-admin-logs-btn"
+                          onClick={() => {
+                            setActiveTab('LOGS');
+                            setIsAdminMenuOpen(false);
+                          }}
+                          className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                            activeTab === 'LOGS'
+                              ? 'bg-slate-900 text-white shadow-sm'
+                              : 'text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <History className="w-4 h-4 text-slate-600" />
+                            <span>Historial / Logs</span>
+                          </span>
+                        </button>
+                      )}
+
+                      {/* 6. Información / Normativas */}
                       <button
                         type="button"
                         data-testid="hub-admin-info-btn"
@@ -2473,7 +2582,24 @@ export const PresidencyHub: React.FC = () => {
                         )}
                       </button>
 
-                      {/* 5. Información / Normativas */}
+                      {/* 5. Historial / Logs (exclusivo Admins) */}
+                      {userCanViewLogs && (
+                        <button
+                          type="button"
+                          data-testid="drawer-admin-logs-btn"
+                          onClick={() => selectTabAndCloseDrawer('LOGS')}
+                          className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                            activeTab === 'LOGS'
+                              ? 'bg-emerald-900 text-white shadow-sm'
+                              : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                          }`}
+                        >
+                          <History className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <span>Historial / Logs</span>
+                        </button>
+                      )}
+
+                      {/* 6. Información / Normativas */}
                       <button
                         type="button"
                         data-testid="drawer-admin-info-btn"
@@ -2510,6 +2636,8 @@ export const PresidencyHub: React.FC = () => {
       >
         {activeTab === 'USERS' && userCanManageUsers ? (
           <UserManagementPanel initialFilterIncomplete={openUsersWithIncompleteFilter} />
+        ) : activeTab === 'LOGS' && userCanViewLogs ? (
+          <AuditLogsPanel />
         ) : activeTab === 'DIRECTORY' ? (
           <LeadersDirectoryView />
         ) : activeTab === 'INFO' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (

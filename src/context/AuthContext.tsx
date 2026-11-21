@@ -13,6 +13,7 @@ import {
   setForceAccountSelect,
   supabase,
 } from '../lib/supabase';
+import { recordAuditLog, recordSessionLoginOnce } from '../services/auditLogService';
 import {
   DirectoryOrgCode,
   ExtraRoleType,
@@ -293,6 +294,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return next;
     });
   };
+
+  useEffect(() => {
+    if (authStatus === 'authenticated' && user.is_active && user.role !== 'NO_AUTORIZADO') {
+      void recordSessionLoginOnce(user);
+    }
+  }, [authStatus, user]);
 
   useEffect(() => {
     let mounted = true;
@@ -631,6 +638,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
 
+    const updatedEntry = updatedTarget as StakeDirectoryEntry;
+    const personLabel =
+      `${updatedEntry.first_name || ''} ${updatedEntry.last_name || ''}`.trim() ||
+      updatedEntry.calling;
+    if (updates.has_app_access !== undefined && Object.keys(updates).length === 1) {
+      void recordAuditLog({
+        actor: user,
+        actionType: 'UPDATE',
+        section: 'DIRECTORIO',
+        summary: `${updates.has_app_access ? 'Activó' : 'Desactivó'} Acceso App de ${personLabel} (${updatedEntry.calling})`,
+      });
+    } else {
+      void recordAuditLog({
+        actor: user,
+        actionType: 'UPDATE',
+        section: 'DIRECTORIO',
+        summary: `Actualizó datos de ${updatedEntry.calling}: ${personLabel}`,
+      });
+    }
+
     await syncEntryToProfiles(updatedTarget);
     if (!realAuthEmailRef.current && !AUTH_REQUIRED) {
       return { ok: true };
@@ -704,6 +731,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
 
+    void recordAuditLog({
+      actor: user,
+      actionType: 'CREATE',
+      section: 'DIRECTORIO',
+      summary: `Agregó llamamiento adicional: ${created.calling} (${created.first_name} ${created.last_name})`,
+    });
+
     await syncEntryToProfiles(created);
     if (!realAuthEmailRef.current && !AUTH_REQUIRED) {
       return { ok: true };
@@ -738,6 +772,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     directoryEntriesRef.current = next;
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
+
+    void recordAuditLog({
+      actor: user,
+      actionType: 'DELETE',
+      section: 'DIRECTORIO',
+      summary: `Quitó llamamiento adicional: ${target.calling} (${target.first_name} ${target.last_name})`,
+    });
 
     if (target.email) {
       setProfiles((prev) =>
@@ -872,6 +913,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
 
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'DIRECTORIO',
+      summary: `Liberó consejeros de Presidencia (${clearedCounselors.join(', ')})`,
+    });
+
     if (emailsToDeactivate.size > 0) {
       setProfiles((prev) =>
         prev.map((p) =>
@@ -937,6 +985,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     directoryEntriesRef.current = next;
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
+
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'DIRECTORIO',
+      summary: `Liberó consejeros de Presidencia (${clearedCounselors.join(', ')})`,
+    });
 
     if (emailsToDeactivate.size > 0) {
       setProfiles((prev) =>

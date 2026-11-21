@@ -195,3 +195,34 @@ export interface SupplierRecord {
   rating: number;
   status?: 'ACTIVO' | 'PENDIENTE';
 }
+
+export type AuditActionType =
+  | 'LOGIN'
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'APPROVE'
+  | 'REJECT'
+  | 'RECONCILE'
+  | 'SYNC';
+
+export type AuditSection =
+  | 'ACCESO'
+  | 'FINANZAS'
+  | 'PRESUPUESTOS'
+  | 'CALENDARIO'
+  | 'DIRECTORIO'
+  | 'PROVEEDORES';
+
+export interface AuditLogRecord {
+  id: number;
+  created_at: string;
+  actor_email: string;
+  actor_name: string;
+  actor_role: string;
+  actor_calling?: string | null;
+  action_type: AuditActionType;
+  section: AuditSection;
+  summary: string;
+  details?: Record<string, unknown>;
+}

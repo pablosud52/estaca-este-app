@@ -638,19 +638,14 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     >
       <div className="bg-white w-full sm:max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 id="expense-modal-title" className="text-base font-extrabold text-slate-900">
-              {editGroup ? 'Editar Movimiento' : 'Añadir Gasto'}
-            </h3>
-            <p className="text-xs text-slate-500">
-              Selecciona el tipo de movimiento y asigna una o más organizaciones
-            </p>
-          </div>
+        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+          <h3 id="expense-modal-title" className="text-base font-extrabold text-slate-900">
+            {editGroup ? 'Editar Movimiento' : 'Añadir Gasto'}
+          </h3>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
             aria-label="Cerrar"
           >
             <X className="w-5 h-5" />
@@ -658,67 +653,110 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4">
-          {/* Selector de los 5 tipos de gasto */}
+        <form onSubmit={handleSubmit} className="px-5 pt-3.5 pb-5 overflow-y-auto space-y-4">
+          {/* Selector doble tipo switch en forma de pastilla */}
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
-                Real:
-              </span>
-              {(
-                [
-                  { id: 'EFECTIVO', label: 'Efectivo', icon: Banknote },
-                  { id: 'DIRECTO_TARJETA', label: 'Tarjeta', icon: CreditCard },
-                  { id: 'TRANSFERENCIA', label: 'Transferencia LCR', icon: Send },
-                ] as const
-              ).map((item) => {
-                const Icon = item.icon;
-                const active = expenseType === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    data-testid={`expense-type-${item.id}`}
-                    onClick={() => setExpenseType(item.id)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
-                      active
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 ml-1 mr-1">
-                Proyectado:
-              </span>
-              {(
-                [
-                  { id: 'PROYECTADO_ACTIVIDAD', label: 'De Actividad' },
-                  { id: 'PLANIFICADO_SIN_FECHA', label: 'Sin fecha' },
-                ] as const
-              ).map((item) => {
-                const active = expenseType === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    data-testid={`expense-type-${item.id}`}
-                    onClick={() => setExpenseType(item.id)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
-                      active
-                        ? 'bg-amber-100 text-amber-950 border-amber-300'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+            {/* Switch principal: Gasto Real vs Proyectado */}
+            <div
+              role="group"
+              aria-label="Categoría de gasto"
+              className="grid grid-cols-2 rounded-full border border-slate-200 bg-slate-100 overflow-hidden divide-x divide-slate-200"
+            >
+              <button
+                type="button"
+                data-testid="expense-category-REAL"
+                onClick={() => {
+                  if (!isRealExpense) setExpenseType('EFECTIVO');
+                }}
+                className={`py-1.5 px-3 text-xs font-extrabold transition rounded-none ${
+                  isRealExpense
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:bg-slate-200/70'
+                }`}
+              >
+                Gasto Real
+              </button>
+              <button
+                type="button"
+                data-testid="expense-category-PROJECTED"
+                onClick={() => {
+                  if (isRealExpense) setExpenseType('PROYECTADO_ACTIVIDAD');
+                }}
+                className={`py-1.5 px-3 text-xs font-extrabold transition rounded-none ${
+                  !isRealExpense
+                    ? 'bg-amber-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-200/70'
+                }`}
+              >
+                Proyectado
+              </button>
             </div>
+
+            {/* Switch secundario según categoría */}
+            {isRealExpense ? (
+              <div
+                role="group"
+                aria-label="Medio de pago real"
+                className="flex rounded-full border border-slate-200 bg-slate-100 overflow-hidden divide-x divide-slate-200"
+              >
+                {(
+                  [
+                    { id: 'EFECTIVO', label: 'Efectivo', icon: Banknote },
+                    { id: 'DIRECTO_TARJETA', label: 'Tarjeta', icon: CreditCard },
+                    { id: 'TRANSFERENCIA', label: 'Transferencia LCR', icon: Send },
+                  ] as const
+                ).map((item) => {
+                  const Icon = item.icon;
+                  const active = expenseType === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      data-testid={`expense-type-${item.id}`}
+                      onClick={() => setExpenseType(item.id)}
+                      className={`flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 text-xs font-bold transition rounded-none ${
+                        active
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:bg-slate-200/70'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div
+                role="group"
+                aria-label="Tipo de proyección"
+                className="grid grid-cols-2 rounded-full border border-amber-200 bg-amber-50/70 overflow-hidden divide-x divide-amber-200"
+              >
+                {(
+                  [
+                    { id: 'PROYECTADO_ACTIVIDAD', label: 'De Actividad' },
+                    { id: 'PLANIFICADO_SIN_FECHA', label: 'Sin fecha' },
+                  ] as const
+                ).map((item) => {
+                  const active = expenseType === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      data-testid={`expense-type-${item.id}`}
+                      onClick={() => setExpenseType(item.id)}
+                      className={`py-1.5 px-3 text-xs font-bold transition rounded-none ${
+                        active
+                          ? 'bg-amber-600 text-white'
+                          : 'text-amber-900/80 hover:bg-amber-100/80'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {!isRealExpense && (
               <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-1.5 font-medium">
                 Los gastos proyectados no descuentan el presupuesto real ni afectan retiros ni LCR hasta que los formalices.

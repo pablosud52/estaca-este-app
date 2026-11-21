@@ -48,6 +48,7 @@ const ExcelSyncPanel = lazy(() =>
 
 interface AdminOperationsCenterProps {
   selectedYear?: number;
+  canEdit?: boolean;
   budgets: BudgetAllocation[];
   budgetIncomes?: BudgetIncomeEntry[];
   expenses: ExpenseRecord[];
@@ -107,6 +108,7 @@ const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
 
 export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   selectedYear = 2026,
+  canEdit = true,
   budgets,
   budgetIncomes = [],
   expenses,
@@ -473,6 +475,14 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     <div className="space-y-5 animate-fade-in">
       {/* ==================== MONITOR DE CONCILIACIÓN LCR ==================== */}
       <div className="bg-slate-900 rounded-3xl p-5 text-white shadow-md border border-slate-800">
+        {!canEdit && (
+          <div
+            data-testid="finance-readonly-banner"
+            className="mb-3 rounded-2xl bg-slate-800/90 border border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-200 flex items-center justify-between gap-2"
+          >
+            <span>👁️ Vista de solo lectura — Solo Administradores y Secretario Financiero pueden editar finanzas.</span>
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
           <div>
             <h2 className="text-base sm:text-lg font-extrabold text-white">
@@ -793,18 +803,20 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   />
                 </div>
 
-                <button
-                  type="button"
-                  data-testid="open-add-expense-modal-btn"
-                  onClick={() => {
-                    setEditingGroup(null);
-                    setIsExpenseModalOpen(true);
-                  }}
-                  className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Añadir Gasto</span>
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    data-testid="open-add-expense-modal-btn"
+                    onClick={() => {
+                      setEditingGroup(null);
+                      setIsExpenseModalOpen(true);
+                    }}
+                    className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Añadir Gasto</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -858,15 +870,17 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   />
                 </div>
 
-                <button
-                  type="button"
-                  data-testid="open-add-movement-modal-btn"
-                  onClick={() => setIsMovementModalOpen(true)}
-                  className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Nuevo Movimiento</span>
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    data-testid="open-add-movement-modal-btn"
+                    onClick={() => setIsMovementModalOpen(true)}
+                    className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Nuevo Movimiento</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1045,7 +1059,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                               {/* 6. Monto (con botón Conciliar encima si está pendiente LCR) */}
                               <td className="py-3 pl-3 pr-2 text-right whitespace-nowrap align-middle">
                                 <div className="inline-flex flex-col items-end gap-1">
-                                  {m.isPendingLcr && (
+                                  {canEdit && m.isPendingLcr && (
                                     <button
                                       type="button"
                                       data-testid={`reconcile-lcr-btn-${m.primary.id}`}
@@ -1074,18 +1088,20 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
                               {/* Editar (ícono siempre alineado a la derecha al final de la fila) */}
                               <td className="py-3 pr-4 pl-1 text-right align-middle">
-                                <button
-                                  type="button"
-                                  title="Editar movimiento"
-                                  data-testid={`edit-expense-btn-${m.primary.id}`}
-                                  onClick={() => {
-                                    setEditingGroup({ ids: m.ids, records: m.records });
-                                    setIsExpenseModalOpen(true);
-                                  }}
-                                  className="p-1.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                                >
-                                  <Pencil className="w-3.5 h-3.5" />
-                                </button>
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    title="Editar movimiento"
+                                    data-testid={`edit-expense-btn-${m.primary.id}`}
+                                    onClick={() => {
+                                      setEditingGroup({ ids: m.ids, records: m.records });
+                                      setIsExpenseModalOpen(true);
+                                    }}
+                                    className="p-1.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </td>
                             </tr>
 
@@ -1211,7 +1227,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <div className="flex flex-col items-end gap-1">
-                              {m.isPendingLcr && (
+                              {canEdit && m.isPendingLcr && (
                                 <button
                                   type="button"
                                   onClick={() => handleReconcileGroup(m)}
@@ -1235,17 +1251,19 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                               )}
                             </div>
 
-                            <button
-                              type="button"
-                              title="Editar movimiento"
-                              onClick={() => {
-                                setEditingGroup({ ids: m.ids, records: m.records });
-                                setIsExpenseModalOpen(true);
-                              }}
-                              className="p-1.5 rounded-xl border border-slate-200 text-slate-500 bg-white"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                title="Editar movimiento"
+                                onClick={() => {
+                                  setEditingGroup({ ids: m.ids, records: m.records });
+                                  setIsExpenseModalOpen(true);
+                                }}
+                                className="p-1.5 rounded-xl border border-slate-200 text-slate-500 bg-white"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -1414,6 +1432,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       {subTab === 'BUDGETS' && (
         <BudgetManagementSection
           year={selectedYear}
+          readOnly={!canEdit}
           budgets={budgets}
           budgetIncomes={budgetIncomes}
           expenses={allExpenses ?? expenses}

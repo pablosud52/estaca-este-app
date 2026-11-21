@@ -1014,36 +1014,9 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                               {/* Controles de acción */}
                               <div className="flex flex-wrap items-center gap-2">
                                 {orgDef.code === 'PRESIDENCIA' && isLoaded && (
-                                  <>
-                                    <select
-                                      aria-label={`Rol de ${entry.calling}`}
-                                      disabled={isSelfOrPerm}
-                                      value={entry.role}
-                                      onChange={(e) =>
-                                        handlePresidencyRoleChange(entry, e.target.value as UserRole)
-                                      }
-                                      className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-[11px] font-bold bg-white disabled:bg-slate-100 disabled:text-slate-500"
-                                    >
-                                      <option value="PRESIDENCIA">PRESIDENCIA</option>
-                                      <option value="ADMIN">ADMIN</option>
-                                    </select>
-                                    <button
-                                      type="button"
-                                      disabled={isSelfOrPerm}
-                                      onClick={() =>
-                                        updateDirectoryEntry(entry.id, {
-                                          can_approve_activities: !entry.can_approve_activities,
-                                        })
-                                      }
-                                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition ${
-                                        entry.can_approve_activities
-                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                          : 'bg-slate-50 text-slate-600 border-slate-200'
-                                      }`}
-                                    >
-                                      {entry.can_approve_activities ? '✓ Aprueba' : 'No aprueba'}
-                                    </button>
-                                  </>
+                                  <span className="px-2.5 py-1 rounded-xl border border-slate-200 text-[11px] font-bold bg-slate-50 text-slate-600">
+                                    {entry.role === 'ADMIN' ? 'ADMIN (Fijo)' : 'PRESIDENCIA'}
+                                  </span>
                                 )}
 
                                 {/* Switch universal Acceso App */}

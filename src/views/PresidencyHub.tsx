@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { canApproveCalendar, canEditFinances, canManageUsers } from '../lib/permissions';
 import {
   INITIAL_OPENING_BALANCE_2026,
   isSuperAdminEmail,
@@ -572,10 +573,15 @@ export const PresidencyHub: React.FC = () => {
     [activities]
   );
 
-  // Indicadores unificados de alertas para Administración (Calendario, Directorio, Finanzas)
-  const hasCalendarAlert = pendingProposalsCount > 0 || pendingLcrCount > 0;
-  const hasDirectoryAlert = incompleteContactsCount > 0;
-  const hasFinanceAlert = executiveMetrics.pendingRenderTotal > 0;
+  // Permisos efectivos del usuario actual en Presidencia / Admin
+  const userCanManageUsers = canManageUsers(user);
+  const userCanEditFinances = canEditFinances(user);
+  const userCanApproveCalendar = canApproveCalendar(user);
+
+  // Indicadores unificados de alertas para Administración (solo visibles para quien puede resolverlas)
+  const hasCalendarAlert = userCanApproveCalendar && (pendingProposalsCount > 0 || pendingLcrCount > 0);
+  const hasDirectoryAlert = userCanManageUsers && incompleteContactsCount > 0;
+  const hasFinanceAlert = userCanEditFinances && executiveMetrics.pendingRenderTotal > 0;
   const hasAnyAdminAlert = hasCalendarAlert || hasDirectoryAlert || hasFinanceAlert;
 
   // Monto reservado en actividades del trimestre actual (se descuenta al cargar el gasto real vinculado)
@@ -2134,40 +2140,42 @@ export const PresidencyHub: React.FC = () => {
                         )}
                       </button>
 
-                      {/* 2. Directorio (Gestión de Usuarios y llamamientos) */}
-                      <button
-                        type="button"
-                        data-testid="hub-admin-users-btn"
-                        onClick={() => {
-                          setOpenUsersWithIncompleteFilter(false);
-                          setActiveTab('USERS');
-                          setIsAdminMenuOpen(false);
-                        }}
-                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
-                          activeTab === 'USERS'
-                            ? 'bg-slate-900 text-white shadow-sm'
-                            : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <Users className="w-4 h-4 text-indigo-600" />
-                          <span>Directorio</span>
-                        </span>
-                        {hasDirectoryAlert && (
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
-                              {incompleteContactsCount}
-                            </span>
-                            <span
-                              data-testid="admin-directory-alert-dot"
-                              className="relative flex h-2 w-2"
-                            >
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                            </span>
+                      {/* 2. Directorio (Gestión de Usuarios y llamamientos - exclusivo Admins) */}
+                      {userCanManageUsers && (
+                        <button
+                          type="button"
+                          data-testid="hub-admin-users-btn"
+                          onClick={() => {
+                            setOpenUsersWithIncompleteFilter(false);
+                            setActiveTab('USERS');
+                            setIsAdminMenuOpen(false);
+                          }}
+                          className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                            activeTab === 'USERS'
+                              ? 'bg-slate-900 text-white shadow-sm'
+                              : 'text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <Users className="w-4 h-4 text-indigo-600" />
+                            <span>Directorio</span>
                           </span>
-                        )}
-                      </button>
+                          {hasDirectoryAlert && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                                {incompleteContactsCount}
+                              </span>
+                              <span
+                                data-testid="admin-directory-alert-dot"
+                                className="relative flex h-2 w-2"
+                              >
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                              </span>
+                            </span>
+                          )}
+                        </button>
+                      )}
 
                       {/* 3. Proveedores */}
                       <button
@@ -2388,39 +2396,41 @@ export const PresidencyHub: React.FC = () => {
                         )}
                       </button>
 
-                      {/* 2. Directorio (Gestión de Usuarios) */}
-                      <button
-                        type="button"
-                        data-testid="drawer-admin-users-btn"
-                        onClick={() => {
-                          setOpenUsersWithIncompleteFilter(false);
-                          selectTabAndCloseDrawer('USERS');
-                        }}
-                        className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
-                          activeTab === 'USERS'
-                            ? 'bg-emerald-900 text-white shadow-sm'
-                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-3">
-                          <Users className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                          <span>Directorio</span>
-                        </span>
-                        {hasDirectoryAlert && (
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
-                              {incompleteContactsCount}
-                            </span>
-                            <span
-                              data-testid="drawer-directory-alert-dot"
-                              className="relative flex h-2 w-2"
-                            >
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                            </span>
+                      {/* 2. Directorio (Gestión de Usuarios - exclusivo Admins) */}
+                      {userCanManageUsers && (
+                        <button
+                          type="button"
+                          data-testid="drawer-admin-users-btn"
+                          onClick={() => {
+                            setOpenUsersWithIncompleteFilter(false);
+                            selectTabAndCloseDrawer('USERS');
+                          }}
+                          className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                            activeTab === 'USERS'
+                              ? 'bg-emerald-900 text-white shadow-sm'
+                              : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-3">
+                            <Users className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                            <span>Directorio</span>
                           </span>
-                        )}
-                      </button>
+                          {hasDirectoryAlert && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                                {incompleteContactsCount}
+                              </span>
+                              <span
+                                data-testid="drawer-directory-alert-dot"
+                                className="relative flex h-2 w-2"
+                              >
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                              </span>
+                            </span>
+                          )}
+                        </button>
+                      )}
 
                       {/* 3. Proveedores */}
                       <button
@@ -2498,7 +2508,7 @@ export const PresidencyHub: React.FC = () => {
             : 'pt-5 space-y-6'
         }`}
       >
-        {activeTab === 'USERS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
+        {activeTab === 'USERS' && userCanManageUsers ? (
           <UserManagementPanel initialFilterIncomplete={openUsersWithIncompleteFilter} />
         ) : activeTab === 'DIRECTORY' ? (
           <LeadersDirectoryView />
@@ -2507,6 +2517,7 @@ export const PresidencyHub: React.FC = () => {
         ) : activeTab === 'OPERATIONS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <AdminOperationsCenter
             selectedYear={selectedYear}
+            canEdit={userCanEditFinances}
             budgets={budgets.filter((b) => Number(b.year) === selectedYear)}
             budgetIncomes={budgetIncomes}
             expenses={expenses.filter(
@@ -2536,7 +2547,7 @@ export const PresidencyHub: React.FC = () => {
           <CalendarControlPanel
             activities={activities}
             expenses={expenses}
-            canApprove={Boolean(user.can_approve_activities || (user.email && isSuperAdminEmail(user.email)))}
+            canApprove={userCanApproveCalendar}
             isSuperAdmin={Boolean(user.email && isSuperAdminEmail(user.email))}
             userFullName={user.full_name}
             userCalling={user.calling}

@@ -61,6 +61,7 @@ interface BudgetManagementSectionProps {
   controlledSubTab?: 'INCOMES' | 'DISTRIBUTION';
   onControlledSubTabChange?: (tab: 'INCOMES' | 'DISTRIBUTION') => void;
   hideHeader?: boolean;
+  readOnly?: boolean;
 }
 
 interface RowDraft {
@@ -147,6 +148,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
   controlledSubTab,
   onControlledSubTabChange,
   hideHeader = false,
+  readOnly = false,
 }) => {
   const currentCalendarYear = new Date().getFullYear();
   const isFutureProjectionYear = year > currentCalendarYear;
@@ -694,33 +696,34 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
               </span>
             </div>
 
-            {qd.editing ? (
-              <button
-                type="button"
-                data-testid={`save-quarter-income-${q}`}
-                disabled={qd.saving}
-                onClick={() => handleSaveQuarter(q)}
-                className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] font-bold shadow-sm transition"
-              >
-                <Save className="w-3 h-3" />
-                <span>{qd.saving ? 'Guardando...' : 'Guardar'}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                data-testid={`edit-quarter-income-${q}`}
-                onClick={() =>
-                  setQuarterDrafts((prev) => ({
-                    ...prev,
-                    [q]: { ...prev[q], editing: true },
-                  }))
-                }
-                className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition"
-              >
-                <Edit3 className="w-3 h-3" />
-                <span>Editar</span>
-              </button>
-            )}
+            {!readOnly &&
+              (qd.editing ? (
+                <button
+                  type="button"
+                  data-testid={`save-quarter-income-${q}`}
+                  disabled={qd.saving}
+                  onClick={() => handleSaveQuarter(q)}
+                  className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] font-bold shadow-sm transition"
+                >
+                  <Save className="w-3 h-3" />
+                  <span>{qd.saving ? 'Guardando...' : 'Guardar'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  data-testid={`edit-quarter-income-${q}`}
+                  onClick={() =>
+                    setQuarterDrafts((prev) => ({
+                      ...prev,
+                      [q]: { ...prev[q], editing: true },
+                    }))
+                  }
+                  className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition"
+                >
+                  <Edit3 className="w-3 h-3" />
+                  <span>Editar</span>
+                </button>
+              ))}
           </div>
 
           <div className="p-3 space-y-2.5">
@@ -1106,28 +1109,29 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                 />
               </div>
 
-              {openingEditing || !isOpeningApplied ? (
-                <button
-                  type="button"
-                  data-testid="save-opening-balance-btn"
-                  disabled={openingSaving}
-                  onClick={handleSaveOpening}
-                  className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold shadow-sm transition"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{openingSaving ? '...' : 'Guardar'}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  data-testid="edit-opening-balance-btn"
-                  onClick={() => setOpeningEditing(true)}
-                  className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-900 text-xs font-bold transition"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Editar</span>
-                </button>
-              )}
+              {!readOnly &&
+                (openingEditing || !isOpeningApplied ? (
+                  <button
+                    type="button"
+                    data-testid="save-opening-balance-btn"
+                    disabled={openingSaving}
+                    onClick={handleSaveOpening}
+                    className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold shadow-sm transition"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{openingSaving ? '...' : 'Guardar'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="edit-opening-balance-btn"
+                    onClick={() => setOpeningEditing(true)}
+                    className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-900 text-xs font-bold transition"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Editar</span>
+                  </button>
+                ))}
             </div>
           </div>
           {/* Selector rápido en móvil */}
@@ -1194,7 +1198,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
           )}
 
           {/* Botón Guardar todo cuando hay cambios pendientes */}
-          {anyDirtyDistribution && (
+          {!readOnly && anyDirtyDistribution && (
             <div className="px-5 pt-3 flex justify-end">
               <button
                 type="button"
@@ -1259,11 +1263,12 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                               <input
                                 type="text"
                                 inputMode="decimal"
+                                disabled={readOnly}
                                 value={isFocused ? d[field] : formatCurrency(numVal, false)}
                                 onFocus={() => handleFieldFocus(org, field)}
                                 onBlur={() => handleFieldBlur(org, field)}
                                 onChange={(e) => handleFieldChange(org, field, e.target.value)}
-                                className="w-20 sm:w-[88px] px-2 py-1 rounded-lg border border-slate-200 focus:border-emerald-700 focus:outline-none text-right text-xs font-semibold tabular-nums bg-white"
+                                className="w-20 sm:w-[88px] px-2 py-1 rounded-lg border border-slate-200 focus:border-emerald-700 focus:outline-none text-right text-xs font-semibold tabular-nums bg-white disabled:bg-slate-50 disabled:text-slate-600"
                               />
                             </div>
                           </td>
@@ -1273,21 +1278,23 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                         {formatCurrency(rowTotal)}
                       </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          disabled={!d.dirty || d.saving || hasNegativeEstaca}
-                          onClick={() => handleSaveRow(org)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition ${
-                            hasNegativeEstaca && d.dirty
-                              ? 'bg-rose-100 text-rose-400 cursor-not-allowed'
-                              : d.dirty
-                              ? 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-sm'
-                              : 'bg-slate-100 text-slate-400 cursor-default'
-                          }`}
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>{d.saving ? 'Guardando' : 'Guardar'}</span>
-                        </button>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            disabled={!d.dirty || d.saving || hasNegativeEstaca}
+                            onClick={() => handleSaveRow(org)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                              hasNegativeEstaca && d.dirty
+                                ? 'bg-rose-100 text-rose-400 cursor-not-allowed'
+                                : d.dirty
+                                ? 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-sm'
+                                : 'bg-slate-100 text-slate-400 cursor-default'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>{d.saving ? 'Guardando' : 'Guardar'}</span>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

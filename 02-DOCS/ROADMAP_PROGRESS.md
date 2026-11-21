@@ -213,6 +213,7 @@ flowchart TD
 ---
 
 ### 📋 Pendientes de Mejora (Backlog)
+- [ ] **Simplificar interfaz del Panel de Control del Directorio (`UserManagementPanel`):** Reducir la cantidad de colores y badges para que no entrevere, dejando claro de un vistazo quién tiene acceso y qué llaves posee (a trabajar luego de cerrar los permisos de Admin y Presidencia).
 - [ ] **Revisión final de roles y permisos al concluir todas las secciones:** Revisar y pulir todos los roles (Super Admin, 2 Admins fijos, Presidencia, Editor de Finanzas, Líderes, Consulta) una vez terminados todos los paneles (ej. habilitar al Editor de Finanzas la edición del monto estimado de actividades aprobadas en Calendario).
 - [ ] **Nuevo rol/permiso "Editor de Finanzas" + Historial de Logs + Flujo de Proveedores:**
   - Mantener 2 Admins fijos (Presidente y Secretario de Estaca) + Super Admin (`pablosud52@gmail.com`) sin habilitar rol Admin a nadie más.

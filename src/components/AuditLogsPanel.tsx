@@ -179,7 +179,7 @@ export const AuditLogsPanel: React.FC = () => {
       className="space-y-3"
     >
       {/* Cabecera simple */}
-      <div className="bg-slate-900 rounded-3xl px-5 py-4 text-white shadow-sm border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-slate-900 rounded-3xl px-5 py-4 text-white shadow-sm border border-slate-800 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <History className="w-5 h-5 text-slate-300 flex-shrink-0" />
           <h2 className="text-base sm:text-lg font-extrabold text-white">
@@ -187,40 +187,44 @@ export const AuditLogsPanel: React.FC = () => {
           </h2>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {hasActiveFilters && (
+        <div className="flex items-end justify-between md:flex-1 md:items-center md:justify-end gap-3">
+          <div className="order-2 md:order-1 md:mx-auto">
+            {hasActiveFilters && (
+              <button
+                type="button"
+                data-testid="audit-clear-filters-btn"
+                onClick={handleClearFilters}
+                className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-100 transition"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Limpiar filtros</span>
+              </button>
+            )}
+          </div>
+
+          <div className="order-1 md:order-2 flex flex-col sm:flex-row items-start sm:items-center gap-2">
             <button
               type="button"
-              data-testid="audit-clear-filters-btn"
-              onClick={handleClearFilters}
-              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-100 transition"
+              data-testid="export-audit-logs-btn"
+              onClick={handleExportExcel}
+              disabled={filteredLogs.length === 0}
+              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 border border-slate-700 text-xs font-bold text-slate-100 transition"
             >
-              <X className="w-3.5 h-3.5" />
-              <span>Limpiar filtros</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>Exportar</span>
             </button>
-          )}
 
-          <button
-            type="button"
-            data-testid="export-audit-logs-btn"
-            onClick={handleExportExcel}
-            disabled={filteredLogs.length === 0}
-            className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 border border-slate-700 text-xs font-bold text-slate-100 transition"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Exportar</span>
-          </button>
-
-          <button
-            type="button"
-            data-testid="refresh-audit-logs-btn"
-            onClick={loadLogs}
-            disabled={loading}
-            className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-100 transition"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>{loading ? 'Cargando...' : 'Actualizar'}</span>
-          </button>
+            <button
+              type="button"
+              data-testid="refresh-audit-logs-btn"
+              onClick={loadLogs}
+              disabled={loading}
+              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-100 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span>{loading ? 'Cargando...' : 'Actualizar'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

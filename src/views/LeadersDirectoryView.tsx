@@ -17,17 +17,17 @@ import { DirectoryOrgCode, StakeDirectoryEntry } from '../types/database';
 
 const ORG_DOT_CLASSES: Record<DirectoryOrgCode, string> = {
   PRESIDENCIA: 'bg-slate-900',
-  SUMO_CONSEJO: 'bg-indigo-600',
+  SUMO_CONSEJO: 'bg-slate-900',
   MJ: 'bg-rose-500',
-  HJ: 'bg-amber-500',
-  SS: 'bg-teal-600',
-  PRIMARIA: 'bg-sky-500',
-  JAS: 'bg-violet-600',
-  AS: 'bg-cyan-600',
-  CFS: 'bg-emerald-600',
-  ESCUELA_DOMINICAL: 'bg-blue-500',
-  BIENESTAR: 'bg-lime-600',
-  MUSICA: 'bg-pink-500',
+  HJ: 'bg-blue-500',
+  SS: 'bg-purple-500',
+  PRIMARIA: 'bg-orange-500',
+  JAS: 'bg-sky-500',
+  AS: 'bg-indigo-500',
+  CFS: 'bg-yellow-500',
+  ESCUELA_DOMINICAL: 'bg-slate-900',
+  BIENESTAR: 'bg-slate-900',
+  MUSICA: 'bg-slate-900',
 };
 
 const toTelHref = (rawPhone?: string): string | null => {

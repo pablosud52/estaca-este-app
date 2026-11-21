@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  AlertTriangle,
   Banknote,
   Calendar,
   CreditCard,
@@ -12,6 +13,10 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import {
+  DuplicateDraftMatch,
+  findDuplicatesForDraft,
+} from '../lib/duplicateDetection';
 import {
   formatCurrency,
   formatDate,
@@ -66,6 +71,7 @@ interface ExpenseFormModalProps {
   activities: ActivityRecord[];
   suppliers: SupplierRecord[];
   openWithdrawals: OpenWithdrawalOption[];
+  existingExpenses?: ExpenseRecord[];
   onClose: () => void;
   onSave: (
     records: Array<Omit<ExpenseRecord, 'id'>>,
@@ -93,6 +99,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   activities,
   suppliers,
   openWithdrawals,
+  existingExpenses = [],
   onClose,
   onSave,
   onDelete,
@@ -129,6 +136,10 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const [newSupplierCategory, setNewSupplierCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateDraftMatch[]>([]);
+  const [pendingSaveRecords, setPendingSaveRecords] = useState<Array<
+    Omit<ExpenseRecord, 'id'>
+  > | null>(null);
 
   const isRealExpense =
     expenseType === 'EFECTIVO' ||
@@ -264,7 +275,14 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       setIsReimbursableOai(false);
       setParticipants([{ uid: 'p-1', organization: 'PRIMARIA', manualAmount: null }]);
     }
+    setDuplicateMatches([]);
+    setPendingSaveRecords(null);
   }, [isOpen, editGroup, suppliers]);
+
+  useEffect(() => {
+    setDuplicateMatches([]);
+    setPendingSaveRecords(null);
+  }, [grossAmount, supplierName, accountingDate, activityDate, directRefNumber, expenseType]);
 
   const parsedTotalGross = useMemo(() => {
     const n = parseFloat(grossAmount);
@@ -582,7 +600,27 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
         };
       });
 
+      if (isRealExpense && existingExpenses.length > 0 && !pendingSaveRecords) {
+        const matches = findDuplicatesForDraft(records, existingExpenses, editGroup?.ids);
+        if (matches.length > 0) {
+          setDuplicateMatches(matches);
+          setPendingSaveRecords(records);
+          return;
+        }
+      }
+
       await onSave(records, editGroup?.ids);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirmSaveDespiteDuplicate = async () => {
+    if (!pendingSaveRecords) return;
+    setSaving(true);
+    try {
+      await onSave(pendingSaveRecords, editGroup?.ids);
       onClose();
     } finally {
       setSaving(false);
@@ -1173,6 +1211,74 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   />
                   <span>Reembolsable OAI</span>
                 </label>
+              </div>
+            </div>
+          )}
+
+          {duplicateMatches.length > 0 && pendingSaveRecords && (
+            <div
+              data-testid="expense-duplicate-warning"
+              className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 space-y-2.5"
+            >
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs text-amber-950">
+                  <p className="font-extrabold">
+                    Posible pago duplicado detectado ({duplicateMatches.length}{' '}
+                    {duplicateMatches.length === 1 ? 'coincidencia' : 'coincidencias'})
+                  </p>
+                  <p className="text-[11px] text-amber-900">
+                    Ya existe un gasto muy parecido. Puedes eliminar este ingreso o continuar igualmente para enviarlo a doble revisión en el panel.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                {duplicateMatches.map((match) => (
+                  <div
+                    key={match.movement.key}
+                    className="p-2.5 rounded-xl bg-white border border-amber-200 text-[11px] space-y-0.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 font-extrabold text-slate-900">
+                      <span className="truncate">{match.movement.primary.concept}</span>
+                      <span className="tabular-nums text-rose-700">
+                        {formatCurrency(match.movement.totalGross)}
+                      </span>
+                    </div>
+                    <div className="text-slate-600 flex flex-wrap gap-x-2">
+                      <span>{formatDate(match.movement.effectiveDate)}</span>
+                      <span>· {match.movement.primary.supplier_name}</span>
+                      <span>
+                        ·{' '}
+                        {ORGANIZATION_LABELS[match.movement.primary.organization] ||
+                          match.movement.primary.organization}
+                      </span>
+                    </div>
+                    <p className="text-[10px] font-bold text-amber-800">
+                      {match.reasons.join(' · ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <button
+                  type="button"
+                  data-testid="discard-duplicate-expense-btn"
+                  onClick={onClose}
+                  className="flex-1 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold transition"
+                >
+                  Eliminar gasto ingresado
+                </button>
+                <button
+                  type="button"
+                  data-testid="continue-duplicate-expense-btn"
+                  disabled={saving}
+                  onClick={handleConfirmSaveDespiteDuplicate}
+                  className="flex-1 px-3 py-2 rounded-xl bg-amber-900 hover:bg-amber-950 disabled:opacity-50 text-white text-xs font-extrabold transition"
+                >
+                  {saving ? 'Guardando...' : 'Continuar igualmente (doble revisión)'}
+                </button>
               </div>
             </div>
           )}

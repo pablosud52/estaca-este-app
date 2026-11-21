@@ -1377,6 +1377,16 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    if (normalizedRecords.length > 0) {
+      const total = normalizedRecords.reduce((acc, r) => acc + Number(r.gross_amount || 0), 0);
+      const isEdit = Boolean(existingIds && existingIds.length > 0);
+      void recordAuditLog({
+        actor: user,
+        actionType: isEdit ? 'UPDATE' : 'CREATE',
+        section: 'FINANZAS',
+        summary: `${isEdit ? 'Editó' : 'Registró'} gasto "${normalizedRecords[0].concept}" por ${formatCurrency(total)}`,
+      });
+    }
   };
 
   const handleDeleteExpenseGroup = async (ids: number[]) => {
@@ -1440,11 +1450,25 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    if (deletedRows.length > 0) {
+      void recordAuditLog({
+        actor: user,
+        actionType: 'DELETE',
+        section: 'FINANZAS',
+        summary: `Eliminó gasto "${deletedRows[0].concept}" (${deletedRows.length} registro${deletedRows.length > 1 ? 's' : ''})`,
+      });
+    }
   };
 
   const handleSaveBudgetAllocation = async (
     allocation: Omit<BudgetAllocation, 'id' | 'total_assigned'> & { id?: number }
   ) => {
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'PRESUPUESTOS',
+      summary: `Guardó presupuesto ${allocation.year} de ${ORGANIZATION_SHORT_LABELS[allocation.organization]}`,
+    });
     const total = Number(
       (
         Number(allocation.t1_assigned) +
@@ -1690,6 +1714,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local limpiado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'DELETE',
+      section: 'PRESUPUESTOS',
+      summary: `Restableció proyección de presupuestos ${year}`,
+    });
   };
 
   const handleCreateWithdrawal = async (
@@ -1790,6 +1820,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'CREATE',
+      section: 'FINANZAS',
+      summary: `Registró movimiento "${newWithdrawal.withdrawal_ref}" por ${formatCurrency(newWithdrawal.amount)}`,
+    });
   };
 
   const handleCloseWithdrawalInZero = async (
@@ -1823,6 +1859,12 @@ export const PresidencyHub: React.FC = () => {
         // Estado local ya actualizado
       }
     }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'FINANZAS',
+      summary: `Cerró retiro #${id} en $ 0,00 (devolución: ${formatCurrency(returnAmount)})`,
+    });
   };
 
   const handleCreateSupplier = async (newSupplier: Omit<SupplierRecord, 'id'>) => {

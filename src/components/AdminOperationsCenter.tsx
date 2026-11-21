@@ -34,7 +34,16 @@ import {
   SupplierRecord,
 } from '../types/database';
 import { computeClosingCapStats, computeYearIncomeSummary } from '../lib/budgetUtils';
+import {
+  detectDuplicateGroups,
+  dismissDuplicateGroupPairs,
+  DuplicateGroup,
+  groupExpensesIntoMovements,
+  GroupedExpenseMovement,
+  loadDismissedDuplicatePairs,
+} from '../lib/duplicateDetection';
 import { BudgetManagementSection } from './BudgetManagementSection';
+import { DuplicateReviewModal } from './DuplicateReviewModal';
 import {
   ExpenseFormModal,
   ExpenseGroupEditData,
@@ -82,21 +91,6 @@ interface AdminOperationsCenterProps {
     adjustments: Array<{ id?: number; amount: number; description: string; lcr_ref: string }>
   ) => Promise<void>;
   onResetFutureYearProjection?: (year: number) => Promise<void>;
-}
-
-interface GroupedExpenseMovement {
-  key: string;
-  ids: number[];
-  records: ExpenseRecord[];
-  primary: ExpenseRecord;
-  totalGross: number;
-  totalExternalReimb: number;
-  totalNet: number;
-  isPendingLcr: boolean;
-  isApplied: boolean;
-  isShared: boolean;
-  effectiveDate: string;
-  accountingDate: string;
 }
 
 const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
@@ -147,6 +141,10 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<ExpenseGroupEditData | null>(null);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+  const [dismissedDuplicatePairs, setDismissedDuplicatePairs] = useState<Set<string>>(() =>
+    loadDismissedDuplicatePairs()
+  );
 
   // Filtros del Libro de Comprobantes y filas desplegadas (Varios)
   const [ledgerSearch, setLedgerSearch] = useState('');
@@ -317,51 +315,15 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   // =========================================================================
   // 2. AGRUPACIÓN DE MOVIMIENTOS Y ALERTAS DE ACTIVIDADES PENDIENTES DE RENDIR
   // =========================================================================
-  const groupedMovements = useMemo<GroupedExpenseMovement[]>(() => {
-    const groups = new Map<string, ExpenseRecord[]>();
-    expenses.forEach((exp) => {
-      const key = exp.shared_group_id ? `grp:${exp.shared_group_id}` : `single:${exp.id}`;
-      const list = groups.get(key) || [];
-      list.push(exp);
-      groups.set(key, list);
-    });
+  const groupedMovements = useMemo<GroupedExpenseMovement[]>(
+    () => groupExpensesIntoMovements(expenses),
+    [expenses]
+  );
 
-    const result: GroupedExpenseMovement[] = [];
-    groups.forEach((records, key) => {
-      const primary = records[0];
-      const totalGross = Number(
-        records.reduce((acc, r) => acc + Number(r.gross_amount), 0).toFixed(2)
-      );
-      const totalExternalReimb = Number(
-        records.reduce((acc, r) => acc + Number(r.external_reimbursement || 0), 0).toFixed(2)
-      );
-      const totalNet = Number(
-        records.reduce((acc, r) => acc + Number(r.net_amount), 0).toFixed(2)
-      );
-      const applied = isExpenseApplied(primary);
-
-      result.push({
-        key,
-        ids: records.map((r) => r.id),
-        records,
-        primary,
-        totalGross,
-        totalExternalReimb,
-        totalNet,
-        isPendingLcr: applied && records.some((r) => r.status === 'PENDIENTE_LCR'),
-        isApplied: applied,
-        isShared: records.length > 1,
-        effectiveDate: getExpenseEffectiveDate(primary),
-        accountingDate: primary.expense_date,
-      });
-    });
-
-    return result.sort((a, b) => {
-      if (a.isPendingLcr && !b.isPendingLcr) return -1;
-      if (!a.isPendingLcr && b.isPendingLcr) return 1;
-      return b.effectiveDate.localeCompare(a.effectiveDate);
-    });
-  }, [expenses]);
+  const duplicateGroups = useMemo<DuplicateGroup[]>(
+    () => detectDuplicateGroups(groupedMovements, dismissedDuplicatePairs),
+    [groupedMovements, dismissedDuplicatePairs]
+  );
 
   // Actividades proyectadas cuya fecha ya llegó o pasó -> Alerta "Pendiente de rendir"
   const dueProjectedMovements = useMemo(
@@ -469,6 +431,25 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         movement.totalGross
       )}) marcado como registrado en LCR.`
     );
+  };
+
+  const handleDeleteDuplicateMovement = async (movement: GroupedExpenseMovement) => {
+    if (!onDeleteExpenseGroup) return;
+    await onDeleteExpenseGroup(movement.ids);
+    triggerToast(
+      `Gasto duplicado "${movement.primary.concept}" (${formatCurrency(
+        movement.totalGross
+      )}) eliminado.`
+    );
+  };
+
+  const handleIgnoreDuplicateGroup = (group: DuplicateGroup) => {
+    const next = dismissDuplicateGroupPairs(
+      group.movements.map((m) => m.key),
+      dismissedDuplicatePairs
+    );
+    setDismissedDuplicatePairs(next);
+    triggerToast('Alerta marcada como válida (no es duplicado).');
   };
 
   return (
@@ -680,6 +661,31 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Alerta de posibles pagos duplicados (Doble revisión) */}
+      {duplicateGroups.length > 0 && (
+        <div
+          data-testid="duplicate-payments-alert"
+          className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+        >
+          <div className="flex items-center gap-2.5 text-xs text-rose-950 font-bold">
+            <AlertTriangle className="w-4 h-4 text-rose-700 flex-shrink-0" />
+            <span>
+              {duplicateGroups.length === 1
+                ? 'Se detectó 1 posible pago duplicado para doble revisión.'
+                : `Se detectaron ${duplicateGroups.length} posibles pagos duplicados para doble revisión.`}
+            </span>
+          </div>
+          <button
+            type="button"
+            data-testid="open-duplicate-review-btn"
+            onClick={() => setIsDuplicateModalOpen(true)}
+            className="pressable px-3.5 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-extrabold self-start sm:self-auto transition"
+          >
+            Revisar y comparar
+          </button>
         </div>
       )}
 
@@ -1473,6 +1479,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         activities={activities}
         suppliers={suppliers}
         openWithdrawals={openWithdrawalOptions}
+        existingExpenses={expenses}
         onClose={() => {
           setIsExpenseModalOpen(false);
           setEditingGroup(null);
@@ -1480,6 +1487,16 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         onSave={handleSaveModalExpense}
         onDelete={onDeleteExpenseGroup}
         onCreateSupplier={onCreateSupplier}
+      />
+
+      {/* ==================== MODAL DE DOBLE REVISIÓN DE DUPLICADOS ==================== */}
+      <DuplicateReviewModal
+        isOpen={isDuplicateModalOpen}
+        groups={duplicateGroups}
+        canEdit={canEdit}
+        onClose={() => setIsDuplicateModalOpen(false)}
+        onDeleteMovement={handleDeleteDuplicateMovement}
+        onIgnoreGroup={handleIgnoreDuplicateGroup}
       />
 
       {/* ==================== MODAL DE NUEVO MOVIMIENTO ==================== */}

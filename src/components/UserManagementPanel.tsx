@@ -45,11 +45,11 @@ interface UserManagementPanelProps {
 }
 
 const ROLE_BADGES: Record<UserRole, { label: string; className: string }> = {
-  ADMIN: { label: 'ADMIN', className: 'bg-amber-100 text-amber-900 border-amber-300' },
-  PRESIDENCIA: { label: 'PRESIDENCIA', className: 'bg-sky-100 text-sky-900 border-sky-300' },
-  LIDER: { label: 'LÍDER', className: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
-  CONSULTA: { label: 'CONSULTA', className: 'bg-indigo-100 text-indigo-900 border-indigo-300' },
-  NO_AUTORIZADO: { label: 'SIN ACCESO', className: 'bg-slate-100 text-slate-600 border-slate-300' },
+  ADMIN: { label: 'ADMIN', className: 'bg-slate-800 text-white border-slate-800' },
+  PRESIDENCIA: { label: 'PRESIDENCIA', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+  LIDER: { label: 'LÍDER', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+  CONSULTA: { label: 'CONSULTA', className: 'bg-slate-100 text-slate-600 border-slate-200' },
+  NO_AUTORIZADO: { label: 'SIN ACCESO', className: 'bg-white text-slate-400 border-slate-200' },
 };
 
 interface PendingPresidentModal {
@@ -707,16 +707,10 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                   className="flex-1 flex flex-wrap items-center justify-between gap-2 text-left"
                 >
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <Users className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <Users className="w-4 h-4 text-slate-500 flex-shrink-0" />
                     <h3 className="text-sm font-extrabold text-slate-900">{orgDef.label}</h3>
-                    <span
-                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                        orgDef.hasBudget
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                      }`}
-                    >
-                      {orgDef.hasBudget ? 'Con Presupuesto' : 'Directorio · Calendario · Proveedores'}
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {orgDef.hasBudget ? 'Con Presupuesto' : 'Solo Consulta'}
                     </span>
                   </div>
 
@@ -953,9 +947,9 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                     {roleBadge.label}
                                   </span>
                                   {isSelfOrPerm && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
                                       <Lock className="w-3 h-3" />
-                                      Inmutable
+                                      Fijo
                                     </span>
                                   )}
                                   {isIncomplete && (
@@ -1003,7 +997,7 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                         </span>
                                       )}
                                       {entry.assigned_org_notes && (
-                                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800">
+                                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600">
                                           {entry.assigned_org_notes}
                                         </span>
                                       )}
@@ -1013,12 +1007,6 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
 
                               {/* Controles de acción */}
                               <div className="flex flex-wrap items-center gap-2">
-                                {orgDef.code === 'PRESIDENCIA' && isLoaded && (
-                                  <span className="px-2.5 py-1 rounded-xl border border-slate-200 text-[11px] font-bold bg-slate-50 text-slate-600">
-                                    {entry.role === 'ADMIN' ? 'ADMIN (Fijo)' : 'PRESIDENCIA'}
-                                  </span>
-                                )}
-
                                 {/* Switch universal Acceso App */}
                                 <button
                                   type="button"

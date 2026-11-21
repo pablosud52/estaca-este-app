@@ -215,9 +215,9 @@ export const AuditLogsPanel: React.FC = () => {
       {/* Filtros combinados */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-100 space-y-3">
-          {/* Fila 1: Fechas rápidas + Desde / Hasta */}
+          {/* Fila 1: Fechas rápidas + Desde / Hasta + Limpiar filtros */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center bg-slate-100 rounded-xl p-0.5 gap-0.5">
+            <div className="order-1 inline-flex items-center bg-slate-100 rounded-xl p-0.5 gap-0.5">
               <button
                 type="button"
                 onClick={() => applyQuickDate('TODAY')}
@@ -241,7 +241,7 @@ export const AuditLogsPanel: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="order-3 sm:order-2 w-full sm:w-auto flex flex-wrap items-center gap-2">
               <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
                 <span>Desde</span>
                 <input
@@ -264,6 +264,18 @@ export const AuditLogsPanel: React.FC = () => {
                 />
               </label>
             </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                data-testid="audit-clear-filters-btn"
+                onClick={handleClearFilters}
+                className="order-2 sm:order-3 ml-auto pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-[11px] text-slate-800 font-bold transition"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Limpiar filtros</span>
+              </button>
+            )}
           </div>
 
           {/* Fila 2: Usuario + Sección + Tipo + Buscador */}
@@ -325,22 +337,9 @@ export const AuditLogsPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* Contador y limpiar filtros */}
-          <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 font-semibold">
-            <span>
-              Mostrando {filteredLogs.length} registro{filteredLogs.length === 1 ? '' : 's'} (últimos 6 meses)
-            </span>
-            {hasActiveFilters && (
-              <button
-                type="button"
-                data-testid="audit-clear-filters-btn"
-                onClick={handleClearFilters}
-                className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold transition"
-              >
-                <X className="w-3.5 h-3.5" />
-                <span>Limpiar filtros</span>
-              </button>
-            )}
+          {/* Contador */}
+          <div className="text-[11px] text-slate-500 font-semibold">
+            Mostrando {filteredLogs.length} registro{filteredLogs.length === 1 ? '' : 's'} (últimos 6 meses)
           </div>
         </div>
 

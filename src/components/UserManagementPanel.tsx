@@ -289,11 +289,18 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
         return;
       }
 
-      const { clearedLinkedCallings } = await clearDirectoryEntryWithCascade(entry.id, {
-        clearCounselors: true,
-      });
+      const { clearedLinkedCallings, error: cloudError } = await clearDirectoryEntryWithCascade(
+        entry.id,
+        {
+          clearCounselors: true,
+        }
+      );
       setEditingId(null);
       setDraftCleared(false);
+      if (cloudError) {
+        triggerToast(`Guardado localmente, pero falló la nube: ${cloudError}`, true);
+        return;
+      }
       triggerToast(
         clearedLinkedCallings.length > 0
           ? `Puesto vaciado junto con su vínculo (${clearedLinkedCallings.join(', ')}).`
@@ -564,11 +571,16 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                   onClick={async () => {
                     const { entry } = presidentModal;
                     setPresidentModal(null);
-                    const { clearedCounselors } = await clearDirectoryEntryWithCascade(entry.id, {
-                      clearCounselors: true,
-                    });
+                    const { clearedCounselors, error: cloudError } =
+                      await clearDirectoryEntryWithCascade(entry.id, {
+                        clearCounselors: true,
+                      });
                     setEditingId(null);
                     setDraftCleared(false);
+                    if (cloudError) {
+                      triggerToast(`Guardado localmente, pero falló la nube: ${cloudError}`, true);
+                      return;
+                    }
                     triggerToast(
                       `Presidente/a vaciado junto con: ${clearedCounselors.join(', ')}.`
                     );
@@ -598,8 +610,14 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                     onClick={async () => {
                       const { entry, cleanPhone, cleanEmail } = presidentModal;
                       setPresidentModal(null);
-                      await commitStandardSave(entry, cleanPhone, cleanEmail);
-                      const { clearedCounselors } = await releasePresidencyCounselors(entry.slot_key);
+                      const saved = await commitStandardSave(entry, cleanPhone, cleanEmail);
+                      if (!saved) return;
+                      const { clearedCounselors, error: cloudError } =
+                        await releasePresidencyCounselors(entry.slot_key);
+                      if (cloudError) {
+                        triggerToast(`Guardado localmente, pero falló la nube: ${cloudError}`, true);
+                        return;
+                      }
                       triggerToast(
                         `Nuevo Presidente/a guardado. Se vaciaron: ${clearedCounselors.join(', ')}.`
                       );

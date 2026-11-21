@@ -8,13 +8,12 @@ import {
   Phone,
   Search,
   SlidersHorizontal,
-  Users,
   X,
 } from 'lucide-react';
 import { isEntryPersonLoaded, useAuth } from '../context/AuthContext';
 import { STAKE_ORG_STRUCTURE } from '../data/stakeOrgStructure';
 import { formatUruguayanMobile, toWhatsAppUrl } from '../lib/formatters';
-import { DirectoryOrgCode } from '../types/database';
+import { DirectoryOrgCode, StakeDirectoryEntry } from '../types/database';
 
 const ORG_DOT_CLASSES: Record<DirectoryOrgCode, string> = {
   PRESIDENCIA: 'bg-slate-900',
@@ -31,10 +30,29 @@ const ORG_DOT_CLASSES: Record<DirectoryOrgCode, string> = {
   MUSICA: 'bg-pink-500',
 };
 
+const toTelHref = (rawPhone?: string): string | null => {
+  const digits = (rawPhone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('09') && digits.length === 9) {
+    return `tel:+598${digits.slice(1)}`;
+  }
+  return `tel:${digits}`;
+};
+
+const sortOrgEntries = (orgCode: DirectoryOrgCode, entries: StakeDirectoryEntry[]) => {
+  if (orgCode !== 'SUMO_CONSEJO') return entries;
+  return [...entries].sort((a, b) => {
+    const nameA = `${a.first_name} ${a.last_name}`.trim();
+    const nameB = `${b.first_name} ${b.last_name}`.trim();
+    return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+  });
+};
+
 export const LeadersDirectoryView: React.FC = () => {
   const { directoryEntries } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrgs, setSelectedOrgs] = useState<DirectoryOrgCode[]>([]);
+  const [expandedOrgs, setExpandedOrgs] = useState<Partial<Record<DirectoryOrgCode, boolean>>>({});
   const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const orgMenuRef = useRef<HTMLDivElement | null>(null);
@@ -59,10 +77,47 @@ export const LeadersDirectoryView: React.FC = () => {
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
-  const toggleOrg = (code: DirectoryOrgCode) => {
-    setSelectedOrgs((prev) =>
-      prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]
-    );
+  const toggleOrgAccordion = (code: DirectoryOrgCode) => {
+    setExpandedOrgs((prev) => ({
+      ...prev,
+      [code]: !prev[code],
+    }));
+  };
+
+  const selectAllOrgs = () => {
+    setSelectedOrgs([]);
+    setExpandedOrgs({});
+    setIsOrgMenuOpen(false);
+  };
+
+  const selectYouthOrgs = () => {
+    setSelectedOrgs(['HJ', 'MJ']);
+    setExpandedOrgs({ HJ: true, MJ: true });
+    setIsOrgMenuOpen(false);
+  };
+
+  const toggleOrgFromDropdown = (code: DirectoryOrgCode) => {
+    setSelectedOrgs((prev) => {
+      const exists = prev.includes(code);
+      const next = exists ? prev.filter((item) => item !== code) : [...prev, code];
+      if (!exists) {
+        setExpandedOrgs((exp) => ({ ...exp, [code]: true }));
+      }
+      if (next.length === 0) {
+        setExpandedOrgs({});
+      }
+      return next;
+    });
+  };
+
+  const selectSingleOrgChip = (code: DirectoryOrgCode) => {
+    if (selectedOrgs.length === 1 && selectedOrgs[0] === code) {
+      selectAllOrgs();
+      return;
+    }
+    setSelectedOrgs([code]);
+    setExpandedOrgs({ [code]: true });
+    setIsOrgMenuOpen(false);
   };
 
   const orgFilterLabel = useMemo(() => {
@@ -97,26 +152,92 @@ export const LeadersDirectoryView: React.FC = () => {
     }
   };
 
-  const visibleOrgs = useMemo(
-    () =>
-      STAKE_ORG_STRUCTURE.filter((org) =>
-        selectedOrgs.length === 0 ? true : selectedOrgs.includes(org.code)
-      ),
-    [selectedOrgs]
+  const orgsWithLoadedEntries = useMemo(() => {
+    const counts = new Map<DirectoryOrgCode, number>();
+    for (const entry of directoryEntries) {
+      if (isEntryPersonLoaded(entry)) {
+        counts.set(entry.directory_org, (counts.get(entry.directory_org) || 0) + 1);
+      }
+    }
+    return STAKE_ORG_STRUCTURE.filter((org) => (counts.get(org.code) || 0) > 0);
+  }, [directoryEntries]);
+
+  const visibleOrgBlocks = useMemo(() => {
+    const baseOrgs = STAKE_ORG_STRUCTURE.filter((org) =>
+      selectedOrgs.length === 0 ? true : selectedOrgs.includes(org.code)
+    );
+
+    return baseOrgs
+      .map((orgDef) => {
+        const filtered = directoryEntries.filter((e) => {
+          if (e.directory_org !== orgDef.code) return false;
+          if (!isEntryPersonLoaded(e)) return false;
+          if (!normalizedSearch) return true;
+          const haystack = [
+            e.first_name,
+            e.last_name,
+            e.calling,
+            e.assigned_unit,
+            e.assigned_org_notes,
+            orgDef.label,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          return haystack.includes(normalizedSearch);
+        });
+
+        return {
+          orgDef,
+          entries: sortOrgEntries(orgDef.code, filtered),
+        };
+      })
+      .filter((block) => block.entries.length > 0);
+  }, [directoryEntries, normalizedSearch, selectedOrgs]);
+
+  const allVisibleExpanded =
+    visibleOrgBlocks.length > 0 &&
+    visibleOrgBlocks.every(({ orgDef }) => Boolean(expandedOrgs[orgDef.code]));
+
+  const handleToggleAllVisible = () => {
+    if (allVisibleExpanded) {
+      setExpandedOrgs({});
+      return;
+    }
+    const next: Partial<Record<DirectoryOrgCode, boolean>> = {};
+    for (const { orgDef } of visibleOrgBlocks) {
+      next[orgDef.code] = true;
+    }
+    setExpandedOrgs(next);
+  };
+
+  const hasYouthEntries = orgsWithLoadedEntries.some(
+    (o) => o.code === 'HJ' || o.code === 'MJ'
   );
 
   return (
     <section
       aria-label="Directorio"
       data-testid="leaders-directory-view"
-      className="space-y-2.5"
+      className="space-y-3"
     >
-      {/* Marco superior fijo: Título + Desplegable multi-organización + Buscador */}
+      {/* Cabecera fija: Título + Filtro desplegable + Buscador + Pastillas rápidas */}
       <div className="sticky top-[62px] md:top-[108px] z-20 bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
             Directorio
           </h1>
+
+          {!normalizedSearch && visibleOrgBlocks.length > 1 && (
+            <button
+              type="button"
+              data-testid="directory-toggle-all-btn"
+              onClick={handleToggleAllVisible}
+              className="text-[11px] font-bold text-slate-600 hover:text-slate-900 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition"
+            >
+              {allVisibleExpanded ? 'Plegar todas' : 'Expandir todas'}
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
@@ -158,10 +279,7 @@ export const LeadersDirectoryView: React.FC = () => {
                   <button
                     type="button"
                     data-testid="directory-filter-all"
-                    onClick={() => {
-                      setSelectedOrgs([]);
-                      setIsOrgMenuOpen(false);
-                    }}
+                    onClick={selectAllOrgs}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
                       selectedOrgs.length === 0 ||
                       selectedOrgs.length === STAKE_ORG_STRUCTURE.length
@@ -174,10 +292,7 @@ export const LeadersDirectoryView: React.FC = () => {
                   <button
                     type="button"
                     data-testid="directory-filter-jovenes"
-                    onClick={() => {
-                      setSelectedOrgs(['HJ', 'MJ']);
-                      setIsOrgMenuOpen(false);
-                    }}
+                    onClick={selectYouthOrgs}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
                       selectedOrgs.length === 2 &&
                       selectedOrgs.includes('HJ') &&
@@ -202,7 +317,7 @@ export const LeadersDirectoryView: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={checked}
-                          onChange={() => toggleOrg(org.code)}
+                          onChange={() => toggleOrgFromDropdown(org.code)}
                           className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
                         />
                         <span
@@ -214,6 +329,16 @@ export const LeadersDirectoryView: React.FC = () => {
                       </label>
                     );
                   })}
+                </div>
+
+                <div className="pt-1.5 border-t border-slate-100 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsOrgMenuOpen(false)}
+                    className="px-3 py-1 rounded-lg bg-slate-900 text-white text-[11px] font-bold hover:bg-slate-800 transition"
+                  >
+                    Listo
+                  </button>
                 </div>
               </div>
             )}
@@ -242,140 +367,221 @@ export const LeadersDirectoryView: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
 
-      {/* Marco independiente para las tarjetas (scroll propio sin mover la cabecera) */}
-      <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-card">
-        <div className="relative overflow-y-auto scroll-smooth pr-1 space-y-4 max-h-[calc(100dvh-230px)] min-h-[320px]">
-        {visibleOrgs.map((orgDef) => {
-          const loadedInOrg = directoryEntries.filter((e) => {
-            if (e.directory_org !== orgDef.code) return false;
-            const hasContent =
-              isEntryPersonLoaded(e) ||
-              (orgDef.code === 'SUMO_CONSEJO' &&
-                Boolean(e.assigned_unit?.trim() || e.assigned_org_notes?.trim()));
-            if (!hasContent) return false;
-            if (!normalizedSearch) return true;
-            const haystack = [
-              e.first_name,
-              e.last_name,
-              e.calling,
-              e.assigned_unit,
-              e.assigned_org_notes,
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLowerCase();
-            return haystack.includes(normalizedSearch);
-          });
-
-          if (loadedInOrg.length === 0) return null;
-
-          return (
-            <div
-              key={orgDef.code}
-              className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
+        {/* Pastillas rápidas horizontales (1 toque para filtrar y desplegar en móvil) */}
+        {orgsWithLoadedEntries.length > 1 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+            <button
+              type="button"
+              onClick={selectAllOrgs}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition flex-shrink-0 ${
+                selectedOrgs.length === 0
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
             >
-              <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-emerald-700" />
-                  <h3 className="text-sm font-extrabold text-slate-900">{orgDef.label}</h3>
-                </div>
-                <span className="text-xs font-bold text-slate-500">
-                  {loadedInOrg.length} {loadedInOrg.length === 1 ? 'integrante' : 'integrantes'}
-                </span>
-              </div>
+              Todas
+            </button>
 
-              <div className="divide-y divide-slate-100">
-                {loadedInOrg.map((entry) => {
-                  const formattedPhone = formatUruguayanMobile(entry.phone);
-                  const waUrl = toWhatsAppUrl(entry.phone);
-                  const isCopied = copiedId === entry.id;
+            {hasYouthEntries && (
+              <button
+                type="button"
+                onClick={selectYouthOrgs}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition flex-shrink-0 ${
+                  selectedOrgs.length === 2 &&
+                  selectedOrgs.includes('HJ') &&
+                  selectedOrgs.includes('MJ')
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Jóvenes
+              </button>
+            )}
 
-                  return (
-                    <div
-                      key={entry.id}
-                      className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
-                      <div className="space-y-1 min-w-0">
-                        <p className="text-xs font-bold text-emerald-800">{entry.calling}</p>
-                        <p className="text-sm font-extrabold text-slate-900">
-                          {isEntryPersonLoaded(entry)
-                            ? `${entry.first_name} ${entry.last_name}`.trim()
-                            : 'Sin asignar'}
-                        </p>
-
-                        {orgDef.code === 'SUMO_CONSEJO' &&
-                          (entry.assigned_unit || entry.assigned_org_notes) && (
-                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                              {entry.assigned_unit && (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700">
-                                  <MapPin className="w-3 h-3 text-slate-500" />
-                                  {entry.assigned_unit}
-                                </span>
-                              )}
-                              {entry.assigned_org_notes && (
-                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800">
-                                  {entry.assigned_org_notes}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                      </div>
-
-                      {formattedPhone ? (
-                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 text-slate-900 font-mono text-[11px] sm:text-xs font-extrabold whitespace-nowrap">
-                            <Phone className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500 flex-shrink-0" />
-                            <span>{formattedPhone}</span>
-                          </span>
-
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleCopyPhone(entry.id, entry.phone || '')}
-                              data-testid={`copy-phone-${entry.slot_key}`}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl border border-slate-300 text-[11px] sm:text-xs font-bold text-slate-700 hover:bg-slate-100 transition whitespace-nowrap"
-                            >
-                              {isCopied ? (
-                                <>
-                                  <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-700" />
-                                  <span className="text-emerald-700">Copiado</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                  <span>Copiar</span>
-                                </>
-                              )}
-                            </button>
-
-                            {waUrl && (
-                              <a
-                                href={waUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                data-testid={`whatsapp-btn-${entry.slot_key}`}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] sm:text-xs font-extrabold transition shadow-sm whitespace-nowrap"
-                              >
-                                <MessageCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                <span>WhatsApp</span>
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs italic text-slate-400">Sin celular cargado</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        </div>
+            {orgsWithLoadedEntries.map((org) => {
+              const isSelected = selectedOrgs.length === 1 && selectedOrgs[0] === org.code;
+              return (
+                <button
+                  key={org.code}
+                  type="button"
+                  data-testid={`directory-quick-chip-${org.code}`}
+                  onClick={() => selectSingleOrgChip(org.code)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition flex-shrink-0 ${
+                    isSelected
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      isSelected ? 'bg-white' : ORG_DOT_CLASSES[org.code]
+                    }`}
+                  />
+                  <span>{org.shortLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Lista de acordeones por organización (desplazamiento natural de la página) */}
+      {visibleOrgBlocks.length === 0 ? (
+        <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center text-xs font-semibold text-slate-500">
+          {normalizedSearch || isOrgFiltered
+            ? 'No se encontraron contactos con ese filtro o búsqueda.'
+            : 'No hay contactos cargados en el directorio todavía.'}
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {visibleOrgBlocks.map(({ orgDef, entries }) => {
+            const isExpanded = Boolean(normalizedSearch) || Boolean(expandedOrgs[orgDef.code]);
+
+            return (
+              <div
+                key={orgDef.code}
+                data-testid={`directory-org-card-${orgDef.code}`}
+                className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
+              >
+                <button
+                  type="button"
+                  data-testid={`directory-org-accordion-toggle-${orgDef.code}`}
+                  aria-expanded={isExpanded}
+                  onClick={() => toggleOrgAccordion(orgDef.code)}
+                  className={`w-full px-4 sm:px-5 py-3.5 bg-slate-50 hover:bg-slate-100/80 transition flex items-center justify-between gap-2 text-left ${
+                    isExpanded ? 'border-b border-slate-200' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                        ORG_DOT_CLASSES[orgDef.code]
+                      }`}
+                    />
+                    <h3 className="text-sm font-extrabold text-slate-900 truncate">
+                      {orgDef.label}
+                    </h3>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <span className="text-xs font-bold text-slate-500">
+                      {entries.length} {entries.length === 1 ? 'integrante' : 'integrantes'}
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-500 transition-transform ${
+                        isExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="divide-y divide-slate-100">
+                    {entries.map((entry) => {
+                      const formattedPhone = formatUruguayanMobile(entry.phone);
+                      const telHref = toTelHref(entry.phone);
+                      const waUrl = toWhatsAppUrl(entry.phone);
+                      const isCopied = copiedId === entry.id;
+                      const displayCalling =
+                        orgDef.code === 'SUMO_CONSEJO'
+                          ? 'Miembro del Sumo Consejo'
+                          : entry.calling;
+
+                      return (
+                        <div
+                          key={entry.id}
+                          className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="space-y-1 min-w-0">
+                            <p className="text-xs font-bold text-emerald-800">{displayCalling}</p>
+                            <p className="text-sm font-extrabold text-slate-900">
+                              {`${entry.first_name} ${entry.last_name}`.trim()}
+                            </p>
+
+                            {orgDef.code === 'SUMO_CONSEJO' &&
+                              (entry.assigned_unit || entry.assigned_org_notes) && (
+                                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                                  {entry.assigned_unit && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700">
+                                      <MapPin className="w-3 h-3 text-slate-500" />
+                                      {entry.assigned_unit}
+                                    </span>
+                                  )}
+                                  {entry.assigned_org_notes && (
+                                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800">
+                                      {entry.assigned_org_notes}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                          </div>
+
+                          {formattedPhone ? (
+                            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                              {telHref ? (
+                                <a
+                                  href={telHref}
+                                  title="Llamar por teléfono"
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-mono text-[11px] sm:text-xs font-extrabold whitespace-nowrap transition"
+                                >
+                                  <Phone className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500 flex-shrink-0" />
+                                  <span>{formattedPhone}</span>
+                                </a>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 text-slate-900 font-mono text-[11px] sm:text-xs font-extrabold whitespace-nowrap">
+                                  <Phone className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500 flex-shrink-0" />
+                                  <span>{formattedPhone}</span>
+                                </span>
+                              )}
+
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyPhone(entry.id, entry.phone || '')}
+                                  data-testid={`copy-phone-${entry.slot_key}`}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl border border-slate-300 text-[11px] sm:text-xs font-bold text-slate-700 hover:bg-slate-100 transition whitespace-nowrap"
+                                >
+                                  {isCopied ? (
+                                    <>
+                                      <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-700" />
+                                      <span className="text-emerald-700">Copiado</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                      <span>Copiar</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                {waUrl && (
+                                  <a
+                                    href={waUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    data-testid={`whatsapp-btn-${entry.slot_key}`}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] sm:text-xs font-extrabold transition shadow-sm whitespace-nowrap"
+                                  >
+                                    <MessageCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                    <span>WhatsApp</span>
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs italic text-slate-400">Sin celular cargado</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 };

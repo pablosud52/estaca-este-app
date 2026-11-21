@@ -432,18 +432,23 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     title: string;
     event_date: string;
     start_time: string;
+    end_time?: string;
     location: string;
     organization: OrganizationCode;
     estimated_cost: number;
+    description?: string;
   }) => {
+    const tempId = Date.now();
     const newRecord: ActivityRecord = {
-      id: Date.now(),
-      ical_uid: `PROPUESTA_LIDER-${Date.now()}`,
+      id: tempId,
+      ical_uid: `PROPUESTA_LIDER-${tempId}`,
       title: proposal.title,
       event_date: proposal.event_date,
       start_time: proposal.start_time,
+      end_time: proposal.end_time || null,
       location: proposal.location,
       organization: proposal.organization,
+      description: proposal.description || null,
       estimated_cost: proposal.estimated_cost,
       has_budget: proposal.estimated_cost > 0,
       origin: 'propuesta_lider',
@@ -478,19 +483,32 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     // Solo persistir en Supabase cuando no es simulación de desarrollo ni prueba automatizada con sufijo numérico
     if (!isSimulating && !/\d{4}$/.test(proposal.title.trim())) {
       try {
-        await supabase.from('activities').insert([
-          {
-            ical_uid: newRecord.ical_uid,
-            title: proposal.title,
-            event_date: proposal.event_date,
-            start_time: proposal.start_time,
-            location: proposal.location,
-            organization: proposal.organization,
-            estimated_cost: proposal.estimated_cost,
-            has_budget: proposal.estimated_cost > 0,
-            status: 'PROPUESTA',
-          },
-        ]);
+        const { data: inserted } = await supabase
+          .from('activities')
+          .insert([
+            {
+              ical_uid: newRecord.ical_uid,
+              title: proposal.title,
+              event_date: proposal.event_date,
+              start_time: proposal.start_time,
+              end_time: proposal.end_time || null,
+              location: proposal.location,
+              organization: proposal.organization,
+              description: proposal.description || null,
+              estimated_cost: proposal.estimated_cost,
+              has_budget: proposal.estimated_cost > 0,
+              origin: 'propuesta_lider',
+              status: 'PROPUESTA',
+            },
+          ])
+          .select('id')
+          .single();
+
+        if (inserted && typeof inserted.id === 'number') {
+          setActivities((prev) =>
+            prev.map((item) => (item.id === tempId ? { ...item, id: inserted.id } : item))
+          );
+        }
       } catch {
         // Mantiene el estado optimista local si falla la red
       }
@@ -1034,17 +1052,17 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         Trimestre:
                       </span>
-                      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+                      <div className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80">
                         {(['TODOS', 'T1', 'T2', 'T3', 'T4'] as const).map((q) => (
                           <button
                             key={q}
                             type="button"
                             data-testid={`filter-expense-${q}`}
                             onClick={() => setQuarterFilter(q)}
-                            className={`pressable px-2 py-0.5 rounded-lg text-[11px] font-bold transition ${
+                            className={`pressable px-2.5 py-1 rounded-none text-[11px] font-bold transition ${
                               quarterFilter === q
-                                ? 'bg-white text-slate-900 shadow-sm'
-                                : 'text-slate-600 hover:text-slate-900'
+                                ? 'bg-slate-900 text-white'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                             }`}
                           >
                             {q === 'TODOS' ? 'Todos' : q}

@@ -92,7 +92,7 @@ export const STAKE_ORG_STRUCTURE: DirectoryOrgDefinition[] = [
     extraLabel: '',
     fixedSlots: Array.from({ length: 12 }, (_, idx) => ({
       slot_key: `sc-${idx + 1}`,
-      calling: `Miembro del Sumo Consejo #${idx + 1}`,
+      calling: 'Miembro del Sumo Consejo',
       defaultRole: 'CONSULTA' as UserRole,
     })),
   },

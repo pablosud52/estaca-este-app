@@ -507,15 +507,15 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
 
         {canManage && (
-          <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200/80">
+          <div className="inline-flex items-center rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80">
             <button
               type="button"
               data-testid="suppliers-tab-active"
               onClick={() => setActiveSubTab('ACTIVE')}
-              className={`pressable px-3 py-1 rounded-lg text-xs font-extrabold transition ${
+              className={`pressable px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
                 activeSubTab === 'ACTIVE'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               Directorio ({activeSuppliers.length})
@@ -524,10 +524,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               type="button"
               data-testid="suppliers-tab-pending"
               onClick={() => setActiveSubTab('PENDING')}
-              className={`pressable inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-extrabold transition ${
+              className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
                 activeSubTab === 'PENDING'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <span>Pendientes</span>

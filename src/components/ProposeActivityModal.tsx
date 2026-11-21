@@ -8,31 +8,55 @@ interface ProposeActivityModalProps {
   onClose: () => void;
   userOrg: OrganizationCode;
   canUseSeminario: boolean;
+  mode?: 'PROPOSE' | 'DIRECT_CREATE';
   onSubmitProposal: (proposal: {
     title: string;
     event_date: string;
     start_time: string;
+    end_time?: string;
     location: string;
     organization: OrganizationCode;
     estimated_cost: number;
     description?: string;
+    requires_lcr?: boolean;
   }) => Promise<void>;
 }
+
+const DIRECT_CREATE_ORGS: OrganizationCode[] = [
+  'ESTACA',
+  'MJ',
+  'HJ',
+  'SEMINARIO',
+  'SS',
+  'PRIMARIA',
+  'JAS',
+  'AS',
+  'CFS',
+  'CHURCHWIDE',
+];
 
 export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
   isOpen,
   onClose,
   userOrg,
   canUseSeminario,
+  mode = 'PROPOSE',
   onSubmitProposal,
 }) => {
+  const isDirectCreate = mode === 'DIRECT_CREATE';
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [title, setTitle] = useState('');
   const [eventDate, setEventDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState('19:00');
+  const [endTime, setEndTime] = useState('');
   const [location, setLocation] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedOrg, setSelectedOrg] = useState<OrganizationCode>(
+    userOrg === 'TODAS' ? 'ESTACA' : userOrg
+  );
   const [estimatedCost, setEstimatedCost] = useState('');
   const [isSeminarioJoint, setIsSeminarioJoint] = useState(false);
+  const [requiresLcr, setRequiresLcr] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -78,8 +102,13 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
       return;
     }
 
-    const targetOrg: OrganizationCode =
-      canUseSeminario && isSeminarioJoint ? 'SEMINARIO' : userOrg === 'TODAS' ? 'ESTACA' : userOrg;
+    const targetOrg: OrganizationCode = isDirectCreate
+      ? selectedOrg
+      : canUseSeminario && isSeminarioJoint
+      ? 'SEMINARIO'
+      : userOrg === 'TODAS'
+      ? 'ESTACA'
+      : userOrg;
 
     setIsSubmitting(true);
     try {
@@ -87,15 +116,21 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
         title: title.trim(),
         event_date: eventDate,
         start_time: startTime || '19:00',
+        end_time: endTime.trim() || undefined,
         location: location.trim(),
         organization: targetOrg,
         estimated_cost: parsedCost,
+        description: description.trim() || undefined,
+        requires_lcr: isDirectCreate ? requiresLcr : true,
       });
       // Reset fields
       setTitle('');
+      setEndTime('');
       setLocation('');
+      setDescription('');
       setEstimatedCost('');
       setIsSeminarioJoint(false);
+      setRequiresLcr(true);
       onClose();
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'No se pudo guardar la propuesta.');
@@ -122,10 +157,12 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
             </div>
             <div>
               <h3 id="modal-propose-title" className="text-base font-extrabold text-slate-900 leading-tight">
-                Proponer Actividad
+                {isDirectCreate ? 'Crear Evento en Calendario' : 'Proponer Actividad'}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                {canUseSeminario && isSeminarioJoint
+                {isDirectCreate
+                  ? 'Se guardará directamente como actividad aprobada'
+                  : canUseSeminario && isSeminarioJoint
                   ? 'Fondo común: Seminario (visible en MMJJ y HHJJ)'
                   : `Organización: ${ORGANIZATION_LABELS[userOrg === 'TODAS' ? 'ESTACA' : userOrg]}`}
               </p>
@@ -166,7 +203,28 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {isDirectCreate && (
+            <div>
+              <label htmlFor="act-org" className="block text-xs font-bold text-slate-700 mb-1.5">
+                Organización *
+              </label>
+              <select
+                id="act-org"
+                data-testid="input-activity-organization"
+                value={selectedOrg}
+                onChange={(e) => setSelectedOrg(e.target.value as OrganizationCode)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+              >
+                {DIRECT_CREATE_ORGS.map((orgKey) => (
+                  <option key={orgKey} value={orgKey}>
+                    {ORGANIZATION_LABELS[orgKey]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label htmlFor="act-date" className="block text-xs font-bold text-slate-700 mb-1.5">
                 Fecha *
@@ -184,7 +242,7 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
 
             <div>
               <label htmlFor="act-time" className="block text-xs font-bold text-slate-700 mb-1.5">
-                Horario
+                Inicio
               </label>
               <div className="relative">
                 <Clock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -194,6 +252,23 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="act-end-time" className="block text-xs font-bold text-slate-700 mb-1.5">
+                Fin (opcional)
+              </label>
+              <div className="relative">
+                <Clock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="act-end-time"
+                  data-testid="input-activity-end-time"
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600"
                 />
               </div>
@@ -240,8 +315,45 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
             </div>
           </div>
 
+          <div>
+            <label htmlFor="act-description" className="block text-xs font-bold text-slate-700 mb-1.5">
+              Descripción / Notas (opcional)
+            </label>
+            <textarea
+              id="act-description"
+              data-testid="input-activity-description"
+              rows={2}
+              placeholder="Detalles útiles para los participantes o la organización..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600 resize-none"
+            />
+          </div>
+
+          {isDirectCreate && (
+            <label
+              htmlFor="act-requires-lcr"
+              className="flex items-start gap-2.5 p-3 rounded-2xl border border-slate-200 bg-slate-50 text-xs text-slate-700 cursor-pointer"
+            >
+              <input
+                id="act-requires-lcr"
+                data-testid="checkbox-requires-lcr"
+                type="checkbox"
+                checked={requiresLcr}
+                onChange={(e) => setRequiresLcr(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-600"
+              />
+              <span>
+                <strong className="block text-slate-900">Pendiente de cargar en LCR</strong>
+                <span className="text-[11px] text-slate-500">
+                  Déjalo marcado para recordar subirlo luego al calendario oficial de LCR y vincularlo.
+                </span>
+              </span>
+            </label>
+          )}
+
           {/* Regla Especial de Seminario para MJ y HJ (ADR-003 / PROJECT_CONTEXT.md §4.1) */}
-          {canUseSeminario && (
+          {!isDirectCreate && canUseSeminario && (
             <label
               htmlFor="act-seminario-check"
               data-testid="seminario-checkbox-label"
@@ -287,7 +399,15 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
               className="pressable inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-800 hover:bg-emerald-900 text-white shadow-sm disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isSubmitting ? 'Enviando...' : 'Enviar Propuesta'}</span>
+              <span>
+                {isSubmitting
+                  ? isDirectCreate
+                    ? 'Guardando...'
+                    : 'Enviando...'
+                  : isDirectCreate
+                  ? 'Crear Evento'
+                  : 'Enviar Propuesta'}
+              </span>
             </button>
           </div>
         </form>

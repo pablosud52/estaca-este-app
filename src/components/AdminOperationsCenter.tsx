@@ -759,7 +759,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
+                <div className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200 overflow-hidden divide-x divide-slate-200">
                   {(
                     [
                       { id: 'ALL', label: 'Todos' },
@@ -771,9 +771,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       key={f.id}
                       type="button"
                       onClick={() => setLedgerFilter(f.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                      className={`px-2.5 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                         ledgerFilter === f.id
-                          ? 'bg-slate-900 text-white shadow-2xs'
+                          ? 'bg-slate-900 text-white'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                       }`}
                     >
@@ -822,7 +822,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5 overflow-x-auto max-w-full">
+                <div className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200 overflow-x-auto max-w-full divide-x divide-slate-200">
                   {(
                     [
                       { id: 'ALL', label: 'Todos' },
@@ -836,9 +836,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       key={f.id}
                       type="button"
                       onClick={() => setWithdrawalTypeFilter(f.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                      className={`px-2.5 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                         withdrawalTypeFilter === f.id
-                          ? 'bg-slate-900 text-white shadow-2xs'
+                          ? 'bg-slate-900 text-white'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                       }`}
                     >
@@ -885,14 +885,14 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                 )}
               </div>
 
-              <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
+              <div className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200 overflow-hidden divide-x divide-slate-200">
                 <button
                   type="button"
                   data-testid="budget-subtab-incomes"
                   onClick={() => setBudgetSubTab('INCOMES')}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                  className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                     budgetSubTab === 'INCOMES'
-                      ? 'bg-slate-900 text-white shadow-2xs'
+                      ? 'bg-slate-900 text-white'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
@@ -902,9 +902,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   type="button"
                   data-testid="budget-subtab-distribution"
                   onClick={() => setBudgetSubTab('DISTRIBUTION')}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ${
+                  className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                     budgetSubTab === 'DISTRIBUTION'
-                      ? 'bg-slate-900 text-white shadow-2xs'
+                      ? 'bg-slate-900 text-white'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >

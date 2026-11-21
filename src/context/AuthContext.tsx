@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
+  buildEmptyDirectoryEntries,
   buildInitialDirectoryEntries,
   DEV_PROFILES,
   isSuperAdminEmail,
@@ -80,9 +81,12 @@ const DIRECTORY_STORAGE_KEY = 'estaca_este_directory_entries_v1';
 const normalizeDirectoryEntries = (entries: StakeDirectoryEntry[]): StakeDirectoryEntry[] =>
   entries.map((entry) => {
     const isSuper = isSuperAdminEmail(entry.email);
+    const normalizedCalling =
+      entry.directory_org === 'SUMO_CONSEJO' ? 'Miembro del Sumo Consejo' : entry.calling;
     if (entry.slot_key === 'pres-presidente') {
       return {
         ...entry,
+        calling: normalizedCalling,
         role: 'ADMIN',
         is_permanent_admin: true,
         can_approve_activities: true,
@@ -91,6 +95,7 @@ const normalizeDirectoryEntries = (entries: StakeDirectoryEntry[]): StakeDirecto
     if (entry.slot_key === 'pres-secretario') {
       return {
         ...entry,
+        calling: normalizedCalling,
         role: 'ADMIN',
         is_permanent_admin: true,
         can_approve_activities: Boolean(entry.can_approve_activities),
@@ -99,12 +104,13 @@ const normalizeDirectoryEntries = (entries: StakeDirectoryEntry[]): StakeDirecto
     if (entry.slot_key === 'pres-secretario-financiero') {
       return {
         ...entry,
+        calling: normalizedCalling,
         role: isSuper ? 'ADMIN' : entry.role === 'ADMIN' ? 'PRESIDENCIA' : entry.role,
         is_permanent_admin: isSuper,
         can_approve_activities: isSuper ? true : entry.can_approve_activities,
       };
     }
-    return entry;
+    return normalizedCalling !== entry.calling ? { ...entry, calling: normalizedCalling } : entry;
   });
 
 const loadInitialDirectory = (): StakeDirectoryEntry[] => {
@@ -164,7 +170,7 @@ const toDbDirectoryRow = (entry: StakeDirectoryEntry) => ({
 });
 
 const mergeDirectoryFromRemote = (remoteRows: StakeDirectoryEntry[]): StakeDirectoryEntry[] => {
-  const base = buildInitialDirectoryEntries();
+  const base = buildEmptyDirectoryEntries();
   const remoteById = new Map(remoteRows.map((row) => [row.id, row]));
   const baseIds = new Set(base.map((b) => b.id));
 
@@ -174,6 +180,7 @@ const mergeDirectoryFromRemote = (remoteRows: StakeDirectoryEntry[]): StakeDirec
     return {
       ...slot,
       ...remote,
+      calling: slot.directory_org === 'SUMO_CONSEJO' ? slot.calling : remote.calling || slot.calling,
       first_name: remote.first_name || '',
       last_name: remote.last_name || '',
       phone: remote.phone || '',
@@ -379,8 +386,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setProfiles(mergedProfiles);
         }
 
-        // 3. Cargar directorio real desde Supabase (si tiene registros)
-        if (!dirError && dirData && dirData.length > 0 && mounted) {
+        // 3. Cargar directorio real desde Supabase (si hay sesión real o registros remotos, es fuente única de verdad)
+        if (!dirError && Array.isArray(dirData) && mounted && (dirData.length > 0 || sessionEmail || AUTH_REQUIRED)) {
           const mergedDir = mergeDirectoryFromRemote(dirData as StakeDirectoryEntry[]);
           setDirectoryEntries(mergedDir);
           saveDirectoryLocal(mergedDir);

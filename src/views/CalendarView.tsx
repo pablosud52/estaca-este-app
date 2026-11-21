@@ -77,6 +77,7 @@ interface CalendarViewProps {
   onActivitiesUpdate?: (updated: ActivityRecord[]) => void;
   onBack?: () => void;
   onProposeActivity?: () => void;
+  proposeButtonLabel?: string;
   embedded?: boolean;
   onlyPendingLcr?: boolean;
   onClearPendingLcrFilter?: () => void;
@@ -88,6 +89,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onActivitiesUpdate,
   onBack,
   onProposeActivity,
+  proposeButtonLabel = 'Proponer Actividad',
   embedded = false,
   onlyPendingLcr = false,
   onClearPendingLcrFilter,
@@ -456,8 +458,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             >
               <Plus className="w-3.5 h-3.5 flex-shrink-0" />
               <span className="flex flex-col sm:flex-row sm:gap-1 items-start sm:items-center leading-[1.1] sm:leading-4 text-left">
-                <span>Proponer</span>
-                <span>Actividad</span>
+                {proposeButtonLabel.split(' ').map((word, idx) => (
+                  <span key={idx}>{word}</span>
+                ))}
               </span>
             </button>
           )}
@@ -621,7 +624,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       {act.start_time && (
                         <span className="inline-flex items-center gap-1 tabular-nums">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          {act.start_time} hs
+                          {act.start_time}
+                          {act.end_time ? ` - ${act.end_time}` : ''} hs
                         </span>
                       )}
                       {act.location && (

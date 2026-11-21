@@ -237,6 +237,32 @@ const SEED_SUMO_CONSEJO_DEFAULTS: Record<string, { unit?: string; notes?: string
   'sc-11': { unit: 'Carrasco', notes: 'HJ Consejero // acompañar MJ // SEMINARIO' },
 };
 
+export function buildEmptyDirectoryEntries(): StakeDirectoryEntry[] {
+  const entries: StakeDirectoryEntry[] = [];
+  for (const orgDef of STAKE_ORG_STRUCTURE) {
+    for (const slot of orgDef.fixedSlots) {
+      entries.push({
+        id: `dir-${slot.slot_key}`,
+        directory_org: orgDef.code as DirectoryOrgCode,
+        slot_key: slot.slot_key,
+        calling: slot.calling,
+        is_fixed_slot: true,
+        first_name: '',
+        last_name: '',
+        phone: '',
+        email: '',
+        has_app_access: false,
+        role: slot.defaultRole,
+        can_approve_activities: Boolean(slot.defaultCanApprove),
+        is_permanent_admin: Boolean(slot.isPermanentAdmin),
+        assigned_unit: '',
+        assigned_org_notes: '',
+      });
+    }
+  }
+  return entries;
+}
+
 export function buildInitialDirectoryEntries(): StakeDirectoryEntry[] {
   const entries: StakeDirectoryEntry[] = [];
   for (const orgDef of STAKE_ORG_STRUCTURE) {

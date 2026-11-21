@@ -48,6 +48,7 @@ import {
 } from '../types/database';
 import { OrgDistributionChart, OrgSummaryStat } from '../components/OrgDistributionChart';
 import { CalendarControlPanel } from '../components/CalendarControlPanel';
+import { ProposeActivityModal } from '../components/ProposeActivityModal';
 import {
   isActivityPendingLcr,
   syncLcrCalendarWithShield,
@@ -173,6 +174,7 @@ export const PresidencyHub: React.FC = () => {
     ...SEED_ACTIVITIES,
     ...loadSessionProposals(),
   ]);
+  const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [withdrawals, setWithdrawals] = useState<CashWithdrawalRecord[]>(SEED_CASH_WITHDRAWALS);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
 
@@ -938,12 +940,14 @@ export const PresidencyHub: React.FC = () => {
       title: string;
       event_date: string;
       start_time: string | null;
+      end_time?: string | null;
       location: string;
       organization: OrganizationCode;
       description: string;
       estimated_cost: number;
     }
   ) => {
+    const existingAct = activities.find((a) => a.id === id);
     setActivities((prev) =>
       prev.map((a) =>
         a.id === id
@@ -963,6 +967,7 @@ export const PresidencyHub: React.FC = () => {
             title: updates.title,
             event_date: updates.event_date,
             start_time: updates.start_time,
+            end_time: updates.end_time ?? null,
             location: updates.location,
             organization: updates.organization,
             description: updates.description,
@@ -973,6 +978,143 @@ export const PresidencyHub: React.FC = () => {
       } catch {
         // Estado local ya actualizado
       }
+    }
+
+    // Sincronizar reserva presupuestaria (PROYECTADO_ACTIVIDAD) si cambió fecha, monto u organización
+    const existingProjected = expenses.find(
+      (e) => e.activity_id === id && e.expense_type === 'PROYECTADO_ACTIVIDAD'
+    );
+    if (existingProjected) {
+      if (updates.estimated_cost <= 0) {
+        setExpenses((prev) => prev.filter((e) => e.id !== existingProjected.id));
+        if (!isSimulating) {
+          try {
+            await supabase.from('expenses').delete().eq('id', existingProjected.id);
+          } catch {
+            // Silencioso
+          }
+        }
+      } else {
+        const nextConcept = `Reserva actividad: ${updates.title}`;
+        setExpenses((prev) =>
+          prev.map((e) =>
+            e.id === existingProjected.id
+              ? {
+                  ...e,
+                  activity_date: updates.event_date,
+                  expense_date: updates.event_date,
+                  organization: updates.organization,
+                  concept: nextConcept,
+                  gross_amount: updates.estimated_cost,
+                  net_amount: updates.estimated_cost,
+                }
+              : e
+          )
+        );
+        if (!isSimulating) {
+          try {
+            await supabase
+              .from('expenses')
+              .update({
+                activity_date: updates.event_date,
+                expense_date: updates.event_date,
+                organization: updates.organization,
+                concept: nextConcept,
+                gross_amount: updates.estimated_cost,
+                net_amount: updates.estimated_cost,
+              })
+              .eq('id', existingProjected.id);
+          } catch {
+            // Silencioso
+          }
+        }
+      }
+    } else if (updates.estimated_cost > 0 && existingAct) {
+      await createProjectedForActivity({
+        ...existingAct,
+        ...updates,
+        has_budget: true,
+        status: 'APROBADA',
+      });
+    }
+  };
+
+  const handleCreateDirectActivity = async (proposal: {
+    title: string;
+    event_date: string;
+    start_time: string;
+    end_time?: string;
+    location: string;
+    organization: OrganizationCode;
+    estimated_cost: number;
+    description?: string;
+    requires_lcr?: boolean;
+  }) => {
+    const tempId = Date.now();
+    const uid =
+      proposal.requires_lcr === false
+        ? `NO_LCR_${tempId}`
+        : `PENDIENTE_LCR-${tempId}`;
+    let createdRecord: ActivityRecord = {
+      id: tempId,
+      ical_uid: uid,
+      title: proposal.title,
+      event_date: proposal.event_date,
+      start_time: proposal.start_time,
+      end_time: proposal.end_time || null,
+      location: proposal.location,
+      organization: proposal.organization,
+      description: proposal.description || null,
+      estimated_cost: proposal.estimated_cost,
+      has_budget: proposal.estimated_cost > 0,
+      origin: 'propuesta_lider',
+      status: 'APROBADA',
+    };
+
+    setActivities((prev) => {
+      const updated = [...prev, createdRecord].sort((a, b) =>
+        a.event_date.localeCompare(b.event_date)
+      );
+      saveSessionProposals(updated);
+      return updated;
+    });
+
+    if (!isSimulating) {
+      try {
+        const { data: inserted } = await supabase
+          .from('activities')
+          .insert([
+            {
+              ical_uid: uid,
+              title: proposal.title,
+              event_date: proposal.event_date,
+              start_time: proposal.start_time,
+              end_time: proposal.end_time || null,
+              location: proposal.location,
+              organization: proposal.organization,
+              description: proposal.description || null,
+              estimated_cost: proposal.estimated_cost,
+              has_budget: proposal.estimated_cost > 0,
+              origin: 'propuesta_lider',
+              status: 'APROBADA',
+            },
+          ])
+          .select('id')
+          .single();
+
+        if (inserted && typeof inserted.id === 'number') {
+          createdRecord = { ...createdRecord, id: inserted.id };
+          setActivities((prev) =>
+            prev.map((a) => (a.id === tempId ? { ...a, id: inserted.id } : a))
+          );
+        }
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+
+    if (createdRecord.estimated_cost > 0) {
+      await createProjectedForActivity(createdRecord);
     }
   };
 
@@ -2407,6 +2549,7 @@ export const PresidencyHub: React.FC = () => {
             onDeleteActivity={handleDeleteActivity}
             onCancelActivity={handleCancelActivity}
             onManualSync={handleManualCalendarSync}
+            onOpenCreateModal={() => setIsCreateEventOpen(true)}
           />
         ) : activeTab === 'CALENDAR' ? (
           <CalendarView
@@ -2415,6 +2558,8 @@ export const PresidencyHub: React.FC = () => {
             onActivitiesUpdate={setActivities}
             onlyPendingLcr={calendarOnlyPendingLcr}
             onClearPendingLcrFilter={() => setCalendarOnlyPendingLcr(false)}
+            onProposeActivity={() => setIsCreateEventOpen(true)}
+            proposeButtonLabel="Crear Evento"
             embedded
           />
         ) : activeTab === 'SUPPLIERS' ? (
@@ -2500,9 +2645,15 @@ export const PresidencyHub: React.FC = () => {
                   {/* Columna derecha: Tabla compacta por organización en el trimestre actual */}
                   {reservedMetrics.reservedByOrg.length > 0 && (
                     <div className="flex-shrink-0 border-l border-slate-700/80 pl-2.5 sm:pl-5 self-stretch flex flex-col justify-center">
+                      <p
+                        data-testid="kpi-reserved-org-title"
+                        className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-1"
+                      >
+                        En agenda {reservedMetrics.targetQuarter}
+                      </p>
                       <table
                         data-testid="kpi-reserved-org-list"
-                        aria-label={`Reservado Actividades ${reservedMetrics.targetQuarter} por organización`}
+                        aria-label={`En agenda ${reservedMetrics.targetQuarter} por organización`}
                         className="text-[11px] sm:text-xs border-collapse"
                       >
                         <tbody>
@@ -2821,6 +2972,15 @@ export const PresidencyHub: React.FC = () => {
           </>
         )}
       </main>
+
+      <ProposeActivityModal
+        isOpen={isCreateEventOpen}
+        onClose={() => setIsCreateEventOpen(false)}
+        userOrg={user.organization}
+        canUseSeminario={false}
+        mode="DIRECT_CREATE"
+        onSubmitProposal={handleCreateDirectActivity}
+      />
     </div>
   );
 };

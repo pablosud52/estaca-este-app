@@ -51,6 +51,7 @@ interface ActivityApprovalTrayProps {
       title: string;
       event_date: string;
       start_time: string | null;
+      end_time?: string | null;
       location: string;
       organization: OrganizationCode;
       description: string;
@@ -97,6 +98,7 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
   const [appTitle, setAppTitle] = useState('');
   const [appDate, setAppDate] = useState('');
   const [appTime, setAppTime] = useState('');
+  const [appEndTime, setAppEndTime] = useState('');
   const [appLocation, setAppLocation] = useState('');
   const [appOrg, setAppOrg] = useState<OrganizationCode>('ESTACA');
   const [appDesc, setAppDesc] = useState('');
@@ -146,6 +148,7 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
     setAppTitle(act.title);
     setAppDate(act.event_date);
     setAppTime(act.start_time || '');
+    setAppEndTime(act.end_time || '');
     setAppLocation(act.location);
     setAppOrg(act.organization);
     setAppDesc(act.description || '');
@@ -162,6 +165,7 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
         title: appTitle.trim() || editApprovedAct.title,
         event_date: appDate || editApprovedAct.event_date,
         start_time: appTime.trim() ? appTime.trim() : null,
+        end_time: appEndTime.trim() ? appEndTime.trim() : null,
         location: appLocation.trim() || 'Centro de Estaca',
         organization: appOrg,
         description: appDesc.trim(),
@@ -846,16 +850,29 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
                 />
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Horario (opcional)
-                </label>
-                <input
-                  type="time"
-                  value={appTime}
-                  onChange={(e) => setAppTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Inicio (opcional)
+                  </label>
+                  <input
+                    type="time"
+                    value={appTime}
+                    onChange={(e) => setAppTime(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                    Fin (opcional)
+                  </label>
+                  <input
+                    type="time"
+                    value={appEndTime}
+                    onChange={(e) => setAppEndTime(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">

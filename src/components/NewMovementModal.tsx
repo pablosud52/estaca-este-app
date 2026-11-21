@@ -155,7 +155,7 @@ export const NewMovementModal: React.FC<NewMovementModalProps> = ({
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
               Tipo de movimiento
             </label>
-            <div className="grid grid-cols-4 bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1">
+            <div className="grid grid-cols-4 bg-slate-100 rounded-xl border border-slate-200 overflow-hidden divide-x divide-slate-200">
               {MOVEMENT_OPTIONS.map((opt) => {
                 const Icon = opt.icon;
                 const active = movementType === opt.id;
@@ -164,9 +164,9 @@ export const NewMovementModal: React.FC<NewMovementModalProps> = ({
                     key={opt.id}
                     type="button"
                     onClick={() => setMovementType(opt.id)}
-                    className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-[11px] font-bold transition ${
+                    className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-none text-[11px] font-bold transition ${
                       active
-                        ? 'bg-slate-900 text-white shadow-xs'
+                        ? 'bg-slate-900 text-white'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                     }`}
                   >

@@ -573,29 +573,33 @@ export async function syncLcrCalendarWithShield(options?: {
     }
   }
 
-  // 2. Consultar el feed iCal público de la Iglesia
+  // 2. Consultar el feed iCal público de la Iglesia (primero vía puente /api/lcr-calendar sin CORS, luego directo)
   let rawIcs = FALLBACK_OFFICIAL_ICS_PAYLOAD;
   let source: 'lcr_live_ical' | 'lcr_fallback_ical' = 'lcr_fallback_ical';
 
   if (shouldAttemptLiveFetch) {
-    try {
+    const fetchEndpoints = ['/api/lcr-calendar', OFFICIAL_LCR_ICAL_URL];
+    for (const endpoint of fetchEndpoints) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), LIVE_FETCH_TIMEOUT_MS);
-      const response = await fetch(OFFICIAL_LCR_ICAL_URL, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const text = await response.text();
-        if (text.includes('BEGIN:VCALENDAR')) {
-          rawIcs = text;
-          source = 'lcr_live_ical';
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        if (response.ok) {
+          const text = await response.text();
+          if (text.includes('BEGIN:VCALENDAR')) {
+            rawIcs = text;
+            source = 'lcr_live_ical';
+            break;
+          }
         }
+      } catch {
+        // Intentar siguiente endpoint o caer en respaldo
+      } finally {
+        clearTimeout(timeoutId);
       }
-    } catch {
-      source = 'lcr_fallback_ical';
     }
   }
 
@@ -640,7 +644,7 @@ export function isActivityPendingLcr(act: ActivityRecord): boolean {
   if (act.status !== 'APROBADA') return false;
   const uid = (act.ical_uid || '').trim();
   if (uid.startsWith('NO_LCR_')) return false;
-  if (uid.startsWith('PROPUESTA_LIDER')) return true;
+  if (uid.startsWith('PROPUESTA_LIDER') || uid.startsWith('PENDIENTE_LCR')) return true;
   if (!uid && act.origin === 'propuesta_lider') return true;
   return false;
 }
@@ -689,6 +693,7 @@ export function isActivityMissingFromLcr(
   if (
     !uid ||
     uid.startsWith('PROPUESTA_LIDER') ||
+    uid.startsWith('PENDIENTE_LCR') ||
     uid.startsWith('NO_LCR_') ||
     uid.startsWith('ACT-2026-') ||
     uid.startsWith('LCR-2026-')

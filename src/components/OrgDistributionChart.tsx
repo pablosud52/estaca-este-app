@@ -62,7 +62,7 @@ const formatPercentEs = (value: number): string =>
   `${value.toFixed(1).replace('.', ',')}%`;
 
 export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgStats }) => {
-  const [metricMode, setMetricMode] = useState<MetricMode>('INGRESOS');
+  const [metricMode, setMetricMode] = useState<MetricMode>('GASTOS');
   const [youthGrouping, setYouthGrouping] = useState<YouthGrouping>('UNIFICADOS');
   const [chartMode, setChartMode] = useState<'MONTOS' | 'PORCENTAJES'>('PORCENTAJES');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('GLOBAL');
@@ -398,53 +398,21 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. Selector Métrica: [ Ingresos ] [ Gastos ] */}
-          <div
-            role="group"
-            aria-label="Métrica a graficar"
-            className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80"
-          >
-            <button
-              type="button"
-              data-testid="chart-metric-ingresos"
-              onClick={() => setMetricMode('INGRESOS')}
-              className={`pressable px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
-                metricMode === 'INGRESOS'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Ingresos
-            </button>
-            <button
-              type="button"
-              data-testid="chart-metric-gastos"
-              onClick={() => setMetricMode('GASTOS')}
-              className={`pressable px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
-                metricMode === 'GASTOS'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Gastos
-            </button>
-          </div>
-
-          {/* 2. Selector Jóvenes: [ Juntos ] [ Separados ] */}
+          {/* 1. Selector Jóvenes: [ Jóvenes juntos | Separados ] */}
           <div
             role="group"
             aria-label="Agrupación de jóvenes"
-            className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80"
+            className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80"
           >
             <button
               type="button"
               data-testid="chart-youth-unified"
               onClick={() => setYouthGrouping('UNIFICADOS')}
               title="Ver jóvenes unificados en una sola barra (HJ + MJ + Seminario)"
-              className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
+              className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 youthGrouping === 'UNIFICADOS'
-                  ? 'bg-amber-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-amber-500 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -455,21 +423,88 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               data-testid="chart-youth-split"
               onClick={() => setYouthGrouping('DESGLOSADOS')}
               title="Separar jóvenes en Hombres Jóvenes, Mujeres Jóvenes y Seminario"
-              className={`pressable px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
+              className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 youthGrouping === 'DESGLOSADOS'
-                  ? 'bg-amber-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-amber-500 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               Separados
             </button>
           </div>
 
-          {/* 3. Píldoras de período: [ Global ] [ T1 ] [ T2 ] [ T3 ] [ T4 ] */}
+          {/* 2. Selector Métrica: [ Gastos | Ingresos ] */}
+          <div
+            role="group"
+            aria-label="Métrica a graficar"
+            className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80"
+          >
+            <button
+              type="button"
+              data-testid="chart-metric-gastos"
+              onClick={() => setMetricMode('GASTOS')}
+              className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
+                metricMode === 'GASTOS'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+            >
+              Gastos
+            </button>
+            <button
+              type="button"
+              data-testid="chart-metric-ingresos"
+              onClick={() => setMetricMode('INGRESOS')}
+              className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
+                metricMode === 'INGRESOS'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+            >
+              Ingresos
+            </button>
+          </div>
+
+          {/* 3. Toggle Porcentajes (%) vs Montos ($) */}
+          <div
+            role="group"
+            aria-label="Modo de visualización del gráfico"
+            className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80"
+          >
+            <button
+              type="button"
+              data-testid="chart-mode-porcentajes"
+              onClick={() => setChartMode('PORCENTAJES')}
+              className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
+                chartMode === 'PORCENTAJES'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+              title="Mostrar en Porcentajes (%)"
+            >
+              <span>%</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="chart-mode-montos"
+              onClick={() => setChartMode('MONTOS')}
+              className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
+                chartMode === 'MONTOS'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+              title="Mostrar en Montos ($)"
+            >
+              <span>$</span>
+            </button>
+          </div>
+
+          {/* 4. Píldoras de período: [ Global | T1 | T2 | T3 | T4 ] */}
           <div
             role="group"
             aria-label="Filtro por período"
-            className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80"
+            className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80"
           >
             {(['GLOBAL', 'T1', 'T2', 'T3', 'T4'] as const).map((period) => (
               <button
@@ -477,50 +512,15 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
                 type="button"
                 data-testid={`chart-period-${period}`}
                 onClick={() => setPeriodFilter(period)}
-                className={`pressable px-2 py-1.5 rounded-lg text-xs font-extrabold transition ${
+                className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                   periodFilter === period
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
                 {period === 'GLOBAL' ? 'Global' : period}
               </button>
             ))}
-          </div>
-
-          {/* 4. Toggle Montos ($) vs Porcentajes (%) */}
-          <div
-            role="group"
-            aria-label="Modo de visualización del gráfico"
-            className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80"
-          >
-            <button
-              type="button"
-              data-testid="chart-mode-montos"
-              onClick={() => setChartMode('MONTOS')}
-              className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
-                chartMode === 'MONTOS'
-                  ? 'bg-white text-emerald-800 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Mostrar en Montos ($)"
-            >
-              <span>$</span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="chart-mode-porcentajes"
-              onClick={() => setChartMode('PORCENTAJES')}
-              className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition ${
-                chartMode === 'PORCENTAJES'
-                  ? 'bg-white text-emerald-800 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Mostrar en Porcentajes (%)"
-            >
-              <span>%</span>
-            </button>
           </div>
         </div>
       </div>

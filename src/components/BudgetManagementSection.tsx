@@ -943,15 +943,15 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
           </div>
 
           {/* Sub-pestañas integradas en la cabecera */}
-          <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl">
+          <div className="inline-flex items-center bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80">
             <button
               type="button"
               data-testid="budget-subtab-incomes"
               onClick={() => setActiveSubTab('INCOMES')}
-              className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold whitespace-nowrap transition ${
+              className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold whitespace-nowrap transition ${
                 activeSubTab === 'INCOMES'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
@@ -962,10 +962,10 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
               type="button"
               data-testid="budget-subtab-distribution"
               onClick={() => setActiveSubTab('DISTRIBUTION')}
-              className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold whitespace-nowrap transition ${
+              className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold whitespace-nowrap transition ${
                 activeSubTab === 'DISTRIBUTION'
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <Wallet className="w-3.5 h-3.5 text-emerald-400" />

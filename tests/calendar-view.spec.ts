@@ -186,4 +186,45 @@ test.describe('Paso 6.5 — Vista 4: Calendario General de Actividades (Calendar
       scrollContainer.getByRole('heading', { name: 'Presentación Primaria Colonia Nicolich' })
     ).toHaveCount(0);
   });
+
+  test('3. Crear evento directo desde el Panel de Control del Calendario (Aprobados y Pendientes en LCR)', async ({
+    page,
+  }) => {
+    await page.getByTestId('dev-role-trigger').click();
+    await page.getByTestId('switch-role-admin-pablo-01').click();
+
+    const adminMenuBtn = page.getByRole('button', { name: 'Administración' });
+    if (await adminMenuBtn.isVisible()) {
+      await adminMenuBtn.click();
+      await page.getByTestId('hub-nav-approvals').click();
+    } else {
+      await page.getByTestId('mobile-menu-toggle').click();
+      await page.getByTestId('drawer-nav-approvals').click();
+    }
+
+    await expect(page.getByTestId('calendar-control-panel')).toBeVisible();
+    await page.getByTestId('cal-ctrl-create-event-btn').click();
+    await expect(page.getByTestId('propose-activity-modal')).toBeVisible();
+
+    await page.getByTestId('input-activity-organization').selectOption('ESTACA');
+    await page.getByTestId('input-activity-title').fill('Reunión Especial de Estaca');
+    await page.getByTestId('input-activity-date').fill('2026-12-20');
+    await page.getByTestId('input-activity-time').fill('19:30');
+    await page.getByTestId('input-activity-end-time').fill('21:00');
+    await page.getByTestId('input-activity-location').fill('Centro de Estaca');
+    await page.getByTestId('input-activity-cost').fill('2500');
+    await page.getByTestId('submit-activity-btn').click();
+
+    await expect(page.getByTestId('propose-activity-modal')).toBeHidden();
+
+    // Verificar en pestaña Aprobados
+    await page.getByTestId('cal-ctrl-tab-approved').click();
+    await expect(page.getByText('Reunión Especial de Estaca')).toBeVisible();
+
+    // Verificar en pestaña Pendientes en LCR
+    await page.getByTestId('cal-ctrl-tab-pending-lcr').click();
+    await expect(
+      page.getByTestId('cal-ctrl-pending-lcr-panel').getByText('Reunión Especial de Estaca')
+    ).toBeVisible();
+  });
 });

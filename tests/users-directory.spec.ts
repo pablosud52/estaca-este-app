@@ -185,12 +185,19 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     await expect(page.getByTestId('add-extra-btn-MJ')).toBeDisabled();
   });
 
-  test('4. Directorio de Líderes muestra celular en grupos de 3 dígitos con Copiar y WhatsApp (sin selector de año)', async ({
+  test('4. Directorio de Líderes con acordeones plegados, auto-despliegue al filtrar y Copiar/WhatsApp (sin selector de año)', async ({
     page,
   }) => {
     await expect(page.getByTestId('year-selector-dropdown')).toBeVisible();
     await openDirectoryView(page);
     await expect(page.getByTestId('year-selector-dropdown')).toBeHidden();
+
+    const presToggle = page.getByTestId('directory-org-accordion-toggle-PRESIDENCIA');
+    await expect(presToggle).toHaveAttribute('aria-expanded', 'false');
+
+    // Al seleccionar Presidencia desde la pastilla rápida, filtra y despliega automáticamente
+    await page.getByTestId('directory-quick-chip-PRESIDENCIA').click();
+    await expect(presToggle).toHaveAttribute('aria-expanded', 'true');
 
     const pabloCopyBtn = page.getByTestId('copy-phone-pres-secretario-financiero');
     const pabloWaBtn = page.getByTestId('whatsapp-btn-pres-secretario-financiero');

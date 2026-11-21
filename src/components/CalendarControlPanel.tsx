@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Link2, RefreshCw, Trash2, X } from 'lucide-react';
+import { Check, Link2, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { formatCurrency, formatDate, ORGANIZATION_SHORT_LABELS } from '../lib/formatters';
 import {
   getLocalLcrSyncMeta,
@@ -38,6 +38,7 @@ interface CalendarControlPanelProps {
       title: string;
       event_date: string;
       start_time: string | null;
+      end_time?: string | null;
       location: string;
       organization: OrganizationCode;
       description: string;
@@ -49,6 +50,7 @@ interface CalendarControlPanelProps {
   onDeleteActivity: (activityId: number) => Promise<void>;
   onCancelActivity?: (activityId: number) => Promise<void>;
   onManualSync: () => Promise<void>;
+  onOpenCreateModal?: () => void;
 }
 
 export const CalendarControlPanel: React.FC<CalendarControlPanelProps> = ({
@@ -68,6 +70,7 @@ export const CalendarControlPanel: React.FC<CalendarControlPanelProps> = ({
   onDeleteActivity,
   onCancelActivity,
   onManualSync,
+  onOpenCreateModal,
 }) => {
   const [subTab, setSubTab] = useState<CalendarControlSubTab>(initialSubTab);
   const [linkingId, setLinkingId] = useState<number | null>(null);
@@ -139,7 +142,8 @@ export const CalendarControlPanel: React.FC<CalendarControlPanelProps> = ({
 
   return (
     <div data-testid="calendar-control-panel" className="space-y-4">
-      {/* Navegación compacta en 3 pestañas: Aprobados · Esperando Aprobación · Pendientes en LCR */}
+      {/* Navegación compacta en 3 pestañas + Botón Crear Evento */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="bg-white border border-slate-200 rounded-2xl p-1.5 inline-flex flex-wrap gap-1">
         <button
           type="button"
@@ -227,6 +231,19 @@ export const CalendarControlPanel: React.FC<CalendarControlPanelProps> = ({
             </span>
           )}
         </button>
+      </div>
+
+      {onOpenCreateModal && (
+        <button
+          type="button"
+          data-testid="cal-ctrl-create-event-btn"
+          onClick={onOpenCreateModal}
+          className="pressable inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold shadow-sm transition"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Crear Evento</span>
+        </button>
+      )}
       </div>
 
       {/* Pestaña 1: Esperando Aprobación */}

@@ -38,6 +38,14 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api/lcr-calendar': {
+        target: 'https://www.churchofjesuschrist.org',
+        changeOrigin: true,
+        rewrite: () =>
+          '/church-calendar/services/ext/v3.0/export/ical/group/cd92d6817fa64d25bc2f55aec4fea180',
+      },
+    },
   },
   build: {
     rollupOptions: {

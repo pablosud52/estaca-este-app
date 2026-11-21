@@ -335,7 +335,7 @@ export const AuditLogsPanel: React.FC = () => {
                 type="button"
                 data-testid="audit-clear-filters-btn"
                 onClick={handleClearFilters}
-                className="inline-flex items-center gap-1 text-slate-700 hover:text-slate-900 font-bold"
+                className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold transition"
               >
                 <X className="w-3.5 h-3.5" />
                 <span>Limpiar filtros</span>

@@ -283,32 +283,24 @@ export const PresidencyHub: React.FC = () => {
           const remoteActivities = activityRes.data.map((a) => ({
             ...a,
             estimated_cost: Number(a.estimated_cost || 0),
-            origin: a.ical_uid?.startsWith('PROPUESTA_LIDER')
-              ? 'propuesta_lider'
-              : a.status === 'PROPUESTA'
-              ? 'propuesta_lider'
-              : 'lcr',
+            origin:
+              a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
+              a.ical_uid?.startsWith('PENDIENTE_LCR') ||
+              a.status === 'PROPUESTA'
+                ? 'propuesta_lider'
+                : 'lcr',
           })) as ActivityRecord[];
 
-          // Preferir los registros vivos de Supabase cuando coinciden por título y complementar con históricos de SEED_ACTIVITIES con IDs negativos para evitar colisión con los IDs de Supabase
-          const remoteTitles = new Set(remoteActivities.map((r) => r.title.trim().toLowerCase()));
-          const mergedRemoteAndSeed = [
-            ...remoteActivities,
-            ...SEED_ACTIVITIES.filter(
-              (s) => !remoteTitles.has(s.title.trim().toLowerCase())
-            ).map((s) => ({ ...s, id: -1000 - s.id })),
-          ];
-
-          // Sincronización silenciosa con el Doble Escudo LCR al montar la app
+          // Usar únicamente los registros reales de Supabase (sin inyectar SEED_ACTIVITIES)
           const syncResult = await syncLcrCalendarWithShield({
-            currentActivities: mergedRemoteAndSeed,
+            currentActivities: remoteActivities,
           });
 
           if (!active) return;
 
           setActivities((prev) => {
-            const sessionProps = loadSessionProposals();
-            const localProposals = [...prev, ...sessionProps].filter(
+            const sessionProps = isSimulating ? loadSessionProposals() : [];
+            const localProposals = [...(isSimulating ? prev : []), ...sessionProps].filter(
               (p) =>
                 p.origin === 'propuesta_lider' &&
                 !syncResult.activities.some(
@@ -919,33 +911,60 @@ export const PresidencyHub: React.FC = () => {
     const lcrAct = activities.find((a) => a.id === lcrActivityId);
     if (!pendingAct || !lcrAct || !lcrAct.ical_uid) return;
 
-    const mergedRecord = mergeLocalWithLcrActivity(pendingAct, lcrAct);
+    // Conservar siempre el registro real de LCR (lcrAct.id) y transferirle los datos complementarios de la app
+    const mergedRecord: ActivityRecord = {
+      ...mergeLocalWithLcrActivity(pendingAct, lcrAct),
+      id: lcrAct.id,
+    };
 
-    setActivities((prev) =>
-      prev
-        .filter((a) => a.id !== lcrActivityId)
-        .map((a) => (a.id === pendingActivityId ? mergedRecord : a))
+    setActivities((prev) => {
+      const next = prev
+        .filter((a) => a.id !== pendingActivityId)
+        .map((a) => (a.id === lcrActivityId ? mergedRecord : a));
+      saveSessionProposals(next);
+      return next;
+    });
+
+    // Reapuntar gastos/reservas vinculados al evento temporal hacia el ID real de LCR
+    setExpenses((prev) =>
+      prev.map((e) =>
+        e.activity_id === pendingActivityId
+          ? {
+              ...e,
+              activity_id: lcrAct.id,
+              activity_date: mergedRecord.event_date,
+              expense_date:
+                e.expense_type === 'PROYECTADO_ACTIVIDAD'
+                  ? mergedRecord.event_date
+                  : e.expense_date,
+            }
+          : e
+      )
     );
 
     if (!isSimulating) {
       try {
-        await supabase.from('activities').delete().eq('id', lcrActivityId);
+        // 1. Enriquecer la fila real de LCR en Supabase (por ical_uid o id)
         await supabase
           .from('activities')
           .update({
-            ical_uid: mergedRecord.ical_uid,
-            title: mergedRecord.title,
-            event_date: mergedRecord.event_date,
-            start_time: mergedRecord.start_time,
-            end_time: mergedRecord.end_time,
-            location: mergedRecord.location,
-            description: mergedRecord.description,
-            app_notes: mergedRecord.app_notes,
             organization: mergedRecord.organization,
             estimated_cost: mergedRecord.estimated_cost,
             has_budget: mergedRecord.has_budget,
+            app_notes: mergedRecord.app_notes,
           })
-          .eq('id', pendingActivityId);
+          .eq('ical_uid', lcrAct.ical_uid);
+
+        // 2. Reapuntar cualquier gasto vinculado al ID real de LCR
+        if (pendingActivityId > 0 && pendingActivityId < 2_000_000_000) {
+          await supabase
+            .from('expenses')
+            .update({ activity_id: lcrAct.id })
+            .eq('activity_id', pendingActivityId);
+
+          // 3. Eliminar la fila temporal pendiente en Supabase
+          await supabase.from('activities').delete().eq('id', pendingActivityId);
+        }
       } catch {
         // Estado local ya actualizado
       }
@@ -954,10 +973,12 @@ export const PresidencyHub: React.FC = () => {
 
   const handleMarkNoLcrRequired = async (activityId: number) => {
     const noLcrUid = `NO_LCR_${activityId}`;
-    setActivities((prev) =>
-      prev.map((a) => (a.id === activityId ? { ...a, ical_uid: noLcrUid } : a))
-    );
-    if (!isSimulating) {
+    setActivities((prev) => {
+      const next = prev.map((a) => (a.id === activityId ? { ...a, ical_uid: noLcrUid } : a));
+      saveSessionProposals(next);
+      return next;
+    });
+    if (!isSimulating && activityId > 0 && activityId < 2_000_000_000) {
       try {
         await supabase.from('activities').update({ ical_uid: noLcrUid }).eq('id', activityId);
       } catch {
@@ -967,8 +988,12 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const handleDeleteActivity = async (activityId: number) => {
-    setActivities((prev) => prev.filter((a) => a.id !== activityId));
-    if (!isSimulating) {
+    setActivities((prev) => {
+      const next = prev.filter((a) => a.id !== activityId);
+      saveSessionProposals(next);
+      return next;
+    });
+    if (!isSimulating && activityId > 0 && activityId < 2_000_000_000) {
       try {
         await supabase.from('activities').delete().eq('id', activityId);
       } catch {
@@ -978,10 +1003,14 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const handleCancelActivity = async (activityId: number) => {
-    setActivities((prev) =>
-      prev.map((a) => (a.id === activityId ? { ...a, status: 'CANCELADA' as const } : a))
-    );
-    if (!isSimulating) {
+    setActivities((prev) => {
+      const next = prev.map((a) =>
+        a.id === activityId ? { ...a, status: 'CANCELADA' as const } : a
+      );
+      saveSessionProposals(next);
+      return next;
+    });
+    if (!isSimulating && activityId > 0 && activityId < 2_000_000_000) {
       try {
         await supabase.from('activities').update({ status: 'CANCELADA' }).eq('id', activityId);
       } catch {
@@ -1027,44 +1056,53 @@ export const PresidencyHub: React.FC = () => {
       ? findMatchingLcrEvent(updatedLocal, activities)
       : null;
 
-    if (matchingLcr) {
-      const mergedRecord = mergeLocalWithLcrActivity(updatedLocal, matchingLcr);
+    if (matchingLcr && matchingLcr.ical_uid) {
+      const mergedRecord: ActivityRecord = {
+        ...mergeLocalWithLcrActivity(updatedLocal, matchingLcr),
+        id: matchingLcr.id,
+      };
 
-      setActivities((prev) =>
-        prev
-          .filter((a) => a.id !== matchingLcr.id)
-          .map((a) => (a.id === id ? mergedRecord : a))
-      );
+      setActivities((prev) => {
+        const next = prev
+          .filter((a) => a.id !== id)
+          .map((a) => (a.id === matchingLcr.id ? mergedRecord : a));
+        saveSessionProposals(next);
+        return next;
+      });
 
       if (!isSimulating) {
-        await supabase.from('activities').delete().eq('id', matchingLcr.id);
         const { error } = await supabase
           .from('activities')
           .update({
-            ical_uid: mergedRecord.ical_uid,
-            title: mergedRecord.title,
-            event_date: mergedRecord.event_date,
-            start_time: mergedRecord.start_time,
-            end_time: mergedRecord.end_time,
-            location: mergedRecord.location,
-            description: mergedRecord.description,
-            app_notes: mergedRecord.app_notes,
             organization: mergedRecord.organization,
             estimated_cost: mergedRecord.estimated_cost,
             has_budget: mergedRecord.has_budget,
+            app_notes: mergedRecord.app_notes,
           })
-          .eq('id', id);
+          .eq('ical_uid', matchingLcr.ical_uid);
         if (error) {
           throw new Error('No se pudo guardar la vinculación en el servidor.');
+        }
+
+        if (id > 0 && id < 2_000_000_000) {
+          await supabase
+            .from('expenses')
+            .update({ activity_id: matchingLcr.id })
+            .eq('activity_id', id);
+          await supabase.from('activities').delete().eq('id', id);
         }
       }
 
       // Sincronizar reserva presupuestaria con los datos finales fusionados
-      await syncProjectedExpenseForActivity(id, mergedRecord);
+      await syncProjectedExpenseForActivity(matchingLcr.id, mergedRecord);
       return { autoLinked: true, linkedTitle: mergedRecord.title };
     }
 
-    setActivities((prev) => prev.map((a) => (a.id === id ? updatedLocal : a)));
+    setActivities((prev) => {
+      const next = prev.map((a) => (a.id === id ? updatedLocal : a));
+      saveSessionProposals(next);
+      return next;
+    });
 
     if (!isSimulating) {
       const dbPayload: Record<string, unknown> = {

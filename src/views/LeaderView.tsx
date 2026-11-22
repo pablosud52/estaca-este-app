@@ -186,25 +186,17 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           const remoteActivities = activityRes.data.map((a) => ({
             ...a,
             estimated_cost: Number(a.estimated_cost || 0),
-            origin: a.ical_uid?.startsWith('PROPUESTA_LIDER')
-              ? 'propuesta_lider'
-              : a.status === 'PROPUESTA'
-              ? 'propuesta_lider'
-              : 'lcr',
+            origin:
+              a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
+              a.ical_uid?.startsWith('PENDIENTE_LCR') ||
+              a.status === 'PROPUESTA'
+                ? 'propuesta_lider'
+                : 'lcr',
           })) as ActivityRecord[];
 
-          // Preferir los registros auditados de SEED_ACTIVITIES como base canónica y sumar cualquier actividad nueva de Supabase
-          const seedTitles = new Set(SEED_ACTIVITIES.map((s) => s.title.trim().toLowerCase()));
-          const mergedActivities = [
-            ...SEED_ACTIVITIES,
-            ...remoteActivities.filter(
-              (r) => !seedTitles.has(r.title.trim().toLowerCase())
-            ),
-          ];
-
-          // Sincronización silenciosa con el Doble Escudo LCR al montar la app
+          // Usar únicamente los registros reales de Supabase (sin inyectar SEED_ACTIVITIES)
           const syncResult = await syncLcrCalendarWithShield({
-            currentActivities: mergedActivities,
+            currentActivities: remoteActivities,
           });
 
           if (!active) return;

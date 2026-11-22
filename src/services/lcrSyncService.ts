@@ -422,7 +422,8 @@ export async function saveSharedLastSyncedAt(isoTimestamp: string): Promise<void
 }
 
 /**
- * Lee las actividades de Supabase y las consolida con `SEED_ACTIVITIES` (historial anual completo 2026).
+ * Lee las actividades reales de Supabase. Solo recurre a `SEED_ACTIVITIES` si no hay conexión
+ * o si la tabla aún está vacía (modo simulación/offline).
  */
 export async function fetchConsolidatedActivitiesFromSupabase(): Promise<ActivityRecord[]> {
   try {
@@ -435,30 +436,18 @@ export async function fetchConsolidatedActivitiesFromSupabase(): Promise<Activit
       const remoteActivities = data.map((a) => ({
         ...a,
         estimated_cost: Number(a.estimated_cost || 0),
-        origin: a.ical_uid?.startsWith('PROPUESTA_LIDER')
-          ? 'propuesta_lider'
-          : a.status === 'PROPUESTA'
-          ? 'propuesta_lider'
-          : 'lcr',
+        origin:
+          a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
+          a.ical_uid?.startsWith('PENDIENTE_LCR') ||
+          a.status === 'PROPUESTA'
+            ? 'propuesta_lider'
+            : 'lcr',
       })) as ActivityRecord[];
 
-      const existingUids = new Set(
-        remoteActivities.map((a) => a.ical_uid).filter((u): u is string => Boolean(u))
-      );
-      const existingTitles = new Set(
-        remoteActivities.map((a) => a.title.trim().toLowerCase())
-      );
-
-      const missingSeed = SEED_ACTIVITIES.filter(
-        (s) =>
-          (!s.ical_uid || !existingUids.has(s.ical_uid)) &&
-          !existingTitles.has(s.title.trim().toLowerCase())
-      );
-
-      return ensureUniqueActivities([...remoteActivities, ...missingSeed]);
+      return ensureUniqueActivities(remoteActivities);
     }
   } catch {
-    // Fallback a SEED_ACTIVITIES
+    // Fallback a SEED_ACTIVITIES solo en modo offline / sin Supabase
   }
 
   return ensureUniqueActivities([...SEED_ACTIVITIES]);
@@ -622,13 +611,13 @@ export async function syncLcrCalendarWithShield(options?: {
   if (lastSyncedAt && !options?.bypassDbShield) {
     const elapsedMs = nowMs - Date.parse(lastSyncedAt);
     if (!Number.isNaN(elapsedMs) && elapsedMs >= 0 && elapsedMs < DB_SHIELD_WINDOW_MS) {
-      const cached = loadCachedSyncedActivities();
-      const combinedBase =
-        cached.length > 0 ? ensureUniqueActivities([...baseActivities, ...cached]) : baseActivities;
-      const parsedFallback = parseIcalFeedWithIcalJs(FALLBACK_OFFICIAL_ICS_PAYLOAD);
-      const { merged } = deduplicateAndMergeIcalEvents(combinedBase, parsedFallback);
+      // Si ya tenemos actividades reales (Supabase o estado actual), NO inyectar respaldo hardcoded
+      const shieldActivities =
+        baseActivities.length > 0
+          ? ensureUniqueActivities(baseActivities)
+          : ensureUniqueActivities(loadCachedSyncedActivities());
       return {
-        activities: merged,
+        activities: shieldActivities,
         lastSyncedAt,
         skippedByDbShield: true,
         upsertedCount: 0,
@@ -668,8 +657,14 @@ export async function syncLcrCalendarWithShield(options?: {
   }
 
   // 3. Parsear RFC 5545 con ical.js y deduplicar por UID único
-  const parsedEvents = parseIcalFeedWithIcalJs(rawIcs);
-  const { merged, upsertedCount } = deduplicateAndMergeIcalEvents(baseActivities, parsedEvents);
+  // Si falló la lectura en vivo y ya tenemos eventos reales de LCR en Supabase, NO inyectar el respaldo hardcoded
+  const hasRealLcrInBase = baseActivities.some((a) => (a.ical_uid || '').includes('@'));
+  const parsedEvents =
+    source === 'lcr_live_ical' || !hasRealLcrInBase ? parseIcalFeedWithIcalJs(rawIcs) : [];
+  const { merged, upsertedCount } =
+    parsedEvents.length > 0
+      ? deduplicateAndMergeIcalEvents(baseActivities, parsedEvents)
+      : { merged: ensureUniqueActivities(baseActivities), upsertedCount: 0 };
 
   // 4. Persistir eventos nuevos y reprogramaciones en Supabase (`public.activities`) y actualizar timestamp
   const newIsoTimestamp = new Date(nowMs).toISOString();

@@ -135,6 +135,7 @@ export interface ActivityRecord {
   end_time?: string | null;
   location: string;
   description?: string | null;
+  app_notes?: string | null;
   organization: OrganizationCode;
   estimated_cost: number;
   has_budget: boolean;

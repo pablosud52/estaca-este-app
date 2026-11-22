@@ -1,7 +1,7 @@
 # ROADMAP_PROGRESS.md - Estado y Plan de Avance del Proyecto
 
 > **Fase Actual**: Puesta a Punto y Cierre hacia Producción (`https://estacaeste.vercel.app`)  
-> **Última Actualización**: 2026-11-21
+> **Última Actualización**: 2026-11-22
 
 ---
 
@@ -12,11 +12,12 @@
 ### ✅ Ya Pronto / Completado (Base operativa)
 - **Autenticación y Usuarios:** Login con Google OAuth (`LoginView.tsx`), opción *"Recordarme en este dispositivo"*, botón **Salir** y permisos RLS de escritura para administradores en `users_profiles`.
 - **Directorio de Líderes:** Lectura/guardado real en Supabase (`stake_directory_entries`), organizaciones en acordeón plegado, Sumo Consejo sin numeración y ordenado alfabéticamente, enlace directo `tel:`.
-- **Calendario y LCR:** Puente servidor `/api/lcr-calendar` para sincronización iCal sin bloqueos, botón `+ Crear Evento` directo para Presidencia/Admin, actividades compartidas y guardado real de propuestas.
+- **Calendario y LCR:** Sección única `Calendario` (Modo Lectura en Tarjetas por defecto + interruptor `Gestionar` con cambio `Tarjetas / Lista`, filtros de estado y rango de fechas `Desde`/`Hasta`), puente servidor `/api/lcr-calendar`, edición complementaria LCR con notas públicas separadas (`app_notes`), protección de eventos globales `Churchwide`, vinculación automática por fecha + nombre normalizado y vinculación manual en 1 clic.
 - **Proveedores (`GUIA PROVEEDORES`):** Panel de control completo para Administrador (alta, edición, baja y pestaña `Pendientes` para sugerencias desde Finanzas).
 - **Finanzas (base):** Cabecera unificada en una sola caja, pestaña `Movimientos` (ex `Retiros`) estandarizada con pastilla dividida y `NewMovementModal`, carga de gastos con 5 tipos y dos fechas por actividad, y sección `Presupuestos` (`budget_incomes`).
 - **Tablero de Presidencia:** Tarjeta principal compacta, abreviaturas ajustadas y solo actividades vigentes.
 - **Info. Normativas (ocultamiento temporal):** Oculta para Presidencia y visible solo para Super Admin (`pablosud52@gmail.com`) con cartel de aviso hasta completar sus reformas.
+- **Seguridad RLS, PWA y Producción:** Acceso público (`anon`) cerrado en las 8 tablas operativas de Supabase (`07_close_anon_rls_operational_tables.sql`), íconos PWA en azul marino (`public/`), aviso de instalación (`PwaInstallBanner.tsx`), bloqueo de scroll del fondo en modales/menú (`useModalScrollLock.ts`) y publicación en `https://estacaeste.vercel.app`.
 
 ### ⏳ Listado Numerado de Pendientes
 
@@ -29,11 +30,6 @@
 
 #### 2. Solicitudes de acceso al entrar con Google
 - [ ] **2.1 Capturar correos de usuarios que intentan entrar:** Si una persona entra con Google y aún no tiene permiso, guardar/tomar su correo para que el Administrador pueda darle de alta después — ya sea asignándole un puesto existente del Directorio (para actualizarle el correo) o creándolo desde cero con todos sus datos.
-
-#### 3. Seguridad, PWA y Puesta en Producción
-- [x] **3.1 Permisos de base de datos (RLS):** Cerrar el acceso público (`anon`) en las tablas operativas de Supabase (`activities`, `budget_allocations`, `budget_incomes`, `cash_withdrawals`, `expenses`, `suppliers`, `app_config`), dejándolas protegidas como `users_profiles` y `stake_directory_entries`. *(Completado 2026-11-21 vía `07_close_anon_rls_operational_tables.sql` + verificación en vivo; también se cerró `audit_logs`.)*
-- [x] **3.2 Subir cambios locales a Vercel:** Commitear y hacer `git push` de los avances locales pendientes y verificar en `https://estacaeste.vercel.app`. *(Subido a `main` en commit `743cba0` el 2026-11-21; Vercel publica automáticamente en 1-2 min.)*
-- [x] **3.3 Completar Progressive Web App (PWA):** Crear los íconos faltantes en `public/` (`pwa-192x192.png`, `pwa-512x512.png`, `apple-touch-icon.png`, etc.), ajustar color/tema y probar la instalación real en el celular desde `https://estacaeste.vercel.app`. *(Íconos en `public/`, tema azul marino unificado, `PwaInstallBanner.tsx` y build `dist/manifest.webmanifest` + `dist/sw.js` verificados el 2026-11-21; falta probar la instalación en celular apenas se publique en 3.2.)*
 
 #### 4. Info. Normativas y Logs *(al final de todo)*
 - [ ] **4.1 Info. Normativas:** *(Ya oculta para Presidencia)* Cambiar el nombre **`Información / Normativas`** a **`Info. Normativas`** y rediseñar esa sección (`FinancialInfoSection.tsx`).

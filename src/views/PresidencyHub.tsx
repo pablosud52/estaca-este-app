@@ -56,8 +56,13 @@ import {
   SupplierRecord,
 } from '../types/database';
 import { OrgDistributionChart, OrgSummaryStat } from '../components/OrgDistributionChart';
-import { CalendarControlPanel } from '../components/CalendarControlPanel';
 import { ProposeActivityModal } from '../components/ProposeActivityModal';
+import { ActivityEditPayload } from '../components/ActivityEditModal';
+import {
+  findMatchingLcrEvent,
+  isLcrLinkedActivity,
+  mergeLocalWithLcrActivity,
+} from '../lib/calendarHelpers';
 import {
   isActivityPendingLcr,
   syncLcrCalendarWithShield,
@@ -66,7 +71,7 @@ import { UserManagementPanel } from '../components/UserManagementPanel';
 import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
 import { FinancialInfoSection } from '../components/FinancialInfoSection';
 import { computeYearIncomeSummary } from '../lib/budgetUtils';
-import { CalendarView } from './CalendarView';
+import { CalendarManageFilter, CalendarView } from './CalendarView';
 import { SuppliersView } from './SuppliersView';
 import { LeaderView } from './LeaderView';
 import { LeadersDirectoryView } from './LeadersDirectoryView';
@@ -121,10 +126,9 @@ export const PresidencyHub: React.FC = () => {
   const { user, isSimulating, incompleteContactsCount, signOut, realAuthEmail } = useAuth();
   const userIsSuperAdmin = Boolean(user.email && isSuperAdminEmail(user.email));
 
-  // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | LOGS | INFO
+  // Sub-vista activa: DASHBOARD | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | LOGS | INFO
   const [activeTab, setActiveTab] = useState<
     | 'DASHBOARD'
-    | 'APPROVALS'
     | 'CALENDAR'
     | 'SUPPLIERS'
     | 'DIRECTORY'
@@ -135,6 +139,8 @@ export const PresidencyHub: React.FC = () => {
   >('DASHBOARD');
   const [openUsersWithIncompleteFilter, setOpenUsersWithIncompleteFilter] = useState<boolean>(false);
   const [calendarOnlyPendingLcr, setCalendarOnlyPendingLcr] = useState<boolean>(false);
+  const [calendarInitialManageMode, setCalendarInitialManageMode] = useState<boolean>(false);
+  const [calendarInitialFilter, setCalendarInitialFilter] = useState<CalendarManageFilter>('ALL');
   // Menú Drawer móvil (hamburguesa ☰ -> cruz ✕)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   // Menú desplegable Administración en escritorio
@@ -619,11 +625,12 @@ export const PresidencyHub: React.FC = () => {
   const userCanApproveCalendar = canApproveCalendar(user);
   const userCanViewLogs = canViewLogs(user);
 
-  // Indicadores unificados de alertas para Administración (solo visibles para quien puede resolverlas)
+  // Indicadores unificados de alertas (Calendario unificado + Administración)
   const hasCalendarAlert = userCanApproveCalendar && (pendingProposalsCount > 0 || pendingLcrCount > 0);
   const hasDirectoryAlert = userCanManageUsers && incompleteContactsCount > 0;
   const hasFinanceAlert = userCanEditFinances && executiveMetrics.pendingRenderTotal > 0;
-  const hasAnyAdminAlert = hasCalendarAlert || hasDirectoryAlert || hasFinanceAlert;
+  const hasAnyAdminAlert = hasDirectoryAlert || hasFinanceAlert;
+  const hasAnyMobileAlert = hasCalendarAlert || hasAnyAdminAlert;
 
   // Monto reservado en actividades del trimestre actual (se descuenta al cargar el gasto real vinculado)
   const reservedMetrics = useMemo(() => {
@@ -901,22 +908,13 @@ export const PresidencyHub: React.FC = () => {
     }
   };
 
-  // Handlers del Panel de Control del Calendario (Presidencia y Admin)
+  // Handlers del Calendario unificado (Presidencia, Secretarios y Admin)
   const handleLinkWithLcrEvent = async (pendingActivityId: number, lcrActivityId: number) => {
     const pendingAct = activities.find((a) => a.id === pendingActivityId);
     const lcrAct = activities.find((a) => a.id === lcrActivityId);
     if (!pendingAct || !lcrAct || !lcrAct.ical_uid) return;
 
-    const mergedRecord: ActivityRecord = {
-      ...pendingAct,
-      ical_uid: lcrAct.ical_uid,
-      event_date: lcrAct.event_date,
-      start_time: lcrAct.start_time ?? pendingAct.start_time ?? null,
-      end_time: lcrAct.end_time ?? pendingAct.end_time ?? null,
-      location: lcrAct.location || pendingAct.location,
-      description: lcrAct.description || pendingAct.description || null,
-      origin: 'lcr',
-    };
+    const mergedRecord = mergeLocalWithLcrActivity(pendingAct, lcrAct);
 
     setActivities((prev) =>
       prev
@@ -931,11 +929,16 @@ export const PresidencyHub: React.FC = () => {
           .from('activities')
           .update({
             ical_uid: mergedRecord.ical_uid,
+            title: mergedRecord.title,
             event_date: mergedRecord.event_date,
             start_time: mergedRecord.start_time,
             end_time: mergedRecord.end_time,
             location: mergedRecord.location,
             description: mergedRecord.description,
+            app_notes: mergedRecord.app_notes,
+            organization: mergedRecord.organization,
+            estimated_cost: mergedRecord.estimated_cost,
+            has_budget: mergedRecord.has_budget,
           })
           .eq('id', pendingActivityId);
       } catch {
@@ -993,56 +996,110 @@ export const PresidencyHub: React.FC = () => {
 
   const handleUpdateApprovedActivity = async (
     id: number,
-    updates: {
-      title: string;
-      event_date: string;
-      start_time: string | null;
-      end_time?: string | null;
-      location: string;
-      organization: OrganizationCode;
-      description: string;
-      estimated_cost: number;
-    }
-  ) => {
+    updates: ActivityEditPayload
+  ): Promise<{ autoLinked?: boolean; linkedTitle?: string } | void> => {
     const existingAct = activities.find((a) => a.id === id);
-    setActivities((prev) =>
-      prev.map((a) =>
-        a.id === id
-          ? {
-              ...a,
-              ...updates,
-              has_budget: updates.estimated_cost > 0,
-            }
-          : a
-      )
-    );
-    if (!isSimulating) {
-      try {
-        await supabase
+    if (!existingAct) return;
+
+    const updatedLocal: ActivityRecord = {
+      ...existingAct,
+      title: updates.title,
+      event_date: updates.event_date,
+      start_time: updates.start_time,
+      end_time: updates.end_time ?? null,
+      location: updates.location,
+      organization: updates.organization,
+      description: isLcrLinkedActivity(existingAct)
+        ? existingAct.description ?? null
+        : updates.description || null,
+      app_notes: updates.app_notes || null,
+      estimated_cost: updates.estimated_cost,
+      has_budget: updates.estimated_cost > 0,
+    };
+
+    // Si es un evento local aún no vinculado a LCR, comprobar si ahora coincide por fecha + nombre normalizado con uno de LCR
+    const matchingLcr = !isLcrLinkedActivity(existingAct)
+      ? findMatchingLcrEvent(updatedLocal, activities)
+      : null;
+
+    if (matchingLcr) {
+      const mergedRecord = mergeLocalWithLcrActivity(updatedLocal, matchingLcr);
+
+      setActivities((prev) =>
+        prev
+          .filter((a) => a.id !== matchingLcr.id)
+          .map((a) => (a.id === id ? mergedRecord : a))
+      );
+
+      if (!isSimulating) {
+        await supabase.from('activities').delete().eq('id', matchingLcr.id);
+        const { error } = await supabase
           .from('activities')
           .update({
-            title: updates.title,
-            event_date: updates.event_date,
-            start_time: updates.start_time,
-            end_time: updates.end_time ?? null,
-            location: updates.location,
-            organization: updates.organization,
-            description: updates.description,
-            estimated_cost: updates.estimated_cost,
-            has_budget: updates.estimated_cost > 0,
+            ical_uid: mergedRecord.ical_uid,
+            title: mergedRecord.title,
+            event_date: mergedRecord.event_date,
+            start_time: mergedRecord.start_time,
+            end_time: mergedRecord.end_time,
+            location: mergedRecord.location,
+            description: mergedRecord.description,
+            app_notes: mergedRecord.app_notes,
+            organization: mergedRecord.organization,
+            estimated_cost: mergedRecord.estimated_cost,
+            has_budget: mergedRecord.has_budget,
           })
           .eq('id', id);
-      } catch {
-        // Estado local ya actualizado
+        if (error) {
+          throw new Error('No se pudo guardar la vinculación en el servidor.');
+        }
+      }
+
+      // Sincronizar reserva presupuestaria con los datos finales fusionados
+      await syncProjectedExpenseForActivity(id, mergedRecord);
+      return { autoLinked: true, linkedTitle: mergedRecord.title };
+    }
+
+    setActivities((prev) => prev.map((a) => (a.id === id ? updatedLocal : a)));
+
+    if (!isSimulating) {
+      const dbPayload: Record<string, unknown> = {
+        organization: updatedLocal.organization,
+        estimated_cost: updatedLocal.estimated_cost,
+        has_budget: updatedLocal.has_budget,
+        app_notes: updatedLocal.app_notes,
+      };
+      // En eventos no vinculados a LCR se persisten también todos los datos editados
+      if (!isLcrLinkedActivity(existingAct)) {
+        dbPayload.title = updatedLocal.title;
+        dbPayload.event_date = updatedLocal.event_date;
+        dbPayload.start_time = updatedLocal.start_time;
+        dbPayload.end_time = updatedLocal.end_time;
+        dbPayload.location = updatedLocal.location;
+        dbPayload.description = updatedLocal.description;
+      }
+
+      const query = existingAct.ical_uid && isLcrLinkedActivity(existingAct)
+        ? supabase.from('activities').update(dbPayload).eq('ical_uid', existingAct.ical_uid)
+        : supabase.from('activities').update(dbPayload).eq('id', id);
+
+      const { error } = await query;
+      if (error) {
+        throw new Error('No se pudieron guardar los cambios en el servidor.');
       }
     }
 
-    // Sincronizar reserva presupuestaria (PROYECTADO_ACTIVIDAD) si cambió fecha, monto u organización
+    await syncProjectedExpenseForActivity(id, updatedLocal);
+  };
+
+  const syncProjectedExpenseForActivity = async (
+    id: number,
+    updatedAct: ActivityRecord
+  ) => {
     const existingProjected = expenses.find(
       (e) => e.activity_id === id && e.expense_type === 'PROYECTADO_ACTIVIDAD'
     );
     if (existingProjected) {
-      if (updates.estimated_cost <= 0) {
+      if (updatedAct.estimated_cost <= 0) {
         setExpenses((prev) => prev.filter((e) => e.id !== existingProjected.id));
         if (!isSimulating) {
           try {
@@ -1052,18 +1109,18 @@ export const PresidencyHub: React.FC = () => {
           }
         }
       } else {
-        const nextConcept = `Reserva actividad: ${updates.title}`;
+        const nextConcept = `Reserva actividad: ${updatedAct.title}`;
         setExpenses((prev) =>
           prev.map((e) =>
             e.id === existingProjected.id
               ? {
                   ...e,
-                  activity_date: updates.event_date,
-                  expense_date: updates.event_date,
-                  organization: updates.organization,
+                  activity_date: updatedAct.event_date,
+                  expense_date: updatedAct.event_date,
+                  organization: updatedAct.organization,
                   concept: nextConcept,
-                  gross_amount: updates.estimated_cost,
-                  net_amount: updates.estimated_cost,
+                  gross_amount: updatedAct.estimated_cost,
+                  net_amount: updatedAct.estimated_cost,
                 }
               : e
           )
@@ -1073,12 +1130,12 @@ export const PresidencyHub: React.FC = () => {
             await supabase
               .from('expenses')
               .update({
-                activity_date: updates.event_date,
-                expense_date: updates.event_date,
-                organization: updates.organization,
+                activity_date: updatedAct.event_date,
+                expense_date: updatedAct.event_date,
+                organization: updatedAct.organization,
                 concept: nextConcept,
-                gross_amount: updates.estimated_cost,
-                net_amount: updates.estimated_cost,
+                gross_amount: updatedAct.estimated_cost,
+                net_amount: updatedAct.estimated_cost,
               })
               .eq('id', existingProjected.id);
           } catch {
@@ -1086,10 +1143,9 @@ export const PresidencyHub: React.FC = () => {
           }
         }
       }
-    } else if (updates.estimated_cost > 0 && existingAct) {
+    } else if (updatedAct.estimated_cost > 0 && updatedAct.status === 'APROBADA') {
       await createProjectedForActivity({
-        ...existingAct,
-        ...updates,
+        ...updatedAct,
         has_budget: true,
         status: 'APROBADA',
       });
@@ -2102,7 +2158,6 @@ export const PresidencyHub: React.FC = () => {
   const selectTabAndCloseDrawer = (
     tab:
       | 'DASHBOARD'
-      | 'APPROVALS'
       | 'CALENDAR'
       | 'SUPPLIERS'
       | 'DIRECTORY'
@@ -2111,6 +2166,11 @@ export const PresidencyHub: React.FC = () => {
       | 'LOGS'
       | 'INFO'
   ) => {
+    if (tab === 'CALENDAR') {
+      setCalendarInitialManageMode(false);
+      setCalendarInitialFilter('ALL');
+      setCalendarOnlyPendingLcr(false);
+    }
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
   };
@@ -2167,7 +2227,7 @@ export const PresidencyHub: React.FC = () => {
                     }`}
                   />
                 </div>
-                {hasAnyAdminAlert && !isMobileDrawerOpen && (
+                {hasAnyMobileAlert && !isMobileDrawerOpen && (
                   <span
                     data-testid="mobile-menu-alert-dot"
                     className="absolute -top-1 -right-1 flex h-3 w-3"
@@ -2187,7 +2247,6 @@ export const PresidencyHub: React.FC = () => {
             <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
               {(activeTab === 'DASHBOARD' ||
                 activeTab === 'OPERATIONS' ||
-                activeTab === 'APPROVALS' ||
                 activeTab === 'CALENDAR') && (
                 <div className="relative inline-flex items-center flex-shrink-0">
                   <select
@@ -2266,6 +2325,9 @@ export const PresidencyHub: React.FC = () => {
                 type="button"
                 data-testid="hub-nav-calendar"
                 onClick={() => {
+                  setCalendarInitialManageMode(false);
+                  setCalendarInitialFilter('ALL');
+                  setCalendarOnlyPendingLcr(false);
                   setActiveTab('CALENDAR');
                   setIsAdminMenuOpen(false);
                 }}
@@ -2277,6 +2339,25 @@ export const PresidencyHub: React.FC = () => {
               >
                 <Calendar className="w-4 h-4 text-emerald-500" />
                 <span>Calendario</span>
+                {hasCalendarAlert && (
+                  <span className="inline-flex items-center gap-1">
+                    {pendingProposalsCount + pendingLcrCount > 0 && (
+                      <span
+                        data-testid="nav-pending-count"
+                        className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums"
+                      >
+                        {pendingProposalsCount + pendingLcrCount}
+                      </span>
+                    )}
+                    <span
+                      data-testid="admin-calendar-alert-dot"
+                      className="relative flex h-2 w-2"
+                    >
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                    </span>
+                  </span>
+                )}
               </button>
 
               {/* Botón 3: Directorio */}
@@ -2326,7 +2407,6 @@ export const PresidencyHub: React.FC = () => {
                   aria-haspopup="true"
                   onClick={() => setIsAdminMenuOpen((prev) => !prev)}
                   className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                    activeTab === 'APPROVALS' ||
                     activeTab === 'USERS' ||
                     activeTab === 'OPERATIONS' ||
                     activeTab === 'LOGS' ||
@@ -2337,7 +2417,6 @@ export const PresidencyHub: React.FC = () => {
                 >
                   <Shield
                     className={`w-3.5 h-3.5 ${
-                      activeTab === 'APPROVALS' ||
                       activeTab === 'USERS' ||
                       activeTab === 'OPERATIONS' ||
                       activeTab === 'LOGS' ||
@@ -2372,46 +2451,7 @@ export const PresidencyHub: React.FC = () => {
                       Secciones de Administración
                     </div>
                     <div className="p-1 space-y-0.5">
-                      {/* 1. Calendario (Aprobaciones y LCR) */}
-                      <button
-                        type="button"
-                        data-testid="hub-nav-approvals"
-                        onClick={() => {
-                          setActiveTab('APPROVALS');
-                          setIsAdminMenuOpen(false);
-                        }}
-                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
-                          activeTab === 'APPROVALS'
-                            ? 'bg-slate-900 text-white shadow-sm'
-                            : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <Calendar className="w-4 h-4 text-emerald-600" />
-                          <span>Calendario</span>
-                        </span>
-                        {hasCalendarAlert && (
-                          <span className="inline-flex items-center gap-1.5">
-                            {pendingProposalsCount > 0 && (
-                              <span
-                                data-testid="nav-pending-count"
-                                className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums"
-                              >
-                                {pendingProposalsCount}
-                              </span>
-                            )}
-                            <span
-                              data-testid="admin-calendar-alert-dot"
-                              className="relative flex h-2 w-2"
-                            >
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                            </span>
-                          </span>
-                        )}
-                      </button>
-
-                      {/* 2. Directorio (Gestión de Usuarios y llamamientos - exclusivo Admins) */}
+                      {/* 1. Directorio (Gestión de Usuarios y llamamientos - exclusivo Admins) */}
                       {userCanManageUsers && (
                         <button
                           type="button"
@@ -2605,19 +2645,37 @@ export const PresidencyHub: React.FC = () => {
                   <span>Panel</span>
                 </button>
 
-                {/* 2. Calendario */}
+                {/* 2. Calendario unificado */}
                 <button
                   type="button"
                   data-testid="drawer-nav-calendar"
                   onClick={() => selectTabAndCloseDrawer('CALENDAR')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                  className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'CALENDAR'
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Calendar className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  <span>Calendario</span>
+                  <span className="inline-flex items-center gap-3">
+                    <Calendar className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>Calendario</span>
+                  </span>
+                  {hasCalendarAlert && (
+                    <span className="inline-flex items-center gap-1.5">
+                      {pendingProposalsCount + pendingLcrCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums">
+                          {pendingProposalsCount + pendingLcrCount}
+                        </span>
+                      )}
+                      <span
+                        data-testid="drawer-calendar-alert-dot"
+                        className="relative flex h-2 w-2"
+                      >
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                      </span>
+                    </span>
+                  )}
                 </button>
 
                 {/* 3. Directorio */}
@@ -2658,40 +2716,7 @@ export const PresidencyHub: React.FC = () => {
                     </p>
 
                     <div className="space-y-1.5">
-                      {/* 1. Calendario (Aprobaciones) */}
-                      <button
-                        type="button"
-                        data-testid="drawer-nav-approvals"
-                        onClick={() => selectTabAndCloseDrawer('APPROVALS')}
-                        className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
-                          activeTab === 'APPROVALS'
-                            ? 'bg-emerald-900 text-white shadow-sm'
-                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-3">
-                          <Calendar className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                          <span>Calendario</span>
-                        </span>
-                        {hasCalendarAlert && (
-                          <span className="inline-flex items-center gap-1.5">
-                            {pendingProposalsCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-slate-950 tabular-nums">
-                                {pendingProposalsCount}
-                              </span>
-                            )}
-                            <span
-                              data-testid="drawer-calendar-alert-dot"
-                              className="relative flex h-2 w-2"
-                            >
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                            </span>
-                          </span>
-                        )}
-                      </button>
-
-                      {/* 2. Directorio (Gestión de Usuarios - exclusivo Admins) */}
+                      {/* 1. Directorio (Gestión de Usuarios - exclusivo Admins) */}
                       {userCanManageUsers && (
                         <button
                           type="button"
@@ -2860,34 +2885,29 @@ export const PresidencyHub: React.FC = () => {
             onSaveQuarterIncomes={handleSaveQuarterIncomes}
             onResetFutureYearProjection={handleResetFutureYearProjection}
           />
-        ) : activeTab === 'APPROVALS' ? (
-          <CalendarControlPanel
-            activities={activities}
-            expenses={expenses}
-            canApprove={userCanApproveCalendar}
-            isSuperAdmin={Boolean(user.email && isSuperAdminEmail(user.email))}
-            userFullName={user.full_name}
-            userCalling={user.calling}
-            onApproveActivity={handleApproveActivity}
-            onRejectActivity={handleRejectActivity}
-            onEditAndApproveActivity={handleEditAndApproveActivity}
-            onUpdateApprovedActivity={handleUpdateApprovedActivity}
-            onLinkWithLcrEvent={handleLinkWithLcrEvent}
-            onMarkNoLcrRequired={handleMarkNoLcrRequired}
-            onDeleteActivity={handleDeleteActivity}
-            onCancelActivity={handleCancelActivity}
-            onManualSync={handleManualCalendarSync}
-            onOpenCreateModal={() => setIsCreateEventOpen(true)}
-          />
         ) : activeTab === 'CALENDAR' ? (
           <CalendarView
             selectedYear={selectedYear}
             activitiesProp={activities}
+            expenses={expenses}
             onActivitiesUpdate={setActivities}
             onlyPendingLcr={calendarOnlyPendingLcr}
-            onClearPendingLcrFilter={() => setCalendarOnlyPendingLcr(false)}
-            onProposeActivity={() => setIsCreateEventOpen(true)}
-            proposeButtonLabel="Crear Evento"
+            onClearPendingLcrFilter={() => {
+              setCalendarOnlyPendingLcr(false);
+              setCalendarInitialFilter('ALL');
+            }}
+            canManage={userCanApproveCalendar}
+            isSuperAdmin={userIsSuperAdmin}
+            initialManageMode={calendarInitialManageMode}
+            initialStatusFilter={calendarInitialFilter}
+            onOpenCreateModal={() => setIsCreateEventOpen(true)}
+            onApproveActivity={handleApproveActivity}
+            onRejectActivity={handleRejectActivity}
+            onUpdateActivity={handleUpdateApprovedActivity}
+            onLinkWithLcrEvent={handleLinkWithLcrEvent}
+            onMarkNoLcrRequired={handleMarkNoLcrRequired}
+            onDeleteActivity={handleDeleteActivity}
+            onCancelActivity={handleCancelActivity}
             embedded
           />
         ) : activeTab === 'SUPPLIERS' ? (

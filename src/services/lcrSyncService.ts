@@ -1,6 +1,7 @@
 import ICAL from 'ical.js';
 import { SEED_ACTIVITIES } from '../data/seedData';
 import { isMeetupActivityText, isSeminarioActivityText } from '../lib/activityFilters';
+import { normalizeActivityTitle } from '../lib/calendarHelpers';
 import { supabase } from '../lib/supabase';
 import { ActivityRecord, OrganizationCode } from '../types/database';
 
@@ -218,7 +219,7 @@ export function ensureUniqueActivities(list: ActivityRecord[]): ActivityRecord[]
 
   for (const item of list) {
     const uidKey = item.ical_uid ? `uid:${item.ical_uid}` : null;
-    const titleDateKey = `td:${item.title.trim().toLowerCase()}|${item.event_date}`;
+    const titleDateKey = `td:${normalizeActivityTitle(item.title)}|${item.event_date}`;
     if ((uidKey && seenKeys.has(uidKey)) || seenKeys.has(titleDateKey)) {
       continue;
     }
@@ -233,37 +234,49 @@ export function ensureUniqueActivities(list: ActivityRecord[]): ActivityRecord[]
 /**
  * Deduplicación Inmutable (RFC 5545):
  * Combina la lista de actividades existentes con los eventos parseados del feed iCal.
- * - Si un evento coincide por `ical_uid` (o por título cuando el registro inicial no tenía UID),
- *   actualiza su fecha, hora, lugar y descripción (soportando reprogramaciones en LCR),
- *   pero preserva intactos `id`, `organization`, `estimated_cost`, `has_budget` y `status`.
- * - Jamás duplica registros existentes.
+ * - Si un evento coincide por `ical_uid` o por `fecha + título normalizado` (ignorando
+ *   mayúsculas, tildes y espacios extra), actualiza los datos oficiales de LCR
+ *   (`title`, `event_date`, `start_time`, `end_time`, `location`, `description`),
+ *   pero preserva intactos `id`, `organization`, `estimated_cost`, `has_budget`, `app_notes` y `status`.
+ * - Jamás duplica registros existentes ni sobrescribe la organización o notas propias de la app.
  */
 export function deduplicateAndMergeIcalEvents(
   existingActivities: ActivityRecord[],
   parsedEvents: ParsedIcalEvent[]
 ): { merged: ActivityRecord[]; upsertedCount: number } {
   const byUid = new Map<string, ActivityRecord>();
+  const byDateTitleKey = new Map<string, ActivityRecord>();
   const byTitleKey = new Map<string, ActivityRecord>();
 
   existingActivities.forEach((act) => {
     if (act.ical_uid) {
       byUid.set(act.ical_uid, act);
     }
-    byTitleKey.set(act.title.trim().toLowerCase(), act);
+    const normTitle = normalizeActivityTitle(act.title);
+    if (normTitle) {
+      byDateTitleKey.set(`${act.event_date}|${normTitle}`, act);
+      if (!act.ical_uid || act.ical_uid.startsWith('PROPUESTA_LIDER') || act.ical_uid.startsWith('PENDIENTE_LCR')) {
+        byTitleKey.set(normTitle, act);
+      }
+    }
   });
 
-  const updatedIds = new Set<number>();
+  const updatedById = new Map<number, ActivityRecord>();
   const newlyCreated: ActivityRecord[] = [];
   let upsertedCount = 0;
 
   parsedEvents.forEach((parsed, idx) => {
+    const normTitle = normalizeActivityTitle(parsed.title);
+    const dateTitleKey = `${parsed.event_date}|${normTitle}`;
     const existingByUid = byUid.get(parsed.uid);
-    const existingByTitle = byTitleKey.get(parsed.title.trim().toLowerCase());
-    const target = existingByUid || existingByTitle;
+    const existingByDateTitle = byDateTitleKey.get(dateTitleKey);
+    const existingByTitle = byTitleKey.get(normTitle);
+    const target = existingByUid || existingByDateTitle || existingByTitle;
 
     if (target) {
       const hasChanges =
         target.ical_uid !== parsed.uid ||
+        target.title !== parsed.title ||
         target.event_date !== parsed.event_date ||
         (parsed.start_time && target.start_time !== parsed.start_time) ||
         (parsed.location && target.location !== parsed.location);
@@ -272,8 +285,20 @@ export function deduplicateAndMergeIcalEvents(
         upsertedCount += 1;
       }
 
-      const shouldRefineOrg =
-        target.organization === 'ESTACA' && parsed.inferredOrg !== 'ESTACA';
+      const wasLocalPending =
+        !target.ical_uid ||
+        target.ical_uid.startsWith('PROPUESTA_LIDER') ||
+        target.ical_uid.startsWith('PENDIENTE_LCR');
+
+      let preservedAppNotes = target.app_notes ?? null;
+      if (
+        wasLocalPending &&
+        !preservedAppNotes &&
+        target.description &&
+        target.description.trim() !== (parsed.description || '').trim()
+      ) {
+        preservedAppNotes = target.description.trim();
+      }
 
       const updated: ActivityRecord = {
         ...target,
@@ -283,14 +308,15 @@ export function deduplicateAndMergeIcalEvents(
         start_time: parsed.start_time || target.start_time || null,
         end_time: parsed.end_time || target.end_time || null,
         location: parsed.location || target.location,
-        description: parsed.description || target.description || null,
-        organization: shouldRefineOrg ? parsed.inferredOrg : target.organization,
+        description: parsed.description ?? null,
+        app_notes: preservedAppNotes,
+        organization: target.organization,
         origin: 'lcr',
       };
 
       byUid.set(parsed.uid, updated);
-      byTitleKey.set(parsed.title.trim().toLowerCase(), updated);
-      updatedIds.add(target.id);
+      byDateTitleKey.set(dateTitleKey, updated);
+      updatedById.set(target.id, updated);
     } else {
       upsertedCount += 1;
       const newRecord: ActivityRecord = {
@@ -302,6 +328,7 @@ export function deduplicateAndMergeIcalEvents(
         end_time: parsed.end_time,
         location: parsed.location,
         description: parsed.description,
+        app_notes: null,
         organization: parsed.inferredOrg,
         estimated_cost: 0,
         has_budget: false,
@@ -310,17 +337,16 @@ export function deduplicateAndMergeIcalEvents(
       };
       newlyCreated.push(newRecord);
       byUid.set(parsed.uid, newRecord);
-      byTitleKey.set(parsed.title.trim().toLowerCase(), newRecord);
+      byDateTitleKey.set(dateTitleKey, newRecord);
     }
   });
 
   const mergedExisting = existingActivities.map((act) => {
+    if (updatedById.has(act.id)) {
+      return updatedById.get(act.id)!;
+    }
     if (act.ical_uid && byUid.has(act.ical_uid)) {
       return byUid.get(act.ical_uid)!;
-    }
-    const titleMatch = byTitleKey.get(act.title.trim().toLowerCase());
-    if (titleMatch && updatedIds.has(titleMatch.id)) {
-      return titleMatch;
     }
     return act;
   });
@@ -454,7 +480,7 @@ function loadCachedSyncedActivities(): ActivityRecord[] {
 
 /**
  * Persiste eventos nuevos o reprogramados de LCR en la tabla `public.activities` de Supabase.
- * Preserva `organization`, `estimated_cost`, `has_budget` y `status` de registros existentes.
+ * Preserva `organization`, `estimated_cost`, `has_budget`, `app_notes` y `status` de registros existentes.
  */
 async function persistLcrEventsToSupabase(parsedEvents: ParsedIcalEvent[]): Promise<void> {
   if (parsedEvents.length === 0) return;
@@ -462,19 +488,38 @@ async function persistLcrEventsToSupabase(parsedEvents: ParsedIcalEvent[]): Prom
   try {
     const { data: existingRows, error: selectError } = await supabase
       .from('activities')
-      .select('id, ical_uid, title, organization');
+      .select('id, ical_uid, title, event_date, description, app_notes');
 
     if (selectError || !existingRows) return;
 
-    const byUid = new Map<string, { id: number; organization?: string }>();
-    const byTitle = new Map<string, { id: number; organization?: string }>();
+    type ExistingRow = {
+      id: number;
+      ical_uid?: string | null;
+      title?: string | null;
+      event_date?: string | null;
+      description?: string | null;
+      app_notes?: string | null;
+    };
 
-    for (const row of existingRows) {
+    const byUid = new Map<string, ExistingRow>();
+    const byDateTitle = new Map<string, ExistingRow>();
+    const byLocalTitle = new Map<string, ExistingRow>();
+
+    for (const row of existingRows as ExistingRow[]) {
       if (row.ical_uid) {
-        byUid.set(row.ical_uid, { id: row.id, organization: row.organization });
+        byUid.set(row.ical_uid, row);
       }
-      if (row.title) {
-        byTitle.set(String(row.title).trim().toLowerCase(), { id: row.id, organization: row.organization });
+      const normTitle = normalizeActivityTitle(row.title);
+      if (normTitle && row.event_date) {
+        byDateTitle.set(`${row.event_date}|${normTitle}`, row);
+      }
+      if (
+        normTitle &&
+        (!row.ical_uid ||
+          row.ical_uid.startsWith('PROPUESTA_LIDER') ||
+          row.ical_uid.startsWith('PENDIENTE_LCR'))
+      ) {
+        byLocalTitle.set(normTitle, row);
       }
     }
 
@@ -482,8 +527,18 @@ async function persistLcrEventsToSupabase(parsedEvents: ParsedIcalEvent[]): Prom
     const toUpdate: Array<{ id: number; payload: Record<string, unknown> }> = [];
 
     for (const ev of parsedEvents) {
-      const existing = byUid.get(ev.uid) ?? byTitle.get(ev.title.trim().toLowerCase());
+      const normTitle = normalizeActivityTitle(ev.title);
+      const existing =
+        byUid.get(ev.uid) ??
+        byDateTitle.get(`${ev.event_date}|${normTitle}`) ??
+        byLocalTitle.get(normTitle);
+
       if (existing !== undefined) {
+        const wasLocalPending =
+          !existing.ical_uid ||
+          existing.ical_uid.startsWith('PROPUESTA_LIDER') ||
+          existing.ical_uid.startsWith('PENDIENTE_LCR');
+
         const payload: Record<string, unknown> = {
           ical_uid: ev.uid,
           title: ev.title,
@@ -493,9 +548,16 @@ async function persistLcrEventsToSupabase(parsedEvents: ParsedIcalEvent[]): Prom
           location: ev.location,
           description: ev.description,
         };
-        if (existing.organization === 'ESTACA' && ev.inferredOrg !== 'ESTACA') {
-          payload.organization = ev.inferredOrg;
+
+        if (
+          wasLocalPending &&
+          !existing.app_notes &&
+          existing.description &&
+          existing.description.trim() !== (ev.description || '').trim()
+        ) {
+          payload.app_notes = existing.description.trim();
         }
+
         toUpdate.push({
           id: existing.id,
           payload,
@@ -611,13 +673,27 @@ export async function syncLcrCalendarWithShield(options?: {
 
   // 4. Persistir eventos nuevos y reprogramaciones en Supabase (`public.activities`) y actualizar timestamp
   const newIsoTimestamp = new Date(nowMs).toISOString();
+  let finalActivities = merged;
   if (source === 'lcr_live_ical') {
     await persistLcrEventsToSupabase(parsedEvents);
     await saveSharedLastSyncedAt(newIsoTimestamp);
+    // Recargar IDs reales de Supabase para evitar IDs sintéticos (9000+idx) al editar inmediatamente
+    try {
+      const refreshedFromDb = await fetchConsolidatedActivitiesFromSupabase();
+      if (refreshedFromDb.length > 0) {
+        const { merged: refreshedMerged } = deduplicateAndMergeIcalEvents(
+          refreshedFromDb,
+          parsedEvents
+        );
+        finalActivities = refreshedMerged;
+      }
+    } catch {
+      // Conservar merged en memoria si falla la recarga
+    }
   }
 
   try {
-    localStorage.setItem(LOCAL_SYNCED_ACTIVITIES_KEY, JSON.stringify(merged));
+    localStorage.setItem(LOCAL_SYNCED_ACTIVITIES_KEY, JSON.stringify(finalActivities));
     localStorage.setItem(LOCAL_LAST_SYNC_SOURCE_KEY, source);
     if (source === 'lcr_live_ical') {
       localStorage.setItem(
@@ -630,7 +706,7 @@ export async function syncLcrCalendarWithShield(options?: {
   }
 
   return {
-    activities: merged,
+    activities: finalActivities,
     lastSyncedAt: newIsoTimestamp,
     skippedByDbShield: false,
     upsertedCount,

@@ -662,9 +662,14 @@ export const PresidencyHub: React.FC = () => {
 
     const orgTotals = new Map<OrganizationCode, number>();
 
-    // 1. Gastos proyectados abiertos (incluye vencidos sin rendir de trimestres anteriores y remanentes de pagos parciales)
+    // 1. Gastos proyectados y planificados abiertos (incluye vencidos sin rendir de trimestres anteriores y remanentes de pagos parciales)
     expenses.forEach((exp) => {
-      if (exp.expense_type !== 'PROYECTADO_ACTIVIDAD') return;
+      if (
+        exp.expense_type !== 'PROYECTADO_ACTIVIDAD' &&
+        exp.expense_type !== 'PLANIFICADO_SIN_FECHA'
+      ) {
+        return;
+      }
       if (exp.is_reimbursable_oai) return;
       const effDate = getExpenseEffectiveDate(exp);
       if (!effDate.startsWith(yearStr)) return;

@@ -407,10 +407,15 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
     let reservedTotal = 0;
 
-    // 1. Gastos proyectados abiertos de esta organización
+    // 1. Gastos proyectados y planificados abiertos de esta organización
     expenses.forEach((exp) => {
       if (exp.organization !== baseOrg) return;
-      if (exp.expense_type !== 'PROYECTADO_ACTIVIDAD') return;
+      if (
+        exp.expense_type !== 'PROYECTADO_ACTIVIDAD' &&
+        exp.expense_type !== 'PLANIFICADO_SIN_FECHA'
+      ) {
+        return;
+      }
       if (exp.is_reimbursable_oai) return;
       const effDate = getExpenseEffectiveDate(exp);
       if (!effDate.startsWith(yearStr)) return;

@@ -7,6 +7,7 @@ import { LeaderView } from './views/LeaderView';
 import { PresidencyHub } from './views/PresidencyHub';
 import { ConsultaView } from './views/ConsultaView';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
+import { useModalScrollLock } from './utils/useModalScrollLock';
 
 const AppRouter: React.FC = () => {
   const { user, authStatus } = useAuth();
@@ -44,6 +45,8 @@ const AppRouter: React.FC = () => {
 };
 
 export default function App() {
+  useModalScrollLock();
+
   return (
     <AuthProvider>
       <AppRouter />

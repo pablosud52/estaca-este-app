@@ -32,7 +32,7 @@
 
 #### 3. Seguridad, PWA y Puesta en Producción
 - [x] **3.1 Permisos de base de datos (RLS):** Cerrar el acceso público (`anon`) en las tablas operativas de Supabase (`activities`, `budget_allocations`, `budget_incomes`, `cash_withdrawals`, `expenses`, `suppliers`, `app_config`), dejándolas protegidas como `users_profiles` y `stake_directory_entries`. *(Completado 2026-11-21 vía `07_close_anon_rls_operational_tables.sql` + verificación en vivo; también se cerró `audit_logs`.)*
-- [ ] **3.2 Subir cambios locales a Vercel:** Commitear y hacer `git push` de los avances locales pendientes y verificar en `https://estacaeste.vercel.app`.
+- [x] **3.2 Subir cambios locales a Vercel:** Commitear y hacer `git push` de los avances locales pendientes y verificar en `https://estacaeste.vercel.app`. *(Subido a `main` en commit `743cba0` el 2026-11-21; Vercel publica automáticamente en 1-2 min.)*
 - [x] **3.3 Completar Progressive Web App (PWA):** Crear los íconos faltantes en `public/` (`pwa-192x192.png`, `pwa-512x512.png`, `apple-touch-icon.png`, etc.), ajustar color/tema y probar la instalación real en el celular desde `https://estacaeste.vercel.app`. *(Íconos en `public/`, tema azul marino unificado, `PwaInstallBanner.tsx` y build `dist/manifest.webmanifest` + `dist/sw.js` verificados el 2026-11-21; falta probar la instalación en celular apenas se publique en 3.2.)*
 
 #### 4. Info. Normativas y Logs *(al final de todo)*

@@ -704,13 +704,13 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       {isMobileDrawerOpen && (
         <div
           data-testid="mobile-nav-drawer-backdrop"
-          className="fixed inset-0 z-40 md:hidden bg-slate-950/40 backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 z-40 md:hidden bg-slate-950/40 backdrop-blur-sm transition-opacity overscroll-contain"
           onClick={() => setIsMobileDrawerOpen(false)}
         >
           <aside
             data-testid="mobile-nav-drawer"
             onClick={(e) => e.stopPropagation()}
-            className="w-72 max-w-[82vw] h-full bg-white shadow-2xl border-r border-slate-200 p-5 flex flex-col justify-between"
+            className="w-72 max-w-[82vw] h-full overflow-y-auto overscroll-contain bg-white shadow-2xl border-r border-slate-200 p-5 flex flex-col justify-between"
           >
             <div className="space-y-4">
               {/* Identidad del usuario conectado en el Drawer móvil */}

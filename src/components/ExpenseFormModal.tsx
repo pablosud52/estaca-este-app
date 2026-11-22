@@ -63,6 +63,8 @@ interface ParticipantRow {
 export interface ExpenseGroupEditData {
   ids: number[];
   records: ExpenseRecord[];
+  forceRealMode?: boolean;
+  originalProjectedAmount?: number;
 }
 
 interface ExpenseFormModalProps {
@@ -126,6 +128,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const [concept, setConcept] = useState('');
   const [statusLcr, setStatusLcr] = useState<'REGISTRADO_LCR' | 'PENDIENTE_LCR'>('REGISTRADO_LCR');
   const [isReimbursableOai, setIsReimbursableOai] = useState(false);
+  const [keepRemainingProjected, setKeepRemainingProjected] = useState(false);
 
   const [participants, setParticipants] = useState<ParticipantRow[]>([
     { uid: 'p-1', organization: 'PRIMARIA', manualAmount: null },
@@ -200,6 +203,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     setIsAddingSupplier(false);
     setShortcutInput('');
     setShortcutBadge(null);
+    setKeepRemainingProjected(false);
 
     if (editGroup && editGroup.records.length > 0) {
       const first = editGroup.records[0];
@@ -209,25 +213,30 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
         0
       );
 
-      const detectedType: ExpenseType =
-        first.expense_type ||
-        (first.is_applied === false
-          ? first.activity_id
-            ? 'PROYECTADO_ACTIVIDAD'
-            : 'PLANIFICADO_SIN_FECHA'
-          : first.withdrawal_ref
-          ? 'EFECTIVO'
-          : 'DIRECTO_TARJETA');
+      const detectedType: ExpenseType = editGroup.forceRealMode
+        ? 'EFECTIVO'
+        : first.expense_type ||
+          (first.is_applied === false
+            ? first.activity_id
+              ? 'PROYECTADO_ACTIVIDAD'
+              : 'PLANIFICADO_SIN_FECHA'
+            : first.withdrawal_ref
+            ? 'EFECTIVO'
+            : 'DIRECTO_TARJETA');
 
       setExpenseType(detectedType);
-      setAccountingDate(first.expense_date);
+      setAccountingDate(editGroup.forceRealMode ? todayIso() : first.expense_date);
       setActivityDate(first.activity_date || first.expense_date);
       setActivityDateTouched(true);
       setSelectedActivityId(first.activity_id ? String(first.activity_id) : '');
       setGrossAmount(totalGross.toFixed(2));
       setExternalReimbursement(totalExt > 0 ? totalExt.toFixed(2) : '');
       setDirectRefNumber(first.ref_number || '');
-      setSupplierName(first.supplier_name);
+      setSupplierName(
+        editGroup.forceRealMode && first.supplier_name === 'Por definir'
+          ? ''
+          : first.supplier_name
+      );
       setConcept(first.concept);
       setStatusLcr(first.status === 'PENDIENTE_LCR' ? 'PENDIENTE_LCR' : 'REGISTRADO_LCR');
       setIsReimbursableOai(Boolean(first.is_reimbursable_oai));
@@ -602,16 +611,59 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
         };
       });
 
+      const wasProjected = Boolean(
+        editGroup &&
+          (editGroup.forceRealMode || editGroup.records[0]?.expense_type === 'PROYECTADO_ACTIVIDAD')
+      );
+      const originalProjectedAmount =
+        editGroup?.originalProjectedAmount ??
+        (wasProjected
+          ? editGroup!.records.reduce((acc, r) => acc + Number(r.gross_amount || 0), 0)
+          : 0);
+      const remainingProjectedAmount =
+        wasProjected &&
+        keepRemainingProjected &&
+        isRealExpense &&
+        originalProjectedAmount > parsedTotalGross
+          ? Number((originalProjectedAmount - parsedTotalGross).toFixed(2))
+          : 0;
+
+      const recordsToSave: Array<Omit<ExpenseRecord, 'id'>> =
+        remainingProjectedAmount > 0
+          ? [
+              ...records,
+              {
+                ref_number: null,
+                expense_date: activityDate,
+                activity_date: activityDate,
+                activity_id: selectedActivityId ? Number(selectedActivityId) : null,
+                shared_group_id: null,
+                expense_type: 'PROYECTADO_ACTIVIDAD',
+                is_applied: false,
+                withdrawal_allocations: [],
+                organization: computedParticipants[0]?.organization || 'ESTACA',
+                supplier_name: 'Por definir',
+                concept: concept.trim(),
+                gross_amount: remainingProjectedAmount,
+                external_reimbursement: 0,
+                net_amount: remainingProjectedAmount,
+                is_reimbursable_oai: false,
+                status: 'PENDIENTE_LCR',
+                withdrawal_ref: null,
+              },
+            ]
+          : records;
+
       if (isRealExpense && existingExpenses.length > 0 && !pendingSaveRecords) {
         const matches = findDuplicatesForDraft(records, existingExpenses, editGroup?.ids);
         if (matches.length > 0) {
           setDuplicateMatches(matches);
-          setPendingSaveRecords(records);
+          setPendingSaveRecords(recordsToSave);
           return;
         }
       }
 
-      await onSave(records, editGroup?.ids);
+      await onSave(recordsToSave, editGroup?.ids);
       onClose();
     } finally {
       setSaving(false);
@@ -1268,6 +1320,68 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
               </div>
             </div>
           )}
+
+          {Boolean(
+            editGroup &&
+              (editGroup.forceRealMode ||
+                editGroup.records[0]?.expense_type === 'PROYECTADO_ACTIVIDAD')
+          ) &&
+            isRealExpense &&
+            (() => {
+              const origAmt =
+                editGroup?.originalProjectedAmount ??
+                editGroup!.records.reduce((acc, r) => acc + Number(r.gross_amount || 0), 0);
+              if (origAmt <= 0) return null;
+              const remAmt = Math.max(0, Number((origAmt - parsedTotalGross).toFixed(2)));
+              return (
+                <div
+                  data-testid="projected-settlement-options"
+                  className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="font-extrabold text-amber-950">
+                      Cierre de actividad proyectada
+                    </span>
+                    <span className="font-bold text-amber-800 tabular-nums">
+                      Presupuestado: {formatCurrency(origAmt)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      data-testid="projected-close-full-btn"
+                      onClick={() => setKeepRemainingProjected(false)}
+                      className={`px-3 py-2 rounded-xl text-left text-[11px] font-bold border transition ${
+                        !keepRemainingProjected
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Cerrar actividad con este gasto
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="projected-keep-partial-btn"
+                      onClick={() => setKeepRemainingProjected(true)}
+                      className={`px-3 py-2 rounded-xl text-left text-[11px] font-bold border transition ${
+                        keepRemainingProjected
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      Dejar remanente pendiente (pago parcial)
+                    </button>
+                  </div>
+                  {keepRemainingProjected && (
+                    <p className="text-[11px] font-semibold text-amber-900 tabular-nums">
+                      {remAmt > 0
+                        ? `Quedará en Proyectados un saldo pendiente de ${formatCurrency(remAmt)} para próximas facturas.`
+                        : 'El monto ingresado cubre o supera el presupuesto proyectado; no quedará remanente.'}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
           {duplicateMatches.length > 0 && pendingSaveRecords && (
             <div

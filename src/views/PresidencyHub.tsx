@@ -284,12 +284,12 @@ export const PresidencyHub: React.FC = () => {
               : 'lcr',
           })) as ActivityRecord[];
 
-          // Preferir los registros auditados de SEED_ACTIVITIES como base canónica y sumar cualquier actividad nueva de Supabase
-          const seedTitles = new Set(SEED_ACTIVITIES.map((s) => s.title.trim().toLowerCase()));
+          // Preferir los registros vivos de Supabase cuando coinciden por título y complementar con históricos de SEED_ACTIVITIES
+          const remoteTitles = new Set(remoteActivities.map((r) => r.title.trim().toLowerCase()));
           const mergedRemoteAndSeed = [
-            ...SEED_ACTIVITIES,
-            ...remoteActivities.filter(
-              (r) => !seedTitles.has(r.title.trim().toLowerCase())
+            ...remoteActivities,
+            ...SEED_ACTIVITIES.filter(
+              (s) => !remoteTitles.has(s.title.trim().toLowerCase())
             ),
           ];
 
@@ -643,26 +643,47 @@ export const PresidencyHub: React.FC = () => {
 
     const yearStr = String(selectedYear);
     const appliedActivityIds = new Set<number>();
+    const projectedActivityIds = new Set<number>();
     expenses.forEach((exp) => {
-      if (
-        exp.activity_id != null &&
-        isExpenseApplied(exp) &&
-        getExpenseEffectiveDate(exp).startsWith(yearStr)
-      ) {
+      if (exp.activity_id == null) return;
+      if (!getExpenseEffectiveDate(exp).startsWith(yearStr)) return;
+      if (isExpenseApplied(exp)) {
         appliedActivityIds.add(exp.activity_id);
+      } else if (exp.expense_type === 'PROYECTADO_ACTIVIDAD') {
+        projectedActivityIds.add(exp.activity_id);
       }
     });
 
     const orgTotals = new Map<OrganizationCode, number>();
-    const countedActivityIds = new Set<number>();
 
-    // 1. Actividades del calendario futuras/vigentes en el trimestre actual con presupuesto estimado y sin gasto real cargado
+    // 1. Gastos proyectados abiertos (incluye vencidos sin rendir de trimestres anteriores y remanentes de pagos parciales)
+    expenses.forEach((exp) => {
+      if (exp.expense_type !== 'PROYECTADO_ACTIVIDAD') return;
+      if (exp.is_reimbursable_oai) return;
+      const effDate = getExpenseEffectiveDate(exp);
+      if (!effDate.startsWith(yearStr)) return;
+      const isOverdueOpen = selectedYear === currentYear && effDate <= todayStr;
+      if (!isOverdueOpen && getQuarterFromDate(effDate) !== targetQuarter) return;
+      const amount = Number(exp.net_amount ?? exp.gross_amount ?? 0);
+      if (amount <= 0) return;
+      const targetOrg: OrganizationCode = ALL_HUB_ORGS.includes(exp.organization)
+        ? exp.organization
+        : 'ESTACA';
+      orgTotals.set(
+        targetOrg,
+        Number(((orgTotals.get(targetOrg) || 0) + amount).toFixed(2))
+      );
+    });
+
+    // 2. Actividades del calendario con presupuesto estimado que aún no tienen gasto proyectado ni gasto real cerrado
     activities.forEach((act) => {
-      if (act.status === 'RECHAZADA') return;
+      if (act.status === 'RECHAZADA' || act.status === 'CANCELADA') return;
+      // Excluir actividades históricas importadas del Excel Ene-Oct 2026 (ya rendidas en gastos reales)
+      if (act.ical_uid?.startsWith('ACT-2026-')) return;
       if (!act.event_date || !act.event_date.startsWith(yearStr)) return;
-      if (selectedYear === currentYear && act.event_date < todayStr) return;
-      if (getQuarterFromDate(act.event_date) !== targetQuarter) return;
-      if (appliedActivityIds.has(act.id)) return;
+      const isOverdueOpen = selectedYear === currentYear && act.event_date <= todayStr;
+      if (!isOverdueOpen && getQuarterFromDate(act.event_date) !== targetQuarter) return;
+      if (projectedActivityIds.has(act.id) || appliedActivityIds.has(act.id)) return;
       const estimated = Number(act.estimated_cost || 0);
       if (estimated <= 0) return;
 
@@ -672,30 +693,6 @@ export const PresidencyHub: React.FC = () => {
       orgTotals.set(
         targetOrg,
         Number(((orgTotals.get(targetOrg) || 0) + estimated).toFixed(2))
-      );
-      countedActivityIds.add(act.id);
-    });
-
-    // 2. Gastos proyectados huérfanos (sin actividad vinculada en el calendario) vigentes en el trimestre actual
-    expenses.forEach((exp) => {
-      if (exp.expense_type !== 'PROYECTADO_ACTIVIDAD') return;
-      if (exp.is_reimbursable_oai) return;
-      const effDate = getExpenseEffectiveDate(exp);
-      if (!effDate.startsWith(yearStr)) return;
-      if (selectedYear === currentYear && effDate < todayStr) return;
-      if (getQuarterFromDate(effDate) !== targetQuarter) return;
-      if (exp.activity_id != null) {
-        if (appliedActivityIds.has(exp.activity_id)) return;
-        if (countedActivityIds.has(exp.activity_id)) return;
-      }
-      const amount = Number(exp.net_amount ?? exp.gross_amount ?? 0);
-      if (amount <= 0) return;
-      const targetOrg: OrganizationCode = ALL_HUB_ORGS.includes(exp.organization)
-        ? exp.organization
-        : 'ESTACA';
-      orgTotals.set(
-        targetOrg,
-        Number(((orgTotals.get(targetOrg) || 0) + amount).toFixed(2))
       );
     });
 
@@ -1303,11 +1300,15 @@ export const PresidencyHub: React.FC = () => {
         first.ref_number?.trim() ||
         prevDirectRef ||
         `${first.expense_type === 'TRANSFERENCIA' ? 'TRF' : 'DIR'}-${baseId}`;
-      normalizedRecords = records.map((r) => ({
-        ...r,
-        withdrawal_ref: assignedDirectRef,
-        withdrawal_allocations: [],
-      }));
+      normalizedRecords = records.map((r) =>
+        r.is_applied !== false
+          ? {
+              ...r,
+              withdrawal_ref: assignedDirectRef,
+              withdrawal_allocations: [],
+            }
+          : r
+      );
     }
 
     const localRecords: ExpenseRecord[] = normalizedRecords.map((item, idx) => ({
@@ -1412,6 +1413,46 @@ export const PresidencyHub: React.FC = () => {
         summary: `${isEdit ? 'Editó' : 'Registró'} gasto "${normalizedRecords[0].concept}" por ${formatCurrency(total)}`,
       });
     }
+  };
+
+  const handleCloseActivityWithoutExpense = async (activityId: number) => {
+    const projectedIds = expenses
+      .filter((e) => e.activity_id === activityId && e.expense_type === 'PROYECTADO_ACTIVIDAD')
+      .map((e) => e.id);
+
+    if (projectedIds.length > 0) {
+      setExpenses((prev) => prev.filter((e) => !projectedIds.includes(e.id)));
+      if (!isSimulating) {
+        try {
+          await supabase.from('expenses').delete().in('id', projectedIds);
+        } catch {
+          // Estado local ya actualizado
+        }
+      }
+    }
+
+    const targetAct = activities.find((a) => a.id === activityId);
+    setActivities((prev) =>
+      prev.map((a) =>
+        a.id === activityId ? { ...a, has_budget: false, estimated_cost: 0 } : a
+      )
+    );
+    if (!isSimulating) {
+      try {
+        await supabase
+          .from('activities')
+          .update({ has_budget: false, estimated_cost: 0 })
+          .eq('id', activityId);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'FINANZAS',
+      summary: `Cerró reserva sin gasto para actividad: ${targetAct?.title || `#${activityId}`}`,
+    });
   };
 
   const handleDeleteExpenseGroup = async (ids: number[]) => {
@@ -2809,6 +2850,7 @@ export const PresidencyHub: React.FC = () => {
             onCreateMultipleExpenses={handleCreateMultipleExpenses}
             onSaveExpenseGroup={handleSaveExpenseGroup}
             onDeleteExpenseGroup={handleDeleteExpenseGroup}
+            onCloseActivityWithoutExpense={handleCloseActivityWithoutExpense}
             onReconcileLcrExpense={handleReconcileLcrExpense}
             onReconcileLcrExpenseGroup={handleReconcileLcrExpenseGroup}
             onCreateWithdrawal={handleCreateWithdrawal}
@@ -2866,79 +2908,81 @@ export const PresidencyHub: React.FC = () => {
         ) : (
           <>
             {/* 1. TARJETA MAESTRA DE FONDOS (KPI PRINCIPAL) */}
-            <section aria-label="Presupuesto Disponible">
+            <section aria-label="Saldo libre estimado y presupuesto">
               <div
                 data-testid="kpi-available-balance-card"
-                className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 p-5 sm:p-8 text-white shadow-xl border border-slate-800"
+                className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#083563] via-[#072B52] to-[#051E3B] p-5 sm:p-7 text-white shadow-xl border border-white/10"
               >
-                <div className="flex items-start justify-between gap-3 sm:gap-6">
-                  {/* Columna izquierda: Disponible, Reservado en actividades y Saldo libre estimado */}
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[11px] sm:text-sm font-extrabold uppercase tracking-wider text-emerald-300">
-                      PRESUPUESTO DISPONIBLE
-                    </span>
+                <div className="flex items-stretch justify-between gap-4 sm:gap-7">
+                  {/* Columna izquierda: Saldo libre protagonista + Disponible + Comprometido con líneas finas */}
+                  <div className="min-w-0 flex-1 divide-y divide-white/12">
+                    {/* Protagonista: Saldo libre estimado */}
+                    <div className="pb-3.5 sm:pb-4">
+                      <p
+                        data-testid="kpi-estimated-free-amount"
+                        className={`text-3xl sm:text-5xl font-extrabold tracking-tight tabular-nums leading-none ${
+                          reservedMetrics.estimatedFreeBalance < 0
+                            ? 'text-rose-300'
+                            : 'text-white'
+                        }`}
+                      >
+                        {formatCurrency(reservedMetrics.estimatedFreeBalance)}
+                      </p>
+                      <p
+                        data-testid="kpi-estimated-free-label"
+                        className={`text-xs sm:text-sm font-medium mt-1.5 ${
+                          reservedMetrics.estimatedFreeBalance < 0
+                            ? 'text-rose-200/90'
+                            : 'text-sky-100/75'
+                        }`}
+                      >
+                        Saldo libre estimado
+                      </p>
 
-                    <p
-                      data-testid="kpi-consolidated-available-amount"
-                      className="text-2xl sm:text-5xl font-extrabold tracking-tight tabular-nums mt-1.5 sm:mt-3 text-white"
-                    >
-                      {formatCurrency(executiveMetrics.consolidatedAvailable)}
-                    </p>
+                      {selectedYear === 2027 &&
+                        executiveMetrics.totalConsolidatedAssigned === 0 && (
+                          <p
+                            data-testid="pending-budget-2027-legend"
+                            className="text-xs sm:text-sm text-sky-200/90 font-medium mt-2"
+                          >
+                            Presupuesto 2027 pendiente de asignación
+                          </p>
+                        )}
+                    </div>
 
-                    {selectedYear === 2027 &&
-                      executiveMetrics.totalConsolidatedAssigned === 0 && (
-                        <p
-                          data-testid="pending-budget-2027-legend"
-                          className="text-xs sm:text-sm text-amber-300/95 font-semibold mt-2"
-                        >
-                          Presupuesto 2027 pendiente de asignación
-                        </p>
-                      )}
+                    {/* Presupuesto disponible actual */}
+                    <div className="py-3 sm:py-3.5">
+                      <p
+                        data-testid="kpi-consolidated-available-amount"
+                        className="text-lg sm:text-2xl font-bold tracking-tight tabular-nums text-white leading-tight"
+                      >
+                        {formatCurrency(executiveMetrics.consolidatedAvailable)}
+                      </p>
+                      <p className="text-[11px] sm:text-xs font-medium text-sky-100/70 mt-0.5">
+                        Presupuesto disponible actual
+                      </p>
+                    </div>
 
-                    <div className="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-slate-800/80 space-y-2.5">
-                      <div>
-                        <p className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-300">
-                          Reservado Actividades {reservedMetrics.targetQuarter}
-                        </p>
-                        <p
-                          data-testid="kpi-reserved-quarter-amount"
-                          className="text-base sm:text-xl font-extrabold text-amber-200 tabular-nums mt-0.5"
-                        >
-                          {formatCurrency(reservedMetrics.reservedQuarterTotal)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p
-                          data-testid="kpi-estimated-free-label"
-                          className={`text-[11px] sm:text-xs font-bold uppercase tracking-wider ${
-                            reservedMetrics.estimatedFreeBalance < 0
-                              ? 'text-rose-400'
-                              : 'text-emerald-300'
-                          }`}
-                        >
-                          Saldo libre estimado
-                        </p>
-                        <p
-                          data-testid="kpi-estimated-free-amount"
-                          className={`text-base sm:text-xl font-extrabold tabular-nums mt-0.5 ${
-                            reservedMetrics.estimatedFreeBalance < 0
-                              ? 'text-rose-400'
-                              : 'text-emerald-300'
-                          }`}
-                        >
-                          {formatCurrency(reservedMetrics.estimatedFreeBalance)}
-                        </p>
-                      </div>
+                    {/* Comprometido en actividades */}
+                    <div className="pt-3 sm:pt-3.5">
+                      <p
+                        data-testid="kpi-reserved-quarter-amount"
+                        className="text-lg sm:text-2xl font-bold tracking-tight tabular-nums text-white leading-tight"
+                      >
+                        {formatCurrency(reservedMetrics.reservedQuarterTotal)}
+                      </p>
+                      <p className="text-[11px] sm:text-xs font-medium text-sky-100/70 mt-0.5">
+                        Comprometido en actividades {reservedMetrics.targetQuarter}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Columna derecha: Tabla compacta por organización en el trimestre actual */}
+                  {/* Columna derecha: Tabla compacta por organización en la misma paleta limpia */}
                   {reservedMetrics.reservedByOrg.length > 0 && (
-                    <div className="flex-shrink-0 border-l border-slate-700/80 pl-2.5 sm:pl-5 self-stretch flex flex-col justify-center">
+                    <div className="flex-shrink-0 border-l border-white/15 pl-3.5 sm:pl-6 self-stretch flex flex-col justify-center">
                       <p
                         data-testid="kpi-reserved-org-title"
-                        className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 mb-1"
+                        className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-sky-100/65 mb-2"
                       >
                         En agenda {reservedMetrics.targetQuarter}
                       </p>
@@ -2947,16 +2991,16 @@ export const PresidencyHub: React.FC = () => {
                         aria-label={`En agenda ${reservedMetrics.targetQuarter} por organización`}
                         className="text-[11px] sm:text-xs border-collapse"
                       >
-                        <tbody>
+                        <tbody className="divide-y divide-white/10">
                           {reservedMetrics.reservedByOrg.map((item) => (
                             <tr
                               key={item.organization}
                               data-testid={`kpi-reserved-org-${item.organization}`}
                             >
-                              <td className="pr-2 sm:pr-4 py-0.5 font-semibold text-slate-300 whitespace-nowrap">
+                              <td className="pr-3 sm:pr-5 py-1.5 font-medium text-sky-100/80 whitespace-nowrap">
                                 {item.shortLabel}
                               </td>
-                              <td className="py-0.5 font-bold text-amber-200 tabular-nums text-right whitespace-nowrap">
+                              <td className="py-1.5 font-bold text-white tabular-nums text-right whitespace-nowrap">
                                 {formatCurrency(item.amount, false)}
                               </td>
                             </tr>

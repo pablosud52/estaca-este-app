@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Ban,
   Banknote,
   Check,
   CheckCircle2,
@@ -10,6 +11,7 @@ import {
   FileSpreadsheet,
   Pencil,
   Plus,
+  Receipt,
   Search,
   Wallet,
   Zap,
@@ -19,6 +21,7 @@ import {
   formatDate,
   getExpenseEffectiveDate,
   getExpenseWithdrawalAllocations,
+  getQuarterFromDate,
   isExpenseApplied,
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
@@ -72,6 +75,7 @@ interface AdminOperationsCenterProps {
     existingIds?: number[]
   ) => Promise<void>;
   onDeleteExpenseGroup?: (ids: number[]) => Promise<void>;
+  onCloseActivityWithoutExpense?: (activityId: number) => Promise<void>;
   onReconcileLcrExpense: (id: number) => Promise<void>;
   onReconcileLcrExpenseGroup?: (ids: number[]) => Promise<void>;
   onCreateWithdrawal: (
@@ -114,6 +118,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   onCreateMultipleExpenses,
   onSaveExpenseGroup,
   onDeleteExpenseGroup,
+  onCloseActivityWithoutExpense,
   onReconcileLcrExpense,
   onReconcileLcrExpenseGroup,
   onCreateWithdrawal,
@@ -150,6 +155,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [ledgerFilter, setLedgerFilter] = useState<'ALL' | 'PENDING_LCR' | 'PROJECTED'>('ALL');
   const [expandedSharedKeys, setExpandedSharedKeys] = useState<Record<string, boolean>>({});
+  const [selectedLcrKeys, setSelectedLcrKeys] = useState<string[]>([]);
+  const [isBatchReconciling, setIsBatchReconciling] = useState(false);
+  const [isQuarterChecklistOpen, setIsQuarterChecklistOpen] = useState(false);
 
   const toggleSharedRow = (key: string) => {
     setExpandedSharedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -320,6 +328,71 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     [expenses]
   );
 
+  const projectedMovements = useMemo<GroupedExpenseMovement[]>(() => {
+    const baseProjected = groupedMovements.filter((m) => !m.isApplied);
+    const coveredActivityIds = new Set<number>();
+    expenses.forEach((e) => {
+      if (e.activity_id != null) coveredActivityIds.add(e.activity_id);
+    });
+
+    const yearStr = String(selectedYear);
+    const virtualCalendarMovements: GroupedExpenseMovement[] = activities
+      .filter(
+        (act) =>
+          act.status !== 'RECHAZADA' &&
+          act.status !== 'CANCELADA' &&
+          !act.ical_uid?.startsWith('ACT-2026-') &&
+          Boolean(act.event_date) &&
+          act.event_date.startsWith(yearStr) &&
+          Number(act.estimated_cost || 0) > 0 &&
+          !coveredActivityIds.has(act.id)
+      )
+      .map((act) => {
+        const estimated = Number(act.estimated_cost);
+        const syntheticRecord: ExpenseRecord = {
+          id: -act.id,
+          ref_number: null,
+          expense_date: act.event_date,
+          activity_date: act.event_date,
+          activity_id: act.id,
+          shared_group_id: null,
+          expense_type: 'PROYECTADO_ACTIVIDAD',
+          is_applied: false,
+          withdrawal_allocations: [],
+          organization: act.organization,
+          supplier_name: 'Por definir',
+          concept: act.title,
+          gross_amount: estimated,
+          external_reimbursement: 0,
+          net_amount: estimated,
+          is_reimbursable_oai: false,
+          status: 'PENDIENTE_LCR',
+          withdrawal_ref: null,
+        };
+        return {
+          key: `virtual-act-${act.id}`,
+          ids: [],
+          records: [syntheticRecord],
+          primary: syntheticRecord,
+          totalGross: estimated,
+          totalNet: estimated,
+          totalExternalReimb: 0,
+          isApplied: false,
+          isPendingLcr: false,
+          isShared: false,
+          accountingDate: act.event_date,
+          effectiveDate: act.event_date,
+        };
+      });
+
+    return [...baseProjected, ...virtualCalendarMovements].sort((a, b) => {
+      const aOverdue = a.effectiveDate <= todayStr ? 0 : 1;
+      const bOverdue = b.effectiveDate <= todayStr ? 0 : 1;
+      if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+      return a.effectiveDate.localeCompare(b.effectiveDate);
+    });
+  }, [groupedMovements, expenses, activities, selectedYear, todayStr]);
+
   const duplicateGroups = useMemo<DuplicateGroup[]>(
     () => detectDuplicateGroups(groupedMovements, dismissedDuplicatePairs),
     [groupedMovements, dismissedDuplicatePairs]
@@ -328,20 +401,26 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   // Actividades proyectadas cuya fecha ya llegó o pasó -> Alerta "Pendiente de rendir"
   const dueProjectedMovements = useMemo(
     () =>
-      groupedMovements.filter(
+      projectedMovements.filter(
         (m) =>
           !m.isApplied &&
           m.primary.expense_type === 'PROYECTADO_ACTIVIDAD' &&
           m.effectiveDate <= todayStr
       ),
-    [groupedMovements, todayStr]
+    [projectedMovements, todayStr]
   );
 
   const filteredMovements = useMemo(() => {
     const q = ledgerSearch.trim().toLowerCase();
-    return groupedMovements.filter((m) => {
-      if (ledgerFilter === 'PENDING_LCR' && !m.isPendingLcr) return false;
-      if (ledgerFilter === 'PROJECTED' && m.isApplied) return false;
+    const sourceList =
+      ledgerFilter === 'PROJECTED'
+        ? projectedMovements
+        : groupedMovements.filter((m) => {
+            if (ledgerFilter === 'PENDING_LCR' && !m.isPendingLcr) return false;
+            return true;
+          });
+
+    return sourceList.filter((m) => {
       if (!q) return true;
       const orgNames = m.records
         .map((r) => ORGANIZATION_SHORT_LABELS[r.organization].toLowerCase())
@@ -353,7 +432,27 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         orgNames.includes(q)
       );
     });
-  }, [groupedMovements, ledgerSearch, ledgerFilter]);
+  }, [groupedMovements, projectedMovements, ledgerSearch, ledgerFilter]);
+
+  const handleOpenPassToExpense = (m: GroupedExpenseMovement) => {
+    setEditingGroup({
+      ids: m.ids,
+      records: m.records,
+      forceRealMode: true,
+      originalProjectedAmount: m.totalGross,
+    });
+    setIsExpenseModalOpen(true);
+  };
+
+  const handleCloseProjectedWithoutExpense = async (m: GroupedExpenseMovement) => {
+    if (m.primary.activity_id && onCloseActivityWithoutExpense) {
+      await onCloseActivityWithoutExpense(m.primary.activity_id);
+      return;
+    }
+    if (m.ids.length > 0 && onDeleteExpenseGroup) {
+      await onDeleteExpenseGroup(m.ids);
+    }
+  };
 
   const filteredWithdrawals = useMemo(() => {
     const q = withdrawalSearch.trim().toLowerCase();
@@ -416,6 +515,76 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         movement.amount
       )}) registrado.`
     );
+  };
+
+  const pendingLcrCount = useMemo(
+    () => groupedMovements.filter((m) => m.isPendingLcr).length,
+    [groupedMovements]
+  );
+
+  const quarterCloseStats = useMemo(() => {
+    const currentQuarter = getQuarterFromDate(todayStr);
+    const overdueProjectedCount = dueProjectedMovements.length;
+    const openWithdrawalsCount = reconciliationStats.openWithdrawals.length;
+    const totalPending = overdueProjectedCount + openWithdrawalsCount + pendingLcrCount;
+    return {
+      currentQuarter,
+      overdueProjectedCount,
+      openWithdrawalsCount,
+      pendingLcrCount,
+      totalPending,
+    };
+  }, [todayStr, dueProjectedMovements.length, reconciliationStats.openWithdrawals.length, pendingLcrCount]);
+
+  const visiblePendingLcrMovements = useMemo(
+    () => filteredMovements.filter((m) => m.isPendingLcr),
+    [filteredMovements]
+  );
+
+  const selectedPendingMovements = useMemo(
+    () => visiblePendingLcrMovements.filter((m) => selectedLcrKeys.includes(m.key)),
+    [visiblePendingLcrMovements, selectedLcrKeys]
+  );
+
+  const toggleSelectLcrKey = (key: string) => {
+    setSelectedLcrKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
+  const toggleSelectAllVisibleLcr = () => {
+    const visibleKeys = visiblePendingLcrMovements.map((m) => m.key);
+    const allSelected =
+      visibleKeys.length > 0 && visibleKeys.every((k) => selectedLcrKeys.includes(k));
+    if (allSelected) {
+      setSelectedLcrKeys((prev) => prev.filter((k) => !visibleKeys.includes(k)));
+    } else {
+      setSelectedLcrKeys((prev) => Array.from(new Set([...prev, ...visibleKeys])));
+    }
+  };
+
+  const handleBatchReconcileLcr = async () => {
+    if (selectedPendingMovements.length === 0 || isBatchReconciling) return;
+    setIsBatchReconciling(true);
+    try {
+      const allIds = selectedPendingMovements.flatMap((m) => m.ids);
+      const count = selectedPendingMovements.length;
+      if (onReconcileLcrExpenseGroup) {
+        await onReconcileLcrExpenseGroup(allIds);
+      } else {
+        for (const id of allIds) {
+          await onReconcileLcrExpense(id);
+        }
+      }
+      setSelectedLcrKeys([]);
+      triggerToast(
+        count === 1
+          ? '1 comprobante marcado como registrado en LCR.'
+          : `${count} comprobantes marcados como registrados en LCR.`
+      );
+    } finally {
+      setIsBatchReconciling(false);
+    }
   };
 
   const handleReconcileGroup = async (movement: GroupedExpenseMovement) => {
@@ -630,6 +799,147 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         </div>
       )}
 
+      {/* Control de cierre de trimestre (desplegable, cerrado por defecto) */}
+      <div
+        data-testid="quarter-close-checklist"
+        className="rounded-2xl bg-white border border-slate-200/90 shadow-sm overflow-hidden"
+      >
+        <button
+          type="button"
+          data-testid="quarter-checklist-toggle"
+          aria-expanded={isQuarterChecklistOpen}
+          onClick={() => setIsQuarterChecklistOpen((prev) => !prev)}
+          className="pressable w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50 transition"
+        >
+          <span className="text-xs font-extrabold text-slate-900">
+            Control de cierre {quarterCloseStats.currentQuarter} ({selectedYear})
+          </span>
+          <span className="flex items-center gap-2 shrink-0">
+            <span
+              data-testid="quarter-checklist-status"
+              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full tabular-nums ${
+                quarterCloseStats.totalPending === 0
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-900 border border-amber-200'
+              }`}
+            >
+              {quarterCloseStats.totalPending === 0
+                ? 'Listo para cerrar'
+                : quarterCloseStats.totalPending === 1
+                ? '1 pendiente'
+                : `${quarterCloseStats.totalPending} pendientes`}
+            </span>
+            <ChevronDown
+              className={`w-4 h-4 text-slate-400 transition-transform duration-200 ease-out-expo ${
+                isQuarterChecklistOpen ? 'rotate-180 text-slate-700' : ''
+              }`}
+            />
+          </span>
+        </button>
+
+        <div className="accordion-content" data-open={isQuarterChecklistOpen}>
+          <div className="accordion-inner">
+            <div
+              data-testid="quarter-checklist-body"
+              className="border-t border-slate-100 divide-y divide-slate-100 text-xs"
+            >
+              {/* 1. Actividades vencidas sin rendir */}
+              <div className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  {quarterCloseStats.overdueProjectedCount === 0 ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  )}
+                  <span className="font-semibold text-slate-800">
+                    Actividades vencidas sin rendir
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-extrabold text-slate-900 tabular-nums">
+                    {quarterCloseStats.overdueProjectedCount}
+                  </span>
+                  {quarterCloseStats.overdueProjectedCount > 0 && (
+                    <button
+                      type="button"
+                      data-testid="checklist-go-projected"
+                      onClick={() => {
+                        setSubTab('EXPENSES');
+                        setLedgerFilter('PROJECTED');
+                      }}
+                      className="pressable px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold"
+                    >
+                      Ir a Proyectados
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Retiros de efectivo sin cerrar */}
+              <div className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  {quarterCloseStats.openWithdrawalsCount === 0 ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Banknote className="w-4 h-4 text-amber-600 shrink-0" />
+                  )}
+                  <span className="font-semibold text-slate-800">
+                    Retiros de efectivo sin cerrar
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-extrabold text-slate-900 tabular-nums">
+                    {quarterCloseStats.openWithdrawalsCount}
+                  </span>
+                  {quarterCloseStats.openWithdrawalsCount > 0 && (
+                    <button
+                      type="button"
+                      data-testid="checklist-go-withdrawals"
+                      onClick={() => setSubTab('WITHDRAWALS')}
+                      className="pressable px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold"
+                    >
+                      Ir a Retiros
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Comprobantes pendientes de LCR */}
+              <div className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  {quarterCloseStats.pendingLcrCount === 0 ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span className="font-semibold text-slate-800">
+                    Comprobantes pendientes de LCR
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-extrabold text-slate-900 tabular-nums">
+                    {quarterCloseStats.pendingLcrCount}
+                  </span>
+                  {quarterCloseStats.pendingLcrCount > 0 && (
+                    <button
+                      type="button"
+                      data-testid="checklist-go-pending-lcr"
+                      onClick={() => {
+                        setSubTab('EXPENSES');
+                        setLedgerFilter('PENDING_LCR');
+                      }}
+                      className="pressable px-2.5 py-1 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-[11px] font-bold"
+                    >
+                      Ir a Pend. LCR
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Alerta visual de actividades proyectadas cuya fecha ya llegó (Pendientes de rendir) */}
       {dueProjectedMovements.length > 0 && (
         <div
@@ -779,8 +1089,17 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   {(
                     [
                       { id: 'ALL', label: 'Todos' },
-                      { id: 'PENDING_LCR', label: 'Pend. LCR' },
-                      { id: 'PROJECTED', label: 'Proyectados' },
+                      {
+                        id: 'PENDING_LCR',
+                        label: pendingLcrCount > 0 ? `Pend. LCR (${pendingLcrCount})` : 'Pend. LCR',
+                      },
+                      {
+                        id: 'PROJECTED',
+                        label:
+                          projectedMovements.length > 0
+                            ? `Proyectados (${projectedMovements.length})`
+                            : 'Proyectados',
+                      },
                     ] as const
                   ).map((f) => (
                     <button
@@ -945,6 +1264,47 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               </div>
             ) : (
               <>
+                {/* Barra compacta de conciliación en lote (solo visible si hay pendientes LCR en pantalla) */}
+                {canEdit && visiblePendingLcrMovements.length > 0 && (
+                  <div
+                    data-testid="lcr-batch-toolbar"
+                    className="px-4 py-2.5 bg-rose-50/80 border-b border-rose-200/80 flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <label className="inline-flex items-center gap-2 text-xs font-bold text-rose-950 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        data-testid="select-all-lcr-checkbox"
+                        checked={
+                          visiblePendingLcrMovements.length > 0 &&
+                          visiblePendingLcrMovements.every((m) => selectedLcrKeys.includes(m.key))
+                        }
+                        onChange={toggleSelectAllVisibleLcr}
+                        className="w-4 h-4 rounded border-rose-300 text-rose-700 focus:ring-rose-500"
+                      />
+                      <span>
+                        Seleccionar pendientes LCR ({visiblePendingLcrMovements.length})
+                      </span>
+                    </label>
+
+                    {selectedPendingMovements.length > 0 && (
+                      <button
+                        type="button"
+                        data-testid="batch-reconcile-lcr-btn"
+                        disabled={isBatchReconciling}
+                        onClick={() => void handleBatchReconcileLcr()}
+                        className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 disabled:opacity-60 text-white text-xs font-extrabold shadow-2xs"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>
+                          {isBatchReconciling
+                            ? 'Marcando...'
+                            : `Marcar ${selectedPendingMovements.length} en LCR`}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* VISTA ESCRITORIO: TABLA ALINEADA */}
                 <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -983,23 +1343,35 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                   : 'hover:bg-slate-50/70'
                               }`}
                             >
-                              {/* Flecha desplegable si son Varios */}
+                              {/* Casilla LCR (si pendiente) y flecha desplegable si son Varios */}
                               <td className="py-3 pl-3 pr-1 align-middle">
-                                {m.isShared && (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleSharedRow(m.key)}
-                                    data-testid={`expand-shared-${m.primary.id}`}
-                                    aria-label="Ver detalle de organizaciones"
-                                    className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/70"
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronDown className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronRight className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                )}
+                                <div className="inline-flex items-center gap-1">
+                                  {canEdit && m.isPendingLcr && (
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`Seleccionar ${m.primary.concept} para conciliar en LCR`}
+                                      data-testid={`select-lcr-checkbox-${m.primary.id}`}
+                                      checked={selectedLcrKeys.includes(m.key)}
+                                      onChange={() => toggleSelectLcrKey(m.key)}
+                                      className="w-4 h-4 rounded border-rose-300 text-rose-700 focus:ring-rose-500 cursor-pointer"
+                                    />
+                                  )}
+                                  {m.isShared && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleSharedRow(m.key)}
+                                      data-testid={`expand-shared-${m.primary.id}`}
+                                      aria-label="Ver detalle de organizaciones"
+                                      className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/70"
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronDown className="w-4 h-4" />
+                                      ) : (
+                                        <ChevronRight className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
                               </td>
 
                               {/* 1. Fecha Contable */}
@@ -1092,21 +1464,47 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                 </div>
                               </td>
 
-                              {/* Editar (ícono siempre alineado a la derecha al final de la fila) */}
+                              {/* Acciones / Editar (siempre alineado a la derecha al final de la fila) */}
                               <td className="py-3 pr-4 pl-1 text-right align-middle">
                                 {canEdit && (
-                                  <button
-                                    type="button"
-                                    title="Editar movimiento"
-                                    data-testid={`edit-expense-btn-${m.primary.id}`}
-                                    onClick={() => {
-                                      setEditingGroup({ ids: m.ids, records: m.records });
-                                      setIsExpenseModalOpen(true);
-                                    }}
-                                    className="p-1.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="inline-flex items-center justify-end gap-1.5">
+                                    {!m.isApplied && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          title="Pasar a gasto real"
+                                          data-testid={`pass-projected-btn-${m.primary.id}`}
+                                          onClick={() => handleOpenPassToExpense(m)}
+                                          className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] font-bold whitespace-nowrap shadow-2xs"
+                                        >
+                                          <Receipt className="w-3 h-3" />
+                                          <span>Pasar a gasto</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          title="Cerrar reserva sin gasto (mantiene la actividad en el calendario)"
+                                          data-testid={`close-projected-btn-${m.primary.id}`}
+                                          onClick={() => void handleCloseProjectedWithoutExpense(m)}
+                                          className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[11px] font-bold whitespace-nowrap"
+                                        >
+                                          <Ban className="w-3 h-3" />
+                                          <span>Cerrar sin gasto</span>
+                                        </button>
+                                      </>
+                                    )}
+                                    <button
+                                      type="button"
+                                      title="Editar movimiento"
+                                      data-testid={`edit-expense-btn-${m.primary.id}`}
+                                      onClick={() => {
+                                        setEditingGroup({ ids: m.ids, records: m.records });
+                                        setIsExpenseModalOpen(true);
+                                      }}
+                                      className="p-1.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 )}
                               </td>
                             </tr>
@@ -1174,6 +1572,16 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                            {canEdit && m.isPendingLcr && (
+                              <input
+                                type="checkbox"
+                                aria-label={`Seleccionar ${m.primary.concept} para conciliar en LCR`}
+                                data-testid={`mob-select-lcr-checkbox-${m.primary.id}`}
+                                checked={selectedLcrKeys.includes(m.key)}
+                                onChange={() => toggleSelectLcrKey(m.key)}
+                                className="w-4 h-4 mt-0.5 rounded border-rose-300 text-rose-700 focus:ring-rose-500 cursor-pointer shrink-0"
+                              />
+                            )}
                             {m.isShared && (
                               <button
                                 type="button"
@@ -1272,6 +1680,29 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                             )}
                           </div>
                         </div>
+
+                        {canEdit && !m.isApplied && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              data-testid={`mob-pass-projected-btn-${m.primary.id}`}
+                              onClick={() => handleOpenPassToExpense(m)}
+                              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] font-bold"
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              <span>Pasar a gasto</span>
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`mob-close-projected-btn-${m.primary.id}`}
+                              onClick={() => void handleCloseProjectedWithoutExpense(m)}
+                              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-[11px] font-bold"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Cerrar sin gasto</span>
+                            </button>
+                          </div>
+                        )}
 
                         {m.isShared && isExpanded && (
                           <div className="pl-5 pt-1 flex flex-wrap gap-1.5">

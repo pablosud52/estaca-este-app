@@ -17,18 +17,25 @@ import {
   Pencil,
   Trash2,
   CheckCircle2,
+  Tags,
 } from 'lucide-react';
 import { SupplierRecord } from '../types/database';
 import { SupplierFormModal } from '../components/SupplierFormModal';
+import { SupplierCategoriesModal } from '../components/SupplierCategoriesModal';
+import { mergeSupplierCategories } from '../lib/supplierHelpers';
 
 interface SuppliersViewProps {
   suppliers: SupplierRecord[];
+  savedCategories?: string[];
   onBack?: () => void;
   embedded?: boolean;
   canManage?: boolean;
   onCreateSupplier?: (supplier: Omit<SupplierRecord, 'id'>) => Promise<void>;
   onUpdateSupplier?: (id: number, supplier: Omit<SupplierRecord, 'id'>) => Promise<void>;
   onDeleteSupplier?: (id: number) => Promise<void>;
+  onAddCategory?: (name: string) => Promise<void>;
+  onRenameCategory?: (oldName: string, newName: string) => Promise<void>;
+  onDeleteCategory?: (name: string, moveToCategory: string) => Promise<void>;
 }
 
 type SortOrder = 'RELEVANCE' | 'AZ' | 'ZA';
@@ -36,13 +43,18 @@ type SuppliersTab = 'ACTIVE' | 'PENDING';
 
 export const SuppliersView: React.FC<SuppliersViewProps> = ({
   suppliers,
+  savedCategories = [],
   canManage = false,
   onCreateSupplier,
   onUpdateSupplier,
   onDeleteSupplier,
+  onAddCategory,
+  onRenameCategory,
+  onDeleteCategory,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SuppliersTab>('ACTIVE');
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<SupplierRecord | null>(null);
   const [supplierToDelete, setSupplierToDelete] = useState<SupplierRecord | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement>(null);
@@ -117,8 +129,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   }, [activeSuppliers]);
 
   const existingCategoryNames = useMemo(
-    () => categories.filter((c) => c.id !== 'TODOS').map((c) => c.label),
-    [categories]
+    () => mergeSupplierCategories(savedCategories, suppliers),
+    [savedCategories, suppliers]
   );
 
   const activeCategoryObj =
@@ -442,7 +454,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           </div>
         )}
 
-        {canManage && (s.rut || s.legal_name || s.email) && (
+        {canManage && (s.rut || s.legal_name) && (
           <div className="pt-2 border-t border-slate-200/70 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 font-medium">
             {s.legal_name && (
               <span>
@@ -452,11 +464,6 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
             {s.rut && (
               <span className="tabular-nums">
                 <strong className="text-slate-700">RUT:</strong> {s.rut}
-              </span>
-            )}
-            {s.email && (
-              <span>
-                <strong className="text-slate-700">Email:</strong> {s.email}
               </span>
             )}
           </div>
@@ -490,19 +497,34 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
             </span>
           </div>
 
-          {canManage && onCreateSupplier && (
-            <button
-              type="button"
-              data-testid="suppliers-add-btn"
-              onClick={() => {
-                setEditingSupplier(null);
-                setIsFormModalOpen(true);
-              }}
-              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold shadow-xs transition touch-manipulation"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Nuevo proveedor</span>
-            </button>
+          {canManage && (
+            <div className="flex items-center gap-1.5">
+              {onAddCategory && onRenameCategory && onDeleteCategory && (
+                <button
+                  type="button"
+                  data-testid="suppliers-manage-categories-btn"
+                  onClick={() => setIsCategoriesModalOpen(true)}
+                  className="pressable inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 shadow-2xs transition touch-manipulation"
+                >
+                  <Tags className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">Rubros</span>
+                </button>
+              )}
+              {onCreateSupplier && (
+                <button
+                  type="button"
+                  data-testid="suppliers-add-btn"
+                  onClick={() => {
+                    setEditingSupplier(null);
+                    setIsFormModalOpen(true);
+                  }}
+                  className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold shadow-xs transition touch-manipulation"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nuevo proveedor</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -1098,12 +1120,32 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         <SupplierFormModal
           isOpen={isFormModalOpen}
           initialSupplier={editingSupplier}
+          allSuppliers={suppliers}
           existingCategories={existingCategoryNames}
           onClose={() => {
             setIsFormModalOpen(false);
             setEditingSupplier(null);
           }}
           onSave={handleSaveModal}
+          onAddCategory={onAddCategory}
+          onOpenManageCategories={
+            onAddCategory && onRenameCategory && onDeleteCategory
+              ? () => setIsCategoriesModalOpen(true)
+              : undefined
+          }
+        />
+      )}
+
+      {/* Modal de Administración de Rubros */}
+      {canManage && onAddCategory && onRenameCategory && onDeleteCategory && (
+        <SupplierCategoriesModal
+          isOpen={isCategoriesModalOpen}
+          categories={existingCategoryNames}
+          suppliers={suppliers}
+          onClose={() => setIsCategoriesModalOpen(false)}
+          onAddCategory={onAddCategory}
+          onRenameCategory={onRenameCategory}
+          onDeleteCategory={onDeleteCategory}
         />
       )}
 

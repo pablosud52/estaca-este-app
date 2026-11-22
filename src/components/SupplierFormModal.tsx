@@ -1,13 +1,24 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
-import { X, Plus, Trash2, Store, MapPin, FileText, Building2 } from 'lucide-react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { X, Plus, Trash2, Store, MapPin, Building2, AlertTriangle, Tags } from 'lucide-react';
 import { SupplierBranch, SupplierRecord } from '../types/database';
+import {
+  findSupplierDuplicates,
+  normalizeSupplierText,
+  splitMultiValue,
+  validateFixedPhones,
+  validateMobilePhones,
+} from '../lib/supplierHelpers';
+import { AddressAutocompleteInput } from './AddressAutocompleteInput';
 
 interface SupplierFormModalProps {
   isOpen: boolean;
   initialSupplier?: SupplierRecord | null;
+  allSuppliers: SupplierRecord[];
   existingCategories: string[];
   onClose: () => void;
   onSave: (payload: Omit<SupplierRecord, 'id'>, existingId?: number) => Promise<void>;
+  onAddCategory?: (name: string) => Promise<void>;
+  onOpenManageCategories?: () => void;
 }
 
 interface BranchDraft {
@@ -18,38 +29,42 @@ interface BranchDraft {
   hours: string;
 }
 
-const splitList = (value: string): string[] =>
-  value
-    .split(/[|,;\n]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
 const joinList = (items?: string[]): string => (items && items.length > 0 ? items.join(' | ') : '');
+const ADD_NEW_CAT_VALUE = '__ADD_NEW_CATEGORY__';
 
 export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
   isOpen,
   initialSupplier,
+  allSuppliers,
   existingCategories,
   onClose,
   onSave,
+  onAddCategory,
+  onOpenManageCategories,
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const categoryListId = useId();
 
   const [commercialName, setCommercialName] = useState('');
   const [category, setCategory] = useState('');
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryNote, setNewCategoryNote] = useState<string | null>(null);
+
+  const [legalName, setLegalName] = useState('');
+  const [rut, setRut] = useState('');
+  const [officialInvoice, setOfficialInvoice] = useState(true);
   const [description, setDescription] = useState('');
+
   const [phoneMobile, setPhoneMobile] = useState('');
   const [phoneFixed, setPhoneFixed] = useState('');
   const [address, setAddress] = useState('');
   const [hours, setHours] = useState('');
   const [website, setWebsite] = useState('');
-  const [email, setEmail] = useState('');
-  const [legalName, setLegalName] = useState('');
-  const [rut, setRut] = useState('');
-  const [officialInvoice, setOfficialInvoice] = useState(true);
   const [branches, setBranches] = useState<BranchDraft[]>([]);
+
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -64,19 +79,24 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
+    setTouched({});
+    setSubmitAttempted(false);
+    setIsAddingCategory(false);
+    setNewCategoryName('');
+    setNewCategoryNote(null);
+
     if (initialSupplier) {
       setCommercialName(initialSupplier.commercial_name || '');
-      setCategory(initialSupplier.category || '');
+      setCategory(initialSupplier.category || existingCategories[0] || 'Varios');
+      setLegalName(initialSupplier.legal_name || '');
+      setRut(initialSupplier.rut || '');
+      setOfficialInvoice(initialSupplier.official_invoice ?? true);
       setDescription(initialSupplier.description || '');
       setPhoneMobile(initialSupplier.phone_mobile || '');
       setPhoneFixed(initialSupplier.phone_fixed || '');
       setAddress(initialSupplier.address || '');
       setHours(initialSupplier.hours || '');
       setWebsite(initialSupplier.website || '');
-      setEmail(initialSupplier.email || '');
-      setLegalName(initialSupplier.legal_name || '');
-      setRut(initialSupplier.rut || '');
-      setOfficialInvoice(initialSupplier.official_invoice ?? true);
       setBranches(
         (initialSupplier.branches || []).map((b) => ({
           name: b.name || '',
@@ -88,20 +108,76 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
       );
     } else {
       setCommercialName('');
-      setCategory('');
+      setCategory(existingCategories[0] || '');
+      setLegalName('');
+      setRut('');
+      setOfficialInvoice(true);
       setDescription('');
       setPhoneMobile('');
       setPhoneFixed('');
       setAddress('');
       setHours('');
       setWebsite('');
-      setEmail('');
-      setLegalName('');
-      setRut('');
-      setOfficialInvoice(true);
       setBranches([]);
     }
-  }, [isOpen, initialSupplier]);
+  }, [isOpen, initialSupplier, existingCategories]);
+
+  const markTouched = (key: string) => setTouched((prev) => ({ ...prev, [key]: true }));
+  const showError = (key: string) => Boolean(touched[key] || submitAttempted);
+
+  const mobileError = showError('phoneMobile') ? validateMobilePhones(phoneMobile) : null;
+  const fixedError = showError('phoneFixed') ? validateFixedPhones(phoneFixed) : null;
+
+  const branchPhoneErrors = useMemo(() => {
+    const errs: Record<number, { mobile?: string; fixed?: string }> = {};
+    branches.forEach((b, idx) => {
+      const mErr = showError(`branch-mob-${idx}`) ? validateMobilePhones(b.phone_mobile) : null;
+      const fErr = showError(`branch-fix-${idx}`) ? validateFixedPhones(b.phone_fixed) : null;
+      if (mErr || fErr) {
+        errs[idx] = { mobile: mErr || undefined, fixed: fErr || undefined };
+      }
+    });
+    return errs;
+  }, [branches, touched, submitAttempted]);
+
+  const duplicates = useMemo(
+    () =>
+      findSupplierDuplicates(
+        {
+          commercialName,
+          rut,
+          phoneMobile,
+          phoneFixed,
+          address,
+          branches,
+        },
+        allSuppliers,
+        initialSupplier?.id
+      ),
+    [commercialName, rut, phoneMobile, phoneFixed, address, branches, allSuppliers, initialSupplier?.id]
+  );
+
+  const handleConfirmNewCategory = async () => {
+    const clean = newCategoryName.trim();
+    if (!clean) return;
+    const match = existingCategories.find(
+      (c) => normalizeSupplierText(c) === normalizeSupplierText(clean)
+    );
+    if (match) {
+      setCategory(match);
+      setNewCategoryNote(`Ya existía "${match}", se seleccionó automáticamente.`);
+      setIsAddingCategory(false);
+      setNewCategoryName('');
+      return;
+    }
+    if (onAddCategory) {
+      await onAddCategory(clean);
+    }
+    setCategory(clean);
+    setIsAddingCategory(false);
+    setNewCategoryName('');
+    setNewCategoryNote(null);
+  };
 
   const handleAddBranch = () => {
     setBranches((prev) => [
@@ -120,15 +196,21 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitAttempted(true);
+
     if (!commercialName.trim() || !category.trim()) return;
+    if (validateMobilePhones(phoneMobile) || validateFixedPhones(phoneFixed)) return;
+    for (const b of branches) {
+      if (validateMobilePhones(b.phone_mobile) || validateFixedPhones(b.phone_fixed)) return;
+    }
 
     setSaving(true);
     try {
       const cleanBranches: SupplierBranch[] = branches
         .filter((b) => b.address.trim().length > 0)
         .map((b) => {
-          const mob = splitList(b.phone_mobile);
-          const fix = splitList(b.phone_fixed);
+          const mob = splitMultiValue(b.phone_mobile);
+          const fix = splitMultiValue(b.phone_fixed);
           return {
             ...(b.name.trim() ? { name: b.name.trim() } : {}),
             address: b.address.trim(),
@@ -145,6 +227,9 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
       const payload: Omit<SupplierRecord, 'id'> = {
         commercial_name: commercialName.trim(),
         category: category.trim(),
+        legal_name: legalName.trim() || undefined,
+        rut: rut.trim() || undefined,
+        official_invoice: officialInvoice,
         description: description.trim() || undefined,
         phone_mobile: mobileVal || undefined,
         phone_fixed: fixedVal || undefined,
@@ -152,10 +237,6 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
         address: address.trim() || undefined,
         hours: hours.trim() || undefined,
         website: website.trim() || undefined,
-        email: email.trim() || undefined,
-        legal_name: legalName.trim() || undefined,
-        rut: rut.trim() || undefined,
-        official_invoice: officialInvoice,
         branches: cleanBranches.length > 0 ? cleanBranches : undefined,
         rating: initialSupplier?.rating ?? 5,
         frequency: initialSupplier?.frequency ?? 1,
@@ -176,6 +257,15 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
     : initialSupplier
     ? 'Editar proveedor'
     : 'Nuevo proveedor';
+
+  const selectOptions = useMemo(() => {
+    const base = [...existingCategories];
+    if (category && !base.some((c) => normalizeSupplierText(c) === normalizeSupplierText(category))) {
+      base.push(category);
+      base.sort((a, b) => a.localeCompare(b, 'es'));
+    }
+    return base;
+  }, [existingCategories, category]);
 
   return (
     <dialog
@@ -214,7 +304,7 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[calc(90dvh-132px)] p-5 space-y-5">
-        {/* Bloque 1: Datos principales */}
+        {/* Bloque 1: Datos principales (incluye datos fiscales) */}
         <section className="space-y-3">
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-500">
             <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -234,37 +324,143 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
                 placeholder="Ej: Confitería Panino"
                 value={commercialName}
                 onChange={(e) => setCommercialName(e.target.value)}
+                onBlur={() => markTouched('commercialName')}
                 className="validated-field w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/15"
               />
               <p className="field-error-msg text-[11px] text-red-600 font-semibold mt-1">
                 Ingresa el nombre comercial del proveedor.
               </p>
+              {duplicates.commercialName && (
+                <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Ya existe un proveedor llamado "{duplicates.commercialName}".</span>
+                </p>
+              )}
             </div>
 
             <div>
-              <label htmlFor="sup-category" className="block text-xs font-bold text-slate-700 mb-1">
-                Rubro / Categoría *
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="sup-category" className="text-xs font-bold text-slate-700">
+                  Rubro / Categoría *
+                </label>
+                {onOpenManageCategories && (
+                  <button
+                    type="button"
+                    onClick={onOpenManageCategories}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 hover:underline"
+                  >
+                    <Tags className="w-3 h-3" />
+                    <span>Administrar rubros</span>
+                  </button>
+                )}
+              </div>
+              <select
+                id="sup-category"
+                required
+                value={isAddingCategory ? ADD_NEW_CAT_VALUE : category}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNewCategoryNote(null);
+                  if (val === ADD_NEW_CAT_VALUE) {
+                    setIsAddingCategory(true);
+                  } else {
+                    setIsAddingCategory(false);
+                    setCategory(val);
+                  }
+                }}
+                className="validated-field w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/15"
+              >
+                <option value="" disabled>
+                  Seleccionar rubro...
+                </option>
+                <option value={ADD_NEW_CAT_VALUE}>+ Añadir nuevo rubro...</option>
+                {selectOptions.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+
+              {isAddingCategory && (
+                <div className="mt-2 flex gap-1.5">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Nombre del nuevo rubro..."
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleConfirmNewCategory();
+                      }
+                    }}
+                    className="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleConfirmNewCategory}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                  >
+                    Agregar
+                  </button>
+                </div>
+              )}
+              {newCategoryNote && (
+                <p className="mt-1 text-[11px] font-semibold text-amber-700">{newCategoryNote}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="sup-legal-name" className="block text-xs font-bold text-slate-700 mb-1">
+                Razón social
               </label>
               <input
-                id="sup-category"
+                id="sup-legal-name"
                 type="text"
-                required
-                list={categoryListId}
-                placeholder="Ej: Panadería / Catering"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="validated-field w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/15"
+                placeholder="Ej: Alvana S.R.L."
+                value={legalName}
+                onChange={(e) => setLegalName(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
               />
-              <datalist id={categoryListId}>
-                {existingCategories.map((cat) => (
-                  <option key={cat} value={cat} />
-                ))}
-              </datalist>
-              <p className="field-error-msg text-[11px] text-red-600 font-semibold mt-1">
-                Indica un rubro o categoría.
-              </p>
+            </div>
+
+            <div>
+              <label htmlFor="sup-rut" className="block text-xs font-bold text-slate-700 mb-1">
+                RUT
+              </label>
+              <input
+                id="sup-rut"
+                type="text"
+                inputMode="numeric"
+                placeholder="Ej: 214178550011"
+                value={rut}
+                onChange={(e) => setRut(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white tabular-nums"
+              />
+              {duplicates.rut && (
+                <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Este RUT ya figura en: {duplicates.rut}.</span>
+                </p>
+              )}
             </div>
           </div>
+
+          <label className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 cursor-pointer">
+            <div>
+              <span className="block text-xs font-bold text-slate-800">Emite factura oficial</span>
+              <span className="block text-[11px] text-slate-500">
+                Indica si entrega comprobante fiscal válido para rendir en LCR
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={officialInvoice}
+              onChange={(e) => setOfficialInvoice(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+            />
+          </label>
 
           <div>
             <label htmlFor="sup-description" className="block text-xs font-bold text-slate-700 mb-1">
@@ -291,7 +487,7 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label htmlFor="sup-mobile" className="block text-xs font-bold text-slate-700 mb-1">
-                Celular / WhatsApp
+                Celular / WhatsApp <span className="font-normal text-slate-400">(9 dígitos)</span>
               </label>
               <input
                 id="sup-mobile"
@@ -299,13 +495,26 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
                 placeholder="Ej: 099 123 456"
                 value={phoneMobile}
                 onChange={(e) => setPhoneMobile(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
+                onBlur={() => markTouched('phoneMobile')}
+                aria-invalid={mobileError ? 'true' : 'false'}
+                className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm bg-white ${
+                  mobileError ? 'border-red-500 bg-red-50/40' : 'border-slate-300'
+                }`}
               />
+              {mobileError && (
+                <p className="mt-1 text-[11px] font-semibold text-red-600">{mobileError}</p>
+              )}
+              {duplicates.phoneMobile && (
+                <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Este celular ya figura en: {duplicates.phoneMobile}.</span>
+                </p>
+              )}
             </div>
 
             <div>
               <label htmlFor="sup-fixed" className="block text-xs font-bold text-slate-700 mb-1">
-                Teléfono fijo
+                Teléfono fijo <span className="font-normal text-slate-400">(8 dígitos)</span>
               </label>
               <input
                 id="sup-fixed"
@@ -313,22 +522,40 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
                 placeholder="Ej: 2522 1238"
                 value={phoneFixed}
                 onChange={(e) => setPhoneFixed(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
+                onBlur={() => markTouched('phoneFixed')}
+                aria-invalid={fixedError ? 'true' : 'false'}
+                className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm bg-white ${
+                  fixedError ? 'border-red-500 bg-red-50/40' : 'border-slate-300'
+                }`}
               />
+              {fixedError && (
+                <p className="mt-1 text-[11px] font-semibold text-red-600">{fixedError}</p>
+              )}
+              {duplicates.phoneFixed && (
+                <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Este teléfono ya figura en: {duplicates.phoneFixed}.</span>
+                </p>
+              )}
             </div>
 
-            <div>
+            <div className="sm:col-span-2">
               <label htmlFor="sup-address" className="block text-xs font-bold text-slate-700 mb-1">
                 Dirección
               </label>
-              <input
+              <AddressAutocompleteInput
                 id="sup-address"
-                type="text"
-                placeholder="Ej: Cno. Carrasco 4746, Montevideo"
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChange={setAddress}
+                placeholder="Escribe calle y número (sugerencias de Uruguay)..."
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
               />
+              {duplicates.address && (
+                <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Esta dirección ya figura en: {duplicates.address}.</span>
+                </p>
+              )}
             </div>
 
             <div>
@@ -359,23 +586,6 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
               />
               <p className="field-error-msg text-[11px] text-red-600 font-semibold mt-1">
                 Incluye http:// o https:// al comienzo.
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="sup-email" className="block text-xs font-bold text-slate-700 mb-1">
-                Correo electrónico
-              </label>
-              <input
-                id="sup-email"
-                type="email"
-                placeholder="ventas@ejemplo.com.uy"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="validated-field w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
-              />
-              <p className="field-error-msg text-[11px] text-red-600 font-semibold mt-1">
-                Ingresa un correo válido.
               </p>
             </div>
           </div>
@@ -423,28 +633,63 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
                     onChange={(e) => handleUpdateBranch(idx, 'name', e.target.value)}
                     className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
                   />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Dirección de la sucursal *"
-                    value={branch.address}
-                    onChange={(e) => handleUpdateBranch(idx, 'address', e.target.value)}
-                    className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Celular(es) separados por |"
-                    value={branch.phone_mobile}
-                    onChange={(e) => handleUpdateBranch(idx, 'phone_mobile', e.target.value)}
-                    className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Fijo(s) separados por |"
-                    value={branch.phone_fixed}
-                    onChange={(e) => handleUpdateBranch(idx, 'phone_fixed', e.target.value)}
-                    className="px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-                  />
+                  <div>
+                    <AddressAutocompleteInput
+                      required
+                      placeholder="Dirección de la sucursal *"
+                      value={branch.address}
+                      onChange={(val) => handleUpdateBranch(idx, 'address', val)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                    />
+                    {duplicates.branchAddresses[idx] && (
+                      <p className="mt-1 text-[10px] font-semibold text-amber-700">
+                        Dirección ya registrada en: {duplicates.branchAddresses[idx]}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <input
+                      type="tel"
+                      placeholder="Celular(es) 9 dígitos (sep. por |)"
+                      value={branch.phone_mobile}
+                      onChange={(e) => handleUpdateBranch(idx, 'phone_mobile', e.target.value)}
+                      onBlur={() => markTouched(`branch-mob-${idx}`)}
+                      className={`w-full px-2.5 py-1.5 rounded-xl border text-xs bg-white ${
+                        branchPhoneErrors[idx]?.mobile
+                          ? 'border-red-500 bg-red-50/40'
+                          : 'border-slate-300'
+                      }`}
+                    />
+                    {branchPhoneErrors[idx]?.mobile && (
+                      <p className="mt-0.5 text-[10px] font-semibold text-red-600">
+                        {branchPhoneErrors[idx].mobile}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <input
+                      type="tel"
+                      placeholder="Fijo(s) 8 dígitos (sep. por |)"
+                      value={branch.phone_fixed}
+                      onChange={(e) => handleUpdateBranch(idx, 'phone_fixed', e.target.value)}
+                      onBlur={() => markTouched(`branch-fix-${idx}`)}
+                      className={`w-full px-2.5 py-1.5 rounded-xl border text-xs bg-white ${
+                        branchPhoneErrors[idx]?.fixed
+                          ? 'border-red-500 bg-red-50/40'
+                          : 'border-slate-300'
+                      }`}
+                    />
+                    {branchPhoneErrors[idx]?.fixed && (
+                      <p className="mt-0.5 text-[10px] font-semibold text-red-600">
+                        {branchPhoneErrors[idx].fixed}
+                      </p>
+                    )}
+                  </div>
+                  {duplicates.branchPhones[idx] && (
+                    <p className="sm:col-span-2 text-[10px] font-semibold text-amber-700">
+                      Teléfono ya registrado en: {duplicates.branchPhones[idx]}
+                    </p>
+                  )}
                   <input
                     type="text"
                     placeholder="Horario de esta sucursal"
@@ -456,60 +701,6 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
               </div>
             ))}
           </div>
-        </section>
-
-        {/* Bloque 3: Datos fiscales */}
-        <section className="space-y-3 pt-3 border-t border-slate-100">
-          <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-500">
-            <FileText className="w-3.5 h-3.5 text-slate-400" />
-            <span>3. Datos fiscales (Finanzas)</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="sup-legal-name" className="block text-xs font-bold text-slate-700 mb-1">
-                Razón social
-              </label>
-              <input
-                id="sup-legal-name"
-                type="text"
-                placeholder="Ej: Alvana S.R.L."
-                value={legalName}
-                onChange={(e) => setLegalName(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="sup-rut" className="block text-xs font-bold text-slate-700 mb-1">
-                RUT
-              </label>
-              <input
-                id="sup-rut"
-                type="text"
-                inputMode="numeric"
-                placeholder="Ej: 214178550011"
-                value={rut}
-                onChange={(e) => setRut(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white tabular-nums"
-              />
-            </div>
-          </div>
-
-          <label className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 cursor-pointer">
-            <div>
-              <span className="block text-xs font-bold text-slate-800">Emite factura oficial</span>
-              <span className="block text-[11px] text-slate-500">
-                Indica si entrega comprobante fiscal válido para rendir en LCR
-              </span>
-            </div>
-            <input
-              type="checkbox"
-              checked={officialInvoice}
-              onChange={(e) => setOfficialInvoice(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-            />
-          </label>
         </section>
 
         {/* Botones de acción */}

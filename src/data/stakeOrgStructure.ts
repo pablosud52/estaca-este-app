@@ -22,11 +22,12 @@ export interface DirectoryOrgDefinition {
 
 export const STAKE_UNITS: string[] = [
   'Aeroparque',
+  'Camino Carrasco',
   'Carrasco',
   'Malvin',
-  'Mvd9',
+  'Montevideo 9',
   'Paso Carrasco',
-  'Rama',
+  'Rama Colonia Nicolich',
 ];
 
 export const STAKE_ORG_STRUCTURE: DirectoryOrgDefinition[] = [

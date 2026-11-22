@@ -60,7 +60,7 @@ export const CalendarControlPanel: React.FC<CalendarControlPanelProps> = ({
   isSuperAdmin = false,
   userFullName,
   userCalling,
-  initialSubTab = 'WAITING_APPROVAL',
+  initialSubTab = 'APPROVED',
   onApproveActivity,
   onRejectActivity,
   onEditAndApproveActivity,
@@ -142,6 +142,16 @@ export const CalendarControlPanel: React.FC<CalendarControlPanelProps> = ({
 
   return (
     <div data-testid="calendar-control-panel" className="space-y-4">
+      {/* Título de la sección */}
+      <div>
+        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+          Panel de Control del Calendario
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+          Administra actividades aprobadas, solicitudes pendientes y sincronización con LCR.
+        </p>
+      </div>
+
       {/* Navegación compacta en 3 pestañas + Botón Crear Evento */}
       <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="bg-white border border-slate-200 rounded-2xl p-1.5 inline-flex flex-wrap gap-1">

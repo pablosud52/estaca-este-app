@@ -398,11 +398,11 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. Selector Jóvenes: [ Jóvenes juntos | Separados ] */}
+          {/* 1. Selector Jóvenes: [ Jóvenes juntos | Separados ] (al final en móvil, primero en PC) */}
           <div
             role="group"
             aria-label="Agrupación de jóvenes"
-            className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80"
+            className="order-last md:order-none inline-flex items-center bg-slate-100 rounded-xl border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80"
           >
             <button
               type="button"

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
+import { isSharedYouthActivity } from '../lib/activityFilters';
 import {
   consolidateLeaderExpenses,
   formatCurrency,
@@ -389,21 +390,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   // Fecha de referencia actual para separar actividades pasadas (realizadas) de las próximas futuras
   const referenceToday = new Date().toISOString().slice(0, 10);
 
-  // Determina si una actividad corresponde a la agenda propia de la organización (incluyendo Seminario y actividades conjuntas HJ/MJ)
+  // Determina si una actividad corresponde a la agenda propia de la organización (incluyendo Seminario, MeetUP y actividades conjuntas HJ/MJ)
   const isOwnOrgOrYouthJointActivity = (act: ActivityRecord): boolean => {
     if (act.organization === baseOrg) return true;
-    if (canUseSeminario) {
-      if (act.organization === 'SEMINARIO') return true;
-      const upperTitle = act.title.toUpperCase();
-      if (
-        (act.organization === 'HJ' || act.organization === 'MJ') &&
-        (upperTitle.includes('HJ Y MJ') ||
-          upperTitle.includes('HHJJ Y MMJJ') ||
-          upperTitle.includes('CONECTADOS CON PROPOSITO') ||
-          upperTitle.includes('CONECTADOS CON PROPÓSITO'))
-      ) {
-        return true;
-      }
+    if (canUseSeminario && isSharedYouthActivity(act)) {
+      return true;
     }
     return false;
   };

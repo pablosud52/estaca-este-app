@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, CalendarPlus, MapPin, Clock, DollarSign, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, CalendarPlus, Clock, DollarSign, CheckCircle2 } from 'lucide-react';
 import { OrganizationCode } from '../types/database';
 import { ORGANIZATION_LABELS } from '../lib/formatters';
+import { EventLocationSelect } from './EventLocationSelect';
 
 interface ProposeActivityModalProps {
   isOpen: boolean;
@@ -74,8 +75,9 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
   }, [isOpen]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
+    if ('closedBy' in HTMLDialogElement.prototype) return;
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!dialog || e.target !== dialog) return;
     const rect = dialog.getBoundingClientRect();
     const clickedInDialog =
       rect.top <= e.clientY &&
@@ -144,18 +146,20 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
       ref={dialogRef}
       data-testid="propose-activity-modal"
       aria-labelledby="modal-propose-title"
+      {...({ closedby: 'any' } as Record<string, unknown>)}
       onCancel={onClose}
+      onClose={onClose}
       onClick={handleBackdropClick}
-      className="p-0 rounded-3xl shadow-2xl border border-slate-200/90 w-[calc(100%-1.5rem)] max-w-md mx-auto my-auto bg-white text-slate-900 overflow-hidden"
+      className="p-0 rounded-3xl shadow-2xl border border-slate-200/90 w-[calc(100%-1.5rem)] max-w-md max-h-[90dvh] mx-auto my-auto bg-white text-slate-900 overflow-y-auto overscroll-contain"
     >
       <div className="p-5 sm:p-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
               <CalendarPlus className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 id="modal-propose-title" className="text-base font-extrabold text-slate-900 leading-tight">
                 {isDirectCreate ? 'Crear Evento en Calendario' : 'Proponer Actividad'}
               </h3>
@@ -277,21 +281,17 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
 
           <div>
             <label htmlFor="act-location" className="block text-xs font-bold text-slate-700 mb-1.5">
-              Lugar / Salón *
+              Lugar *
             </label>
-            <div className="relative">
-              <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                id="act-location"
-                data-testid="input-activity-location"
-                type="text"
-                required
-                placeholder="Ej: Centro de Estaca / Salón Cultural"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600"
-              />
-            </div>
+            <EventLocationSelect
+              id="act-location"
+              value={location}
+              onChange={setLocation}
+              selectTestId="select-activity-location"
+              inputTestId="input-activity-location"
+              required
+              showIcon
+            />
           </div>
 
           <div>
@@ -372,9 +372,8 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
                 className="mt-0.5 w-4 h-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
               />
               <div className="flex-1 text-xs">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Vincular a Seminario (MJ + HJ)</span>
+                <div className="font-bold">
+                  Actividad de Seminario
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
                   Se asocia al fondo común de Seminario y se visualiza automáticamente tanto en Mujeres Jóvenes como en Hombres Jóvenes.

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES } from '../data/seedData';
+import { isSharedYouthActivity } from '../lib/activityFilters';
 import {
   canViewActivityBudget,
   formatCurrency,
@@ -167,21 +168,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
     const includesYouth = selectedOrgs.includes('HJ') || selectedOrgs.includes('MJ');
 
-    // Seminario no es independiente: aparece cuando se filtra HJ o MJ
-    if (act.organization === 'SEMINARIO') {
-      return includesYouth;
-    }
-
-    // Actividades compartidas HJ + MJ
-    if (act.organization === 'HJ' || act.organization === 'MJ') {
-      if (selectedOrgs.includes(act.organization)) return true;
-      const upperTitle = act.title.toUpperCase();
-      const isSharedYouth =
-        upperTitle.includes('HJ Y MJ') ||
-        upperTitle.includes('HHJJ Y MMJJ') ||
-        upperTitle.includes('HOMBRES Y MUJERES JÓVENES');
-      if (isSharedYouth && includesYouth) return true;
-      return false;
+    // Seminario, MeetUP y actividades conjuntas de jóvenes aparecen al filtrar por HJ o MJ,
+    // sin importar con qué categoría se hayan guardado (app o LCR).
+    if (includesYouth && isSharedYouthActivity(act)) {
+      return true;
     }
 
     return selectedOrgs.includes(act.organization as SelectableOrg);

@@ -1,5 +1,6 @@
 import ICAL from 'ical.js';
 import { SEED_ACTIVITIES } from '../data/seedData';
+import { isMeetupActivityText, isSeminarioActivityText } from '../lib/activityFilters';
 import { supabase } from '../lib/supabase';
 import { ActivityRecord, OrganizationCode } from '../types/database';
 
@@ -130,7 +131,7 @@ export function inferOrganizationFromText(title: string, description?: string | 
   const text = `${title} ${description || ''}`.toUpperCase();
   if (text.includes('CHURCHWIDE EVENTS') || text.includes('CHURCHWIDE')) return 'CHURCHWIDE';
   if (text.includes('PRIMARIA')) return 'PRIMARIA';
-  if (text.includes('SEMINARIO')) return 'SEMINARIO';
+  if (isSeminarioActivityText(title, description)) return 'SEMINARIO';
   if (text.includes('MUJERES JÓVENES') || text.includes('MUJERES JOVENES') || text.includes('MMJJ') || text.includes('MM JJ')) {
     if (text.includes('HOMBRES') || text.includes('HHJJ') || text.includes('HH YY') || text.includes('HH Y MM') || text.includes('HJ')) return 'HJ';
     return 'MJ';
@@ -138,6 +139,7 @@ export function inferOrganizationFromText(title: string, description?: string | 
   if (text.includes('HOMBRES JÓVENES') || text.includes('HOMBRES JOVENES') || text.includes('HHJJ') || text.includes('HH Y MM') || text.includes('HJ')) {
     return 'HJ';
   }
+  if (isMeetupActivityText(title, description)) return 'HJ';
   if (text.includes('SOCIEDAD DE SOCORRO') || text.includes('SOC. SOC.') || text.includes('SOC SOC')) {
     return 'SS';
   }

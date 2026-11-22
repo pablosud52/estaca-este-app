@@ -523,9 +523,11 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
 
   const handleQuickAddSupplier = async () => {
     if (!newSupplierName.trim()) return;
+    const cleanCat =
+      newSupplierCategory === '__NEW__' ? 'Varios' : newSupplierCategory.trim() || 'Varios';
     await onCreateSupplier({
       commercial_name: newSupplierName.trim(),
-      category: newSupplierCategory.trim() || 'Varios',
+      category: cleanCat,
       official_invoice: true,
       rating: 5,
       status: 'PENDIENTE',
@@ -1179,19 +1181,33 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   onChange={(e) => setNewSupplierName(e.target.value)}
                   className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
                 />
-                <input
-                  type="text"
-                  list="expense-supplier-categories"
-                  placeholder="Rubro (opcional)"
-                  value={newSupplierCategory}
+                <select
+                  value={newSupplierCategory === '__NEW__' ? '__NEW__' : newSupplierCategory}
                   onChange={(e) => setNewSupplierCategory(e.target.value)}
                   className="w-full sm:w-44 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
-                />
-                <datalist id="expense-supplier-categories">
-                  {Array.from(new Set(suppliers.map((s) => s.category).filter(Boolean))).map((cat) => (
-                    <option key={cat} value={cat} />
-                  ))}
-                </datalist>
+                >
+                  <option value="">Rubro (opcional)</option>
+                  <option value="__NEW__">+ Añadir nuevo rubro...</option>
+                  {Array.from(new Set(suppliers.map((s) => s.category).filter(Boolean)))
+                    .sort((a, b) => a.localeCompare(b, 'es'))
+                    .map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                </select>
+                {newSupplierCategory === '__NEW__' && (
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Nuevo rubro..."
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      setNewSupplierCategory(val || '');
+                    }}
+                    className="w-full sm:w-40 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                  />
+                )}
                 <button
                   type="button"
                   onClick={handleQuickAddSupplier}

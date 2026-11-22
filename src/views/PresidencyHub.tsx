@@ -194,6 +194,30 @@ export const PresidencyHub: React.FC = () => {
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [withdrawals, setWithdrawals] = useState<CashWithdrawalRecord[]>(SEED_CASH_WITHDRAWALS);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
+  const [savedSupplierCategories, setSavedSupplierCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'supplier_categories')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active || !data?.value) return;
+        try {
+          const parsed = JSON.parse(data.value);
+          if (Array.isArray(parsed)) {
+            setSavedSupplierCategories(parsed.filter((item): item is string => typeof item === 'string'));
+          }
+        } catch {
+          // Ignorar formato inválido
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Sincronización en tiempo real con Supabase con fallback a SEED_DATA auditado
   useEffect(() => {
@@ -1957,6 +1981,83 @@ export const PresidencyHub: React.FC = () => {
     });
   };
 
+  const persistSupplierCategories = async (nextList: string[]) => {
+    const sorted = Array.from(new Set(nextList.map((c) => c.trim()).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, 'es')
+    );
+    setSavedSupplierCategories(sorted);
+    if (!isSimulating) {
+      try {
+        await supabase.from('app_config').upsert(
+          [
+            {
+              key: 'supplier_categories',
+              value: JSON.stringify(sorted),
+              description: 'Catálogo oficial de rubros de proveedores',
+              updated_at: new Date().toISOString(),
+            },
+          ],
+          { onConflict: 'key' }
+        );
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+  };
+
+  const handleAddSupplierCategory = async (name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    await persistSupplierCategories([...savedSupplierCategories, clean]);
+  };
+
+  const handleRenameSupplierCategory = async (oldName: string, newName: string) => {
+    const cleanNew = newName.trim();
+    if (!cleanNew || cleanNew === oldName) return;
+
+    const affected = suppliers.filter((s) => s.category === oldName);
+    setSuppliers((prev) =>
+      prev.map((s) => (s.category === oldName ? { ...s, category: cleanNew } : s))
+    );
+
+    if (!isSimulating && affected.length > 0) {
+      try {
+        await supabase
+          .from('suppliers')
+          .update({ category: cleanNew })
+          .eq('category', oldName);
+      } catch {
+        // Estado local ya actualizado
+      }
+    }
+
+    const base = savedSupplierCategories.filter((c) => c !== oldName);
+    await persistSupplierCategories([...base, cleanNew]);
+  };
+
+  const handleDeleteSupplierCategory = async (name: string, moveToCategory: string) => {
+    const targetCat = moveToCategory.trim() || 'Varios';
+    const affected = suppliers.filter((s) => s.category === name);
+    if (affected.length > 0) {
+      setSuppliers((prev) =>
+        prev.map((s) => (s.category === name ? { ...s, category: targetCat } : s))
+      );
+      if (!isSimulating) {
+        try {
+          await supabase
+            .from('suppliers')
+            .update({ category: targetCat })
+            .eq('category', name);
+        } catch {
+          // Estado local ya actualizado
+        }
+      }
+    }
+
+    const remaining = savedSupplierCategories.filter((c) => c !== name);
+    await persistSupplierCategories(affected.length > 0 ? [...remaining, targetCat] : remaining);
+  };
+
   const selectTabAndCloseDrawer = (
     tab:
       | 'DASHBOARD'
@@ -2746,10 +2847,14 @@ export const PresidencyHub: React.FC = () => {
         ) : activeTab === 'SUPPLIERS' ? (
           <SuppliersView
             suppliers={suppliers}
+            savedCategories={savedSupplierCategories}
             canManage={user.role === 'ADMIN' || Boolean(user.email && isSuperAdminEmail(user.email))}
             onCreateSupplier={handleCreateSupplier}
             onUpdateSupplier={handleUpdateSupplier}
             onDeleteSupplier={handleDeleteSupplier}
+            onAddCategory={handleAddSupplierCategory}
+            onRenameCategory={handleRenameSupplierCategory}
+            onDeleteCategory={handleDeleteSupplierCategory}
             onBack={() => setActiveTab('DASHBOARD')}
             embedded
           />

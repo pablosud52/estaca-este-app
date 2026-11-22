@@ -22,6 +22,7 @@ import {
   ORGANIZATION_SHORT_LABELS,
 } from '../lib/formatters';
 import { ActivityRecord, ExpenseRecord, OrganizationCode } from '../types/database';
+import { EventLocationSelect } from './EventLocationSelect';
 
 interface ActivityApprovalTrayProps {
   activities: ActivityRecord[];
@@ -426,14 +427,16 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-300 mb-1">
-                        Lugar / Salón
+                        Lugar
                       </label>
-                      <input
-                        type="text"
-                        data-testid={`edit-input-location-${proposal.id}`}
+                      <EventLocationSelect
                         value={editLocation}
-                        onChange={(e) => setEditLocation(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        onChange={setEditLocation}
+                        selectTestId={`edit-select-location-${proposal.id}`}
+                        inputTestId={`edit-input-location-${proposal.id}`}
+                        variant="dark"
+                        selectClassName="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        inputClassName="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
 
@@ -907,11 +910,11 @@ export const ActivityApprovalTray: React.FC<ActivityApprovalTrayProps> = ({
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">
                   Lugar
                 </label>
-                <input
-                  type="text"
+                <EventLocationSelect
                   value={appLocation}
-                  onChange={(e) => setAppLocation(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none"
+                  onChange={setAppLocation}
+                  selectClassName="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none"
+                  inputClassName="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none"
                 />
               </div>
               <div className="sm:col-span-2">

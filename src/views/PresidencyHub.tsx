@@ -119,6 +119,7 @@ const saveSessionProposals = (list: ActivityRecord[]) => {
 
 export const PresidencyHub: React.FC = () => {
   const { user, isSimulating, incompleteContactsCount, signOut, realAuthEmail } = useAuth();
+  const userIsSuperAdmin = Boolean(user.email && isSuperAdminEmail(user.email));
 
   // Sub-vista activa: DASHBOARD | APPROVALS | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | LOGS | INFO
   const [activeTab, setActiveTab] = useState<
@@ -2478,25 +2479,27 @@ export const PresidencyHub: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 6. Información / Normativas */}
-                      <button
-                        type="button"
-                        data-testid="hub-admin-info-btn"
-                        onClick={() => {
-                          setActiveTab('INFO');
-                          setIsAdminMenuOpen(false);
-                        }}
-                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
-                          activeTab === 'INFO'
-                            ? 'bg-slate-900 text-white shadow-sm'
-                            : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <BookOpen className="w-4 h-4 text-amber-600" />
-                          <span>Información / Normativas</span>
-                        </span>
-                      </button>
+                      {/* 6. Información / Normativas (oculta temporalmente, solo visible para Super Admin) */}
+                      {userIsSuperAdmin && (
+                        <button
+                          type="button"
+                          data-testid="hub-admin-info-btn"
+                          onClick={() => {
+                            setActiveTab('INFO');
+                            setIsAdminMenuOpen(false);
+                          }}
+                          className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                            activeTab === 'INFO'
+                              ? 'bg-slate-900 text-white shadow-sm'
+                              : 'text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <BookOpen className="w-4 h-4 text-amber-600" />
+                            <span>Información / Normativas</span>
+                          </span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2742,20 +2745,22 @@ export const PresidencyHub: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 6. Información / Normativas */}
-                      <button
-                        type="button"
-                        data-testid="drawer-admin-info-btn"
-                        onClick={() => selectTabAndCloseDrawer('INFO')}
-                        className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
-                          activeTab === 'INFO'
-                            ? 'bg-emerald-900 text-white shadow-sm'
-                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
-                        }`}
-                      >
-                        <BookOpen className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                        <span>Información / Normativas</span>
-                      </button>
+                      {/* 6. Información / Normativas (oculta temporalmente, solo visible para Super Admin) */}
+                      {userIsSuperAdmin && (
+                        <button
+                          type="button"
+                          data-testid="drawer-admin-info-btn"
+                          onClick={() => selectTabAndCloseDrawer('INFO')}
+                          className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                            activeTab === 'INFO'
+                              ? 'bg-emerald-900 text-white shadow-sm'
+                              : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                          }`}
+                        >
+                          <BookOpen className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                          <span>Información / Normativas</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2783,7 +2788,7 @@ export const PresidencyHub: React.FC = () => {
           <AuditLogsPanel />
         ) : activeTab === 'DIRECTORY' ? (
           <LeadersDirectoryView />
-        ) : activeTab === 'INFO' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
+        ) : activeTab === 'INFO' && userIsSuperAdmin ? (
           <FinancialInfoSection />
         ) : activeTab === 'OPERATIONS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <AdminOperationsCenter

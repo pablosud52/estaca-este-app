@@ -17,6 +17,23 @@ export const FinancialInfoSection: React.FC = () => {
 
   return (
     <div data-testid="financial-info-section" className="space-y-5 animate-fade-in">
+      {/* Aviso exclusivo para Super Admin */}
+      <div
+        role="alert"
+        data-testid="info-superadmin-draft-banner"
+        className="flex items-start gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50 px-4 py-3.5 text-amber-950 shadow-sm"
+      >
+        <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="text-xs sm:text-sm leading-relaxed">
+          <p className="font-extrabold text-amber-950">
+            Sección en reforma — Solo visible para Super Admin
+          </p>
+          <p className="font-medium text-amber-900 mt-0.5">
+            Esta sección está oculta temporalmente: no está activa ni visible para ningún miembro de la Presidencia hasta que se completen sus reformas.
+          </p>
+        </div>
+      </div>
+
       {/* Cabecera */}
       <div className="bg-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-md border border-slate-800">
         <div className="flex items-start gap-3">

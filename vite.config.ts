@@ -8,25 +8,33 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
         name: 'Estaca Este App - Finanzas y Calendario',
         short_name: 'Estaca Este',
         description: 'Gestión presupuestaria y agenda de actividades de la Estaca Montevideo Uruguay Este',
-        theme_color: '#0f766e',
-        background_color: '#ffffff',
+        theme_color: '#0f2440',
+        background_color: '#09182e',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: 'pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ]
       }

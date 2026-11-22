@@ -1,11 +1,47 @@
 # ROADMAP_PROGRESS.md - Estado y Plan de Avance del Proyecto
 
-> **Fase Actual**: Fase 6 — Desarrollo e Implementación del Frontend (Pasos 6.1, 6.2, 6.3, 6.4 y 6.5 Completados)  
-> **Última Actualización**: 2026-11-09
+> **Fase Actual**: Puesta a Punto y Cierre hacia Producción (`https://estacaeste.vercel.app`)  
+> **Última Actualización**: 2026-11-21
 
 ---
 
-## 📊 Estado de las Fases del Nuevo Enfoque
+## 🎯 Puesta a Punto — Tablero Maestro (Para seguimiento entre chats)
+
+> **Nota para cualquier asistente/hilo:** Este tablero concentra el estado real verificado del proyecto. Al completar o ajustar un punto aquí, actualizar el estado en esta sección y la fecha arriba.
+
+### ✅ Ya Pronto / Completado (Base operativa)
+- **Autenticación y Usuarios:** Login con Google OAuth (`LoginView.tsx`), opción *"Recordarme en este dispositivo"*, botón **Salir** y permisos RLS de escritura para administradores en `users_profiles`.
+- **Directorio de Líderes:** Lectura/guardado real en Supabase (`stake_directory_entries`), organizaciones en acordeón plegado, Sumo Consejo sin numeración y ordenado alfabéticamente, enlace directo `tel:`.
+- **Calendario y LCR:** Puente servidor `/api/lcr-calendar` para sincronización iCal sin bloqueos, botón `+ Crear Evento` directo para Presidencia/Admin, actividades compartidas y guardado real de propuestas.
+- **Proveedores (`GUIA PROVEEDORES`):** Panel de control completo para Administrador (alta, edición, baja y pestaña `Pendientes` para sugerencias desde Finanzas).
+- **Finanzas (base):** Cabecera unificada en una sola caja, pestaña `Movimientos` (ex `Retiros`) estandarizada con pastilla dividida y `NewMovementModal`, carga de gastos con 5 tipos y dos fechas por actividad, y sección `Presupuestos` (`budget_incomes`).
+- **Tablero de Presidencia:** Tarjeta principal compacta, abreviaturas ajustadas y solo actividades vigentes.
+- **Info. Normativas (ocultamiento temporal):** Oculta para Presidencia y visible solo para Super Admin (`pablosud52@gmail.com`) con cartel de aviso hasta completar sus reformas.
+
+### ⏳ Listado Numerado de Pendientes
+
+#### 1. Finanzas: modales, fechas, alertas y Excel
+- [ ] **1.1 Pulir ventanas de carga (modales):** Revisar y mejorar el diseño y comodidad de las ventanas de carga de **Gastos** y **Movimientos** (`ExpenseFormModal.tsx`, `NewMovementModal.tsx`).
+- [ ] **1.2 Orden por fecha:** Agregar controles en las tablas de Finanzas para ordenar por fecha **ascendente y descendente**.
+- [ ] **1.3 Filtro por fechas:** Agregar un buscador o filtro específico por **rango/fecha** en cada sección de Finanzas (especialmente en **Gastos** y **Movimientos**).
+- [ ] **1.4 Alertas del panel de finanzas:** Verificar qué alertas tiene programadas hoy el panel de Finanzas y revisar dónde las muestra.
+- [ ] **1.5 Excel (exportar e importar):** Revisar todos los datos que exporta e importa `ExcelSyncPanel.tsx` y confirmar que todas las tablas estén completas y correctas.
+
+#### 2. Solicitudes de acceso al entrar con Google
+- [ ] **2.1 Capturar correos de usuarios que intentan entrar:** Si una persona entra con Google y aún no tiene permiso, guardar/tomar su correo para que el Administrador pueda darle de alta después — ya sea asignándole un puesto existente del Directorio (para actualizarle el correo) o creándolo desde cero con todos sus datos.
+
+#### 3. Seguridad, PWA y Puesta en Producción
+- [x] **3.1 Permisos de base de datos (RLS):** Cerrar el acceso público (`anon`) en las tablas operativas de Supabase (`activities`, `budget_allocations`, `budget_incomes`, `cash_withdrawals`, `expenses`, `suppliers`, `app_config`), dejándolas protegidas como `users_profiles` y `stake_directory_entries`. *(Completado 2026-11-21 vía `07_close_anon_rls_operational_tables.sql` + verificación en vivo; también se cerró `audit_logs`.)*
+- [ ] **3.2 Subir cambios locales a Vercel:** Commitear y hacer `git push` de los avances locales pendientes y verificar en `https://estacaeste.vercel.app`.
+- [x] **3.3 Completar Progressive Web App (PWA):** Crear los íconos faltantes en `public/` (`pwa-192x192.png`, `pwa-512x512.png`, `apple-touch-icon.png`, etc.), ajustar color/tema y probar la instalación real en el celular desde `https://estacaeste.vercel.app`. *(Íconos en `public/`, tema azul marino unificado, `PwaInstallBanner.tsx` y build `dist/manifest.webmanifest` + `dist/sw.js` verificados el 2026-11-21; falta probar la instalación en celular apenas se publique en 3.2.)*
+
+#### 4. Info. Normativas y Logs *(al final de todo)*
+- [ ] **4.1 Info. Normativas:** *(Ya oculta para Presidencia)* Cambiar el nombre **`Información / Normativas`** a **`Info. Normativas`** y rediseñar esa sección (`FinancialInfoSection.tsx`).
+- [ ] **4.2 Sección de Logs:** Revisar y validar la interfaz/acceso del registro de acciones (`AuditLogsPanel`) para el Administrador.
+
+---
+
+## 📊 Estado Histórico de las Fases (Referencia)
 
 ```mermaid
 flowchart TD
@@ -221,3 +257,4 @@ flowchart TD
   - Agregar botón exclusivo para Admins **Historial / Logs** debajo de Finanzas (ingresos con día/hora, modificaciones en el sistema y registro de activación/desactivación del permiso Editor de Finanzas).
   - En carga de gastos de Finanzas, reutilizar el modal del Panel de Proveedores como sugerencia no bloqueante (solo nombre del proveedor y opcionalmente rubro, sin trabar la carga del gasto). Esas sugerencias irán a una **pestaña propia dentro de la sección Proveedores**, con un contador discreto en la misma pestaña (sin alertas invasivas en el menú principal), para que un Admin las apruebe, complete o elimine (conservando el nombre en el gasto histórico si se descarta del directorio).
 - [ ] **Botón / Modal de copiado rápido para LCR (Gastos):** Evaluar agregar un botón limpio por fila en Registro de Gastos que abra un modal con los datos del gasto listos para LCR (referencia, fecha, proveedor, propósito, monto) y botones individuales de copiar y pegar en cada campo, evitando llenar la tabla de botones.
+- [ ] **Evaluar aplicación nativa para iPhone y Android (App Store / Google Play):** Evaluar publicar la app en las tiendas oficiales de Apple y Google para permitir instalación directa sin pasos manuales en iPhone.

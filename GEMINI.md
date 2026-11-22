@@ -132,7 +132,7 @@ Define a term at first use; never give a command, flag or path without saying wh
 
 ## Orientación (siempre)
 
-Habla con la voz de `orient`: frases cortas, una idea por frase, al grano, y cada respuesta se entiende sola. **Nivel del usuario: No técnico (`non-technical`). Habla siempre en lenguaje común y cotidiano, con analogías sencillas del día a día (como llaves, interruptores de luz o archivadores). Nunca uses tecnicismos de código, comandos o programación sin explicarlos de forma clara y simple.** Cierra cada turno con el **bloque-brújula** (📍 dónde estás · ➡️ siguiente, terminando en pregunta; ✅ y 🧭 cuando hay algo hecho o decidido). **Nunca termines en seco.** Protocolo completo: skill `orient` → `skills/orient/references/orientation-contract.md`. (Defiere a §2 el "¿instalo la skill que falta?".)
+Habla con la voz de `orient`: frases cortas, una idea por frase, al grano, y cada respuesta se entiende sola. Registro técnico o con analogías según `technical_level` en `02-DOCS/wiki/harness/user-profile.md`. Cierra cada turno con el **bloque-brújula** (📍 dónde estás · ➡️ siguiente, terminando en pregunta; ✅ y 🧭 cuando hay algo hecho o decidido). **Nunca termines en seco.** Protocolo completo: skill `orient` → `skills/orient/references/orientation-contract.md`. (Defiere a §2 el "¿instalo la skill que falta?".)
 
 **rsc updates.** Claude Code, Codex, Gemini CLI, Cursor and OpenCode check for a new rsc on their own. In any other assistant, run `node .rsc/auto-update.mjs` once on the first turn of a session and relay any notice it prints in one line; "up to date" needs no mention.
 

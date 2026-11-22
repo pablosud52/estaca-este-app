@@ -6,6 +6,7 @@ import { UnauthorizedView } from './components/UnauthorizedView';
 import { LeaderView } from './views/LeaderView';
 import { PresidencyHub } from './views/PresidencyHub';
 import { ConsultaView } from './views/ConsultaView';
+import { PwaInstallBanner } from './components/PwaInstallBanner';
 
 const AppRouter: React.FC = () => {
   const { user, authStatus } = useAuth();
@@ -46,6 +47,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AppRouter />
+      <PwaInstallBanner />
       <DevRoleSwitcher />
     </AuthProvider>
   );

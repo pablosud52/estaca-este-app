@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS public.stake_directory_entries (
 
 ALTER TABLE public.stake_directory_entries ENABLE ROW LEVEL SECURITY;
 
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.stake_directory_entries TO authenticated;
+GRANT ALL ON TABLE public.stake_directory_entries TO service_role;
+
 -- Lectura para usuarios autenticados activos (Directorio de Líderes)
 DROP POLICY IF EXISTS "Lectura directorio usuarios activos" ON public.stake_directory_entries;
 CREATE POLICY "Lectura directorio usuarios activos"

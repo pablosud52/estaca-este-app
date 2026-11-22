@@ -284,13 +284,13 @@ export const PresidencyHub: React.FC = () => {
               : 'lcr',
           })) as ActivityRecord[];
 
-          // Preferir los registros vivos de Supabase cuando coinciden por título y complementar con históricos de SEED_ACTIVITIES
+          // Preferir los registros vivos de Supabase cuando coinciden por título y complementar con históricos de SEED_ACTIVITIES con IDs negativos para evitar colisión con los IDs de Supabase
           const remoteTitles = new Set(remoteActivities.map((r) => r.title.trim().toLowerCase()));
           const mergedRemoteAndSeed = [
             ...remoteActivities,
             ...SEED_ACTIVITIES.filter(
               (s) => !remoteTitles.has(s.title.trim().toLowerCase())
-            ),
+            ).map((s) => ({ ...s, id: -1000 - s.id })),
           ];
 
           // Sincronización silenciosa con el Doble Escudo LCR al montar la app
@@ -312,10 +312,9 @@ export const PresidencyHub: React.FC = () => {
             const uniqueLocal = Array.from(
               new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
             );
-            const prevById = new Map(prev.map((item) => [item.id, item]));
 
             return [
-              ...syncResult.activities.map((item) => prevById.get(item.id) || item),
+              ...syncResult.activities,
               ...uniqueLocal,
             ].sort((a, b) => a.event_date.localeCompare(b.event_date));
           });

@@ -67,7 +67,6 @@ import {
   isActivityPendingLcr,
   syncLcrCalendarWithShield,
 } from '../services/lcrSyncService';
-import { UserManagementPanel } from '../components/UserManagementPanel';
 import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
 import { FinancialInfoSection } from '../components/FinancialInfoSection';
 import { computeYearIncomeSummary } from '../lib/budgetUtils';
@@ -126,13 +125,12 @@ export const PresidencyHub: React.FC = () => {
   const { user, isSimulating, incompleteContactsCount, signOut, realAuthEmail } = useAuth();
   const userIsSuperAdmin = Boolean(user.email && isSuperAdminEmail(user.email));
 
-  // Sub-vista activa: DASHBOARD | CALENDAR | SUPPLIERS | DIRECTORY | USERS | OPERATIONS | LOGS | INFO
+  // Sub-vista activa: DASHBOARD | CALENDAR | SUPPLIERS | DIRECTORY | OPERATIONS | LOGS | INFO
   const [activeTab, setActiveTab] = useState<
     | 'DASHBOARD'
     | 'CALENDAR'
     | 'SUPPLIERS'
     | 'DIRECTORY'
-    | 'USERS'
     | 'OPERATIONS'
     | 'LOGS'
     | 'INFO'
@@ -626,8 +624,8 @@ export const PresidencyHub: React.FC = () => {
   const hasCalendarAlert = userCanApproveCalendar && (pendingProposalsCount > 0 || pendingLcrCount > 0);
   const hasDirectoryAlert = userCanManageUsers && incompleteContactsCount > 0;
   const hasFinanceAlert = userCanEditFinances && executiveMetrics.pendingRenderTotal > 0;
-  const hasAnyAdminAlert = hasDirectoryAlert || hasFinanceAlert;
-  const hasAnyMobileAlert = hasCalendarAlert || hasAnyAdminAlert;
+  const hasAnyAdminAlert = hasFinanceAlert;
+  const hasAnyMobileAlert = hasCalendarAlert || hasDirectoryAlert || hasAnyAdminAlert;
 
   // Monto reservado en actividades del trimestre actual (se descuenta al cargar el gasto real vinculado)
   const reservedMetrics = useMemo(() => {
@@ -2209,7 +2207,6 @@ export const PresidencyHub: React.FC = () => {
       | 'CALENDAR'
       | 'SUPPLIERS'
       | 'DIRECTORY'
-      | 'USERS'
       | 'OPERATIONS'
       | 'LOGS'
       | 'INFO'
@@ -2218,6 +2215,9 @@ export const PresidencyHub: React.FC = () => {
       setCalendarInitialManageMode(false);
       setCalendarInitialFilter('ALL');
       setCalendarOnlyPendingLcr(false);
+    }
+    if (tab === 'DIRECTORY') {
+      setOpenUsersWithIncompleteFilter(false);
     }
     setActiveTab(tab);
     setIsMobileDrawerOpen(false);
@@ -2408,11 +2408,12 @@ export const PresidencyHub: React.FC = () => {
                 )}
               </button>
 
-              {/* Botón 3: Directorio */}
+              {/* Botón 3: Directorio unificado */}
               <button
                 type="button"
                 data-testid="hub-nav-directory"
                 onClick={() => {
+                  setOpenUsersWithIncompleteFilter(false);
                   setActiveTab('DIRECTORY');
                   setIsAdminMenuOpen(false);
                 }}
@@ -2424,6 +2425,23 @@ export const PresidencyHub: React.FC = () => {
               >
                 <Users className={`w-4 h-4 ${activeTab === 'DIRECTORY' ? 'text-sky-300' : 'text-indigo-500'}`} />
                 <span>Directorio</span>
+                {hasDirectoryAlert && (
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      data-testid="nav-directory-incomplete-count"
+                      className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums"
+                    >
+                      {incompleteContactsCount}
+                    </span>
+                    <span
+                      data-testid="admin-directory-alert-dot"
+                      className="relative flex h-2 w-2"
+                    >
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                    </span>
+                  </span>
+                )}
               </button>
 
               {/* Botón 4: Proveedores */}
@@ -2463,7 +2481,6 @@ export const PresidencyHub: React.FC = () => {
                   aria-haspopup="true"
                   onClick={() => setIsAdminMenuOpen((prev) => !prev)}
                   className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
-                    activeTab === 'USERS' ||
                     activeTab === 'OPERATIONS' ||
                     activeTab === 'LOGS' ||
                     activeTab === 'INFO'
@@ -2473,7 +2490,6 @@ export const PresidencyHub: React.FC = () => {
                 >
                   <Shield
                     className={`w-3.5 h-3.5 ${
-                      activeTab === 'USERS' ||
                       activeTab === 'OPERATIONS' ||
                       activeTab === 'LOGS' ||
                       activeTab === 'INFO'
@@ -2507,44 +2523,7 @@ export const PresidencyHub: React.FC = () => {
                       Secciones de Administración
                     </div>
                     <div className="p-1 space-y-0.5">
-                      {/* 1. Directorio (Gestión de Usuarios y llamamientos - exclusivo Admins) */}
-                      {userCanManageUsers && (
-                        <button
-                          type="button"
-                          data-testid="hub-admin-users-btn"
-                          onClick={() => {
-                            setOpenUsersWithIncompleteFilter(false);
-                            setActiveTab('USERS');
-                            setIsAdminMenuOpen(false);
-                          }}
-                          className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
-                            activeTab === 'USERS'
-                              ? 'bg-[#072B52] text-white shadow-sm'
-                              : 'text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2.5">
-                            <Users className="w-4 h-4 text-indigo-600" />
-                            <span>Directorio</span>
-                          </span>
-                          {hasDirectoryAlert && (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
-                                {incompleteContactsCount}
-                              </span>
-                              <span
-                                data-testid="admin-directory-alert-dot"
-                                className="relative flex h-2 w-2"
-                              >
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                              </span>
-                            </span>
-                          )}
-                        </button>
-                      )}
-
-                      {/* 2. Finanzas (Centro de Edición y Carga) */}
+                      {/* 1. Finanzas (Centro de Edición y Carga) */}
                       <button
                         type="button"
                         data-testid="hub-admin-operations-btn"
@@ -2714,19 +2693,35 @@ export const PresidencyHub: React.FC = () => {
                   )}
                 </button>
 
-                {/* 3. Directorio */}
+                {/* 3. Directorio unificado */}
                 <button
                   type="button"
                   data-testid="drawer-nav-directory"
                   onClick={() => selectTabAndCloseDrawer('DIRECTORY')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                  className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'DIRECTORY'
                       ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Users className={`w-4 h-4 flex-shrink-0 ${activeTab === 'DIRECTORY' ? 'text-sky-300' : 'text-indigo-500'}`} />
-                  <span>Directorio</span>
+                  <span className="inline-flex items-center gap-3">
+                    <Users className={`w-4 h-4 flex-shrink-0 ${activeTab === 'DIRECTORY' ? 'text-sky-300' : 'text-indigo-500'}`} />
+                    <span>Directorio</span>
+                  </span>
+                  {hasDirectoryAlert && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                        {incompleteContactsCount}
+                      </span>
+                      <span
+                        data-testid="drawer-directory-alert-dot"
+                        className="relative flex h-2 w-2"
+                      >
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                      </span>
+                    </span>
+                  )}
                 </button>
 
                 {/* 4. Proveedores */}
@@ -2759,43 +2754,7 @@ export const PresidencyHub: React.FC = () => {
                     </p>
 
                     <div className="space-y-1.5">
-                      {/* 1. Directorio (Gestión de Usuarios - exclusivo Admins) */}
-                      {userCanManageUsers && (
-                        <button
-                          type="button"
-                          data-testid="drawer-admin-users-btn"
-                          onClick={() => {
-                            setOpenUsersWithIncompleteFilter(false);
-                            selectTabAndCloseDrawer('USERS');
-                          }}
-                          className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
-                            activeTab === 'USERS'
-                              ? 'bg-[#083563] text-white shadow-sm'
-                              : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
-                          }`}
-                        >
-                          <span className="inline-flex items-center gap-3">
-                            <Users className={`w-4 h-4 flex-shrink-0 ${activeTab === 'USERS' ? 'text-sky-300' : 'text-[#083563]'}`} />
-                            <span>Directorio</span>
-                          </span>
-                          {hasDirectoryAlert && (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
-                                {incompleteContactsCount}
-                              </span>
-                              <span
-                                data-testid="drawer-directory-alert-dot"
-                                className="relative flex h-2 w-2"
-                              >
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                              </span>
-                            </span>
-                          )}
-                        </button>
-                      )}
-
-                      {/* 2. Finanzas (Operaciones y Carga) */}
+                      {/* 1. Finanzas (Operaciones y Carga) */}
                       <button
                         type="button"
                         data-testid="drawer-admin-operations-btn"
@@ -2875,12 +2834,14 @@ export const PresidencyHub: React.FC = () => {
             : 'pt-5 space-y-6'
         }`}
       >
-        {activeTab === 'USERS' && userCanManageUsers ? (
-          <UserManagementPanel initialFilterIncomplete={openUsersWithIncompleteFilter} />
-        ) : activeTab === 'LOGS' && userCanViewLogs ? (
+        {activeTab === 'LOGS' && userCanViewLogs ? (
           <AuditLogsPanel />
         ) : activeTab === 'DIRECTORY' ? (
-          <LeadersDirectoryView />
+          <LeadersDirectoryView
+            canManage={userCanManageUsers}
+            initialManageMode={openUsersWithIncompleteFilter}
+            initialFilterIncomplete={openUsersWithIncompleteFilter}
+          />
         ) : activeTab === 'INFO' && userIsSuperAdmin ? (
           <FinancialInfoSection />
         ) : activeTab === 'OPERATIONS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (

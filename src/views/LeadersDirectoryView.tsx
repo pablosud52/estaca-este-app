@@ -7,10 +7,12 @@ import {
   MessageCircle,
   Phone,
   Search,
+  Settings2,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
 import { isEntryPersonLoaded, useAuth } from '../context/AuthContext';
+import { UserManagementPanel } from '../components/UserManagementPanel';
 import { STAKE_ORG_STRUCTURE } from '../data/stakeOrgStructure';
 import { formatUruguayanMobile, toWhatsAppUrl } from '../lib/formatters';
 import { DirectoryOrgCode, StakeDirectoryEntry } from '../types/database';
@@ -48,8 +50,30 @@ const sortOrgEntries = (orgCode: DirectoryOrgCode, entries: StakeDirectoryEntry[
   });
 };
 
-export const LeadersDirectoryView: React.FC = () => {
-  const { directoryEntries } = useAuth();
+interface LeadersDirectoryViewProps {
+  canManage?: boolean;
+  initialManageMode?: boolean;
+  initialFilterIncomplete?: boolean;
+}
+
+export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
+  canManage = false,
+  initialManageMode = false,
+  initialFilterIncomplete = false,
+}) => {
+  const { directoryEntries, incompleteContactsCount } = useAuth();
+  const [isManageMode, setIsManageMode] = useState<boolean>(
+    () => Boolean(canManage && (initialManageMode || initialFilterIncomplete))
+  );
+  const isManaging = canManage && isManageMode;
+
+  useEffect(() => {
+    if (!canManage) {
+      setIsManageMode(false);
+    } else if (initialManageMode || initialFilterIncomplete) {
+      setIsManageMode(true);
+    }
+  }, [canManage, initialManageMode, initialFilterIncomplete]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrgs, setSelectedOrgs] = useState<DirectoryOrgCode[]>([]);
   const [expandedOrgs, setExpandedOrgs] = useState<Partial<Record<DirectoryOrgCode, boolean>>>({});
@@ -215,6 +239,15 @@ export const LeadersDirectoryView: React.FC = () => {
     (o) => o.code === 'HJ' || o.code === 'MJ'
   );
 
+  if (isManaging) {
+    return (
+      <UserManagementPanel
+        initialFilterIncomplete={initialFilterIncomplete}
+        onExitManageMode={() => setIsManageMode(false)}
+      />
+    );
+  }
+
   return (
     <section
       aria-label="Directorio"
@@ -223,21 +256,45 @@ export const LeadersDirectoryView: React.FC = () => {
     >
       {/* Cabecera fija: Título + Filtro desplegable + Buscador + Pastillas rápidas */}
       <div className="sticky top-[62px] md:top-[108px] z-20 bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
             Directorio
           </h1>
 
-          {!normalizedSearch && visibleOrgBlocks.length > 1 && (
-            <button
-              type="button"
-              data-testid="directory-toggle-all-btn"
-              onClick={handleToggleAllVisible}
-              className="text-[11px] font-bold text-slate-600 hover:text-slate-900 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition"
-            >
-              {allVisibleExpanded ? 'Plegar todas' : 'Expandir todas'}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {!normalizedSearch && visibleOrgBlocks.length > 1 && (
+              <button
+                type="button"
+                data-testid="directory-toggle-all-btn"
+                onClick={handleToggleAllVisible}
+                className="text-[11px] font-bold text-slate-600 hover:text-slate-900 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition"
+              >
+                {allVisibleExpanded ? 'Plegar todas' : 'Expandir todas'}
+              </button>
+            )}
+
+            {canManage && (
+              <button
+                type="button"
+                data-testid="directory-manage-toggle"
+                aria-pressed="false"
+                onClick={() => setIsManageMode(true)}
+                className="pressable h-[34px] inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-white border border-slate-300 text-slate-800 hover:bg-slate-50 transition"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                <span>Gestionar</span>
+                {incompleteContactsCount > 0 && (
+                  <span
+                    data-testid="directory-manage-incomplete-badge"
+                    className="inline-flex items-center gap-1 ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold tabular-nums animate-pulse"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    {incompleteContactsCount}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">

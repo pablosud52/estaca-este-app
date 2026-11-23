@@ -13,3 +13,9 @@
 - **Decisión 1 (Acceso único en menú):** Se elimina el botón duplicado de `Proveedores` dentro de *Administración* (PC y móvil), dejando un único botón `Proveedores` en la barra principal con contador discreto de pendientes visible solo para Administradores.
 - **Decisión 2 (Modo Lectura + interruptor `Gestionar`):** `Proveedores` abre siempre en Modo Lectura limpio. Solo Administradores y Super Admin ven el botón `Gestionar`, que habilita `+ Nuevo Proveedor`, `Categorías / Rubros`, `Directorio / Pendientes`, `Editar / Eliminar` y un switch `Tarjetas / Lista`.
 - **Artefacto:** [proveedores-unificado.md](specs/proveedores-unificado.md)
+
+## 2026-11-22 — Spec `directorio-unificado`
+- **Decisión 1 (Acceso único en menú):** Se elimina el botón duplicado de `Directorio` dentro de *Administración* (PC y móvil), dejando un único botón `Directorio` en la barra principal con contador pulsante de contactos incompletos visible solo para Administradores.
+- **Decisión 2 (Modo Lectura + interruptor `Gestionar`):** `Directorio` abre siempre en Modo Lectura limpio. Solo Administradores y Super Admin ven el botón `Gestionar`, que habilita en la misma pantalla el panel completo de gestión de puestos, relevos y accesos.
+- **Decisión 3 (Simplificación visual de badges):** En modo gestión se reducen colores y etiquetas redundantes para mostrar claramente de un vistazo quién tiene acceso a la app y qué rol posee.
+- **Artefacto:** [directorio-unificado.md](specs/directorio-unificado.md)

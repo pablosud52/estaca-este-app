@@ -13,6 +13,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  Settings2,
   Shield,
   ShieldAlert,
   Trash2,
@@ -42,14 +43,15 @@ import {
 
 interface UserManagementPanelProps {
   initialFilterIncomplete?: boolean;
+  onExitManageMode?: () => void;
 }
 
 const ROLE_BADGES: Record<UserRole, { label: string; className: string }> = {
-  ADMIN: { label: 'ADMIN', className: 'bg-slate-800 text-white border-slate-800' },
-  PRESIDENCIA: { label: 'PRESIDENCIA', className: 'bg-slate-100 text-slate-700 border-slate-200' },
-  LIDER: { label: 'LÍDER', className: 'bg-slate-100 text-slate-700 border-slate-200' },
-  CONSULTA: { label: 'CONSULTA', className: 'bg-slate-100 text-slate-600 border-slate-200' },
-  NO_AUTORIZADO: { label: 'SIN ACCESO', className: 'bg-white text-slate-400 border-slate-200' },
+  ADMIN: { label: 'Admin', className: 'bg-[#072B52] text-white border-[#072B52]' },
+  PRESIDENCIA: { label: 'Presidencia', className: 'bg-sky-50 text-[#083563] border-sky-200' },
+  LIDER: { label: 'Líder', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+  CONSULTA: { label: 'Consulta', className: 'bg-slate-50 text-slate-600 border-slate-200' },
+  NO_AUTORIZADO: { label: 'Sin acceso', className: 'bg-white text-slate-400 border-slate-200' },
 };
 
 interface PendingPresidentModal {
@@ -61,6 +63,7 @@ interface PendingPresidentModal {
 
 export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
   initialFilterIncomplete = false,
+  onExitManageMode,
 }) => {
   const {
     user: currentUser,
@@ -427,10 +430,30 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
       data-testid="user-management-panel"
       className="space-y-4"
     >
-      {/* 1. TÍTULO DE SECCIÓN */}
-      <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
-        Gestión de Usuarios
-      </h2>
+      {/* 1. CABECERA DE GESTIÓN DEL DIRECTORIO */}
+      <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
+            Directorio — Gestión
+          </h2>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Administra llamamientos, contactos y acceso a la app.
+          </p>
+        </div>
+
+        {onExitManageMode && (
+          <button
+            type="button"
+            data-testid="directory-manage-toggle"
+            aria-pressed="true"
+            onClick={onExitManageMode}
+            className="pressable h-[34px] inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold bg-slate-900 text-white shadow-sm transition"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            <span>Gestionando</span>
+          </button>
+        )}
+      </div>
 
       {/* Aviso parpadeante de datos incompletos (solo visible cuando faltan datos) */}
       {incompleteContactsCount > 0 && (
@@ -936,25 +959,17 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                   <span className="text-xs font-extrabold text-slate-800">
                                     {entry.calling}
                                   </span>
-                                  {!entry.is_fixed_slot && (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                                      Adicional
-                                    </span>
-                                  )}
-                                  <span
-                                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${roleBadge.className}`}
-                                  >
-                                    {roleBadge.label}
-                                  </span>
-                                  {isSelfOrPerm && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
-                                      <Lock className="w-3 h-3" />
-                                      Fijo
+                                  {isLoaded && entry.has_app_access && (
+                                    <span
+                                      data-testid={`role-badge-${entry.slot_key}`}
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${roleBadge.className}`}
+                                    >
+                                      {roleBadge.label}
                                     </span>
                                   )}
                                   {isIncomplete && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
-                                      <AlertTriangle className="w-3 h-3" />
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                      <AlertTriangle className="w-3 h-3 text-amber-600" />
                                       {!entry.phone && !entry.email
                                         ? 'Falta celular y Gmail'
                                         : !entry.phone
@@ -1013,16 +1028,26 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                   data-testid={`toggle-access-${entry.slot_key}`}
                                   disabled={isSelfOrPerm}
                                   onClick={() => handleToggleAccess(entry)}
-                                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition ${
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold border transition ${
                                     isSelfOrPerm
-                                      ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed'
                                       : entry.has_app_access
                                         ? 'bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-800'
-                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
                                   }`}
                                 >
-                                  <Shield className="w-3.5 h-3.5" />
-                                  <span>{entry.has_app_access ? 'Acceso ON' : 'Acceso OFF'}</span>
+                                  {isSelfOrPerm ? (
+                                    <Lock className="w-3 h-3" />
+                                  ) : (
+                                    <Shield className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>
+                                    {isSelfOrPerm
+                                      ? 'Acceso fijo'
+                                      : entry.has_app_access
+                                        ? 'Con acceso'
+                                        : 'Sin acceso'}
+                                  </span>
                                 </button>
 
                                 <button

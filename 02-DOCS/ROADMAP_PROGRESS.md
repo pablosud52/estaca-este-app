@@ -11,7 +11,7 @@
 
 ### ✅ Ya Pronto / Completado (Base operativa)
 - **Autenticación y Usuarios:** Login con Google OAuth (`LoginView.tsx`), opción *"Recordarme en este dispositivo"*, botón **Salir** y permisos RLS de escritura para administradores en `users_profiles`.
-- **Directorio de Líderes:** Lectura/guardado real en Supabase (`stake_directory_entries`), organizaciones en acordeón plegado, Sumo Consejo sin numeración y ordenado alfabéticamente, enlace directo `tel:`.
+- **Directorio de Líderes:** Sección unificada en un solo botón del menú principal (sin duplicado en Administración), Modo Lectura en acordeón por defecto, botón interruptor `Gestionar` exclusivo de Administradores con badges de acceso/rol simplificados, lectura/guardado real en Supabase (`stake_directory_entries`), Sumo Consejo sin numeración y ordenado alfabéticamente, enlace directo `tel:`.
 - **Calendario y LCR:** Sección única `Calendario` (Modo Lectura en Tarjetas por defecto + interruptor `Gestionar` con cambio `Tarjetas / Lista`, filtros de estado y rango de fechas `Desde`/`Hasta`), puente servidor `/api/lcr-calendar`, edición complementaria LCR con notas públicas separadas (`app_notes`), protección de eventos globales `Churchwide`, vinculación automática por fecha + nombre normalizado y vinculación manual en 1 clic.
 - **Proveedores (`GUIA PROVEEDORES`):** Sección unificada en un solo botón del menú principal (sin duplicado en Administración), Modo Lectura en Tarjetas por defecto y botón interruptor `Gestionar` (solo Administradores) con switch `Tarjetas / Lista`, alta, edición, baja, rubros y pestaña `Pendientes` para sugerencias desde Finanzas.
 - **Finanzas (base):** Cabecera unificada en una sola caja, pestaña `Movimientos` (ex `Retiros`) estandarizada con pastilla dividida y `NewMovementModal`, carga de gastos con 5 tipos y dos fechas por actividad, y sección `Presupuestos` (`budget_incomes`).
@@ -245,7 +245,7 @@ flowchart TD
 ---
 
 ### 📋 Pendientes de Mejora (Backlog)
-- [ ] **Simplificar interfaz del Panel de Control del Directorio (`UserManagementPanel`):** Reducir la cantidad de colores y badges para que no entrevere, dejando claro de un vistazo quién tiene acceso y qué llaves posee (a trabajar luego de cerrar los permisos de Admin y Presidencia).
+- [x] **Simplificar interfaz del Panel de Control del Directorio (`UserManagementPanel`):** Reducidos colores y badges repetitivos dejando claro de un vistazo quién tiene acceso y qué rol posee, unificado bajo el botón `Gestionar` dentro de `Directorio`.
 - [ ] **Revisión final de roles y permisos al concluir todas las secciones:** Revisar y pulir todos los roles (Super Admin, 2 Admins fijos, Presidencia, Editor de Finanzas, Líderes, Consulta) una vez terminados todos los paneles (ej. habilitar al Editor de Finanzas la edición del monto estimado de actividades aprobadas en Calendario).
 - [ ] **Nuevo rol/permiso "Editor de Finanzas" + Historial de Logs + Flujo de Proveedores:**
   - Mantener 2 Admins fijos (Presidente y Secretario de Estaca) + Super Admin (`pablosud52@gmail.com`) sin habilitar rol Admin a nadie más.

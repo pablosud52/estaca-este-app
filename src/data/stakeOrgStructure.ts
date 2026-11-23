@@ -242,6 +242,11 @@ export const STAKE_ORG_STRUCTURE: DirectoryOrgDefinition[] = [
         defaultRole: 'CONSULTA',
       },
       {
+        slot_key: 'bien-esp-servicios-2',
+        calling: 'Especialista en Servicios de Bienestar y Autosuficiencia de Estaca',
+        defaultRole: 'CONSULTA',
+      },
+      {
         slot_key: 'bien-esp-educacion',
         calling: 'Especialista de Bienestar y Autosuficiencia asignada a Educación',
         defaultRole: 'CONSULTA',

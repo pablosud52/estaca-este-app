@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { isEntryPersonLoaded, useAuth } from '../context/AuthContext';
 import { UserManagementPanel } from '../components/UserManagementPanel';
-import { STAKE_ORG_STRUCTURE } from '../data/stakeOrgStructure';
+import { DIRECTORY_ORG_BY_CODE, STAKE_ORG_STRUCTURE } from '../data/stakeOrgStructure';
 import { formatUruguayanMobile, toWhatsAppUrl } from '../lib/formatters';
 import { DirectoryOrgCode, StakeDirectoryEntry } from '../types/database';
 
@@ -184,6 +184,20 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
       }
     }
     return STAKE_ORG_STRUCTURE.filter((org) => (counts.get(org.code) || 0) > 0);
+  }, [directoryEntries]);
+
+  const linkedCallingsBySumoId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const entry of directoryEntries) {
+      if (entry.linked_entry_id && isEntryPersonLoaded(entry)) {
+        const orgShort = DIRECTORY_ORG_BY_CODE[entry.directory_org]?.shortLabel || entry.directory_org;
+        const label = `${entry.calling} · ${orgShort}`;
+        const list = map.get(entry.linked_entry_id) || [];
+        list.push(label);
+        map.set(entry.linked_entry_id, list);
+      }
+    }
+    return map;
   }, [directoryEntries]);
 
   const visibleOrgBlocks = useMemo(() => {
@@ -556,22 +570,48 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
                               {`${entry.first_name} ${entry.last_name}`.trim()}
                             </p>
 
-                            {orgDef.code === 'SUMO_CONSEJO' &&
-                              (entry.assigned_unit || entry.assigned_org_notes) && (
-                                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                            {orgDef.code === 'SUMO_CONSEJO' && (() => {
+                              const linkedCallings = linkedCallingsBySumoId.get(entry.id) || [];
+                              const noteItems = (entry.assigned_org_notes || '')
+                                .split(/[·|]/)
+                                .map((part) => part.trim())
+                                .filter(Boolean);
+
+                              if (
+                                linkedCallings.length === 0 &&
+                                !entry.assigned_unit &&
+                                noteItems.length === 0
+                              ) {
+                                return null;
+                              }
+
+                              return (
+                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                  {linkedCallings.map((callingLabel) => (
+                                    <span
+                                      key={callingLabel}
+                                      className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-[#083563]/10 text-[#083563]"
+                                    >
+                                      {callingLabel}
+                                    </span>
+                                  ))}
                                   {entry.assigned_unit && (
                                     <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700">
                                       <MapPin className="w-3 h-3 text-slate-500" />
                                       {entry.assigned_unit}
                                     </span>
                                   )}
-                                  {entry.assigned_org_notes && (
-                                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800">
-                                      {entry.assigned_org_notes}
+                                  {noteItems.map((note) => (
+                                    <span
+                                      key={note}
+                                      className="text-[11px] font-medium px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-800"
+                                    >
+                                      {note}
                                     </span>
-                                  )}
+                                  ))}
                                 </div>
-                              )}
+                              );
+                            })()}
                           </div>
 
                           {formattedPhone ? (

@@ -614,17 +614,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let updatedTarget: StakeDirectoryEntry | null = null;
     const next = currentEntries.map((entry) => {
       if (entry.id !== id) return entry;
-      const isSuper = isSuperAdminEmail(entry.email);
+      const nextEmail =
+        updates.email !== undefined ? updates.email.trim().toLowerCase() : entry.email;
+      const isSuper = isSuperAdminEmail(nextEmail) || isSuperAdminEmail(entry.email);
+      const isPermAdmin = isSuper
+        ? true
+        : updates.is_permanent_admin ?? entry.is_permanent_admin;
+      const autoAccessForPermAdmin = Boolean(isPermAdmin && nextEmail);
       const merged: StakeDirectoryEntry = {
         ...entry,
         ...updates,
-        email: updates.email !== undefined ? updates.email.trim().toLowerCase() : entry.email,
-        role: isSuper ? 'ADMIN' : updates.role ?? entry.role,
-        is_permanent_admin: isSuper ? true : updates.is_permanent_admin ?? entry.is_permanent_admin,
+        email: nextEmail,
+        role: isSuper || isPermAdmin ? 'ADMIN' : updates.role ?? entry.role,
+        is_permanent_admin: isPermAdmin,
         can_approve_activities: isSuper
           ? true
           : updates.can_approve_activities ?? entry.can_approve_activities,
-        has_app_access: isSuper ? true : updates.has_app_access ?? entry.has_app_access,
+        has_app_access:
+          isSuper || autoAccessForPermAdmin
+            ? true
+            : updates.has_app_access ?? entry.has_app_access,
       };
       updatedTarget = merged;
       return merged;

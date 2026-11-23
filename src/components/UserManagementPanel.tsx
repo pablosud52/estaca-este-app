@@ -959,7 +959,7 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                   <span className="text-xs font-extrabold text-slate-800">
                                     {entry.calling}
                                   </span>
-                                  {isLoaded && entry.has_app_access && (
+                                  {isLoaded && (entry.has_app_access || entry.is_permanent_admin) && (
                                     <span
                                       data-testid={`role-badge-${entry.slot_key}`}
                                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${roleBadge.className}`}

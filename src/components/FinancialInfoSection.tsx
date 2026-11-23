@@ -35,16 +35,16 @@ export const FinancialInfoSection: React.FC = () => {
       </div>
 
       {/* Cabecera */}
-      <div className="bg-slate-900 rounded-3xl p-5 sm:p-6 text-white shadow-md border border-slate-800">
+      <div className="bg-gradient-to-br from-[#083563] via-[#072B52] to-[#051E3B] rounded-3xl p-5 sm:p-6 text-white shadow-xl border border-white/10">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-white/15 border border-white/20 text-sky-200 flex items-center justify-center flex-shrink-0">
             <BookOpen className="w-5 h-5" />
           </div>
           <div>
             <h2 className="text-base sm:text-lg font-extrabold tracking-tight">
               Información y Normativas Financieras
             </h2>
-            <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+            <p className="text-xs text-sky-100/80 mt-0.5 leading-relaxed">
               Guías oficiales de consulta rápida para la Presidencia de Estaca y Administración Financiera.
             </p>
           </div>
@@ -59,7 +59,7 @@ export const FinancialInfoSection: React.FC = () => {
           className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-slate-50/70 transition"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-2xl bg-sky-50 border border-sky-200 text-[#083563] flex items-center justify-center flex-shrink-0">
               <Scale className="w-4 h-4" />
             </div>
             <div className="min-w-0">
@@ -67,7 +67,7 @@ export const FinancialInfoSection: React.FC = () => {
                 <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
                   Cierre de Fin de Año y Regla del 50%
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-900">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-[#083563]">
                   Vigente · Aviso Oficial Área
                 </span>
               </div>

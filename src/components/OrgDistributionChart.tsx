@@ -445,7 +445,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               onClick={() => setMetricMode('GASTOS')}
               className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 metricMode === 'GASTOS'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
@@ -457,7 +457,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               onClick={() => setMetricMode('INGRESOS')}
               className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 metricMode === 'INGRESOS'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
@@ -477,7 +477,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               onClick={() => setChartMode('PORCENTAJES')}
               className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 chartMode === 'PORCENTAJES'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
               title="Mostrar en Porcentajes (%)"
@@ -491,7 +491,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               onClick={() => setChartMode('MONTOS')}
               className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 chartMode === 'MONTOS'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
               title="Mostrar en Montos ($)"
@@ -514,7 +514,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
                 onClick={() => setPeriodFilter(period)}
                 className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                   periodFilter === period
-                    ? 'bg-slate-900 text-white'
+                    ? 'bg-[#072B52] text-white'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >

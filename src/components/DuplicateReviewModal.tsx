@@ -372,7 +372,7 @@ export const DuplicateReviewModal: React.FC<DuplicateReviewModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold transition"
+            className="px-5 py-2 rounded-xl bg-[#072B52] hover:bg-[#083563] text-white text-xs font-extrabold transition"
           >
             Cerrar
           </button>

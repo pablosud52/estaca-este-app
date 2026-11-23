@@ -411,7 +411,7 @@ export const ActivityEditModal: React.FC<ActivityEditModalProps> = ({
               type="submit"
               data-testid="save-activity-edit-btn"
               disabled={saving || isLocked}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-45 transition"
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-[#083563] text-white hover:bg-[#072B52] disabled:opacity-45 transition"
             >
               {saving ? 'Guardando...' : matchingLcrCandidate ? 'Guardar y vincular con LCR' : 'Guardar cambios'}
             </button>

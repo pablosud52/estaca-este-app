@@ -103,11 +103,11 @@ export const PwaInstallBanner: React.FC = () => {
       role="region"
       aria-label="Instalar aplicación"
     >
-      <div className="flex items-center gap-3 rounded-2xl border border-[#1e3a5f]/30 bg-[#0f2440] px-3.5 py-2.5 text-white shadow-xl">
+      <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-gradient-to-br from-[#083563] via-[#072B52] to-[#051E3B] px-3.5 py-2.5 text-white shadow-xl">
         <img
           src="/pwa-192x192.png"
           alt="Estaca Este"
-          className="h-10 w-10 shrink-0 rounded-xl border border-[#d4af37]/40"
+          className="h-10 w-10 shrink-0 rounded-xl border border-white/15"
         />
 
         <div className="min-w-0 flex-1">
@@ -115,12 +115,12 @@ export const PwaInstallBanner: React.FC = () => {
             Instalar Estaca Este
           </p>
           {showIosHint ? (
-            <p className="mt-0.5 text-[11px] leading-snug text-slate-200">
-              Tocá <Share className="inline h-3 w-3 align-text-bottom text-[#f3d57a]" /> y elegí{' '}
+            <p className="mt-0.5 text-[11px] leading-snug text-sky-100/85">
+              Tocá <Share className="inline h-3 w-3 align-text-bottom text-sky-300" /> y elegí{' '}
               <span className="font-semibold text-white">«Agregar a inicio»</span>.
             </p>
           ) : (
-            <p className="mt-0.5 text-[11px] leading-snug text-slate-200">
+            <p className="mt-0.5 text-[11px] leading-snug text-sky-100/85">
               Agregala a tu pantalla de inicio para entrar más rápido.
             </p>
           )}
@@ -130,7 +130,7 @@ export const PwaInstallBanner: React.FC = () => {
           <button
             type="button"
             onClick={handleInstallClick}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#d4af37] px-3 py-1.5 text-xs font-bold text-[#09182e] transition hover:bg-[#e5c158] active:scale-95"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-white px-3 py-1.5 text-xs font-bold text-[#072B52] transition hover:bg-sky-50 active:scale-95"
           >
             <Download className="h-3.5 w-3.5" />
             Instalar

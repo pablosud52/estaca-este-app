@@ -13,8 +13,8 @@ export default defineConfig({
         name: 'Estaca Este App - Finanzas y Calendario',
         short_name: 'Estaca Este',
         description: 'Gestión presupuestaria y agenda de actividades de la Estaca Montevideo Uruguay Este',
-        theme_color: '#0f2440',
-        background_color: '#09182e',
+        theme_color: '#072B52',
+        background_color: '#051E3B',
         display: 'standalone',
         orientation: 'portrait',
         icons: [

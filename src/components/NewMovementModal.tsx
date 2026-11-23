@@ -298,7 +298,7 @@ export const NewMovementModal: React.FC<NewMovementModalProps> = ({
               type="submit"
               disabled={isSaving}
               data-testid="submit-new-withdrawal-btn"
-              className="pressable px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-white text-xs font-extrabold shadow-sm transition"
+              className="pressable px-4 py-2 rounded-xl bg-[#083563] hover:bg-[#072B52] disabled:opacity-50 text-white text-xs font-extrabold shadow-sm transition"
             >
               {isSaving ? 'Guardando...' : 'Guardar Movimiento'}
             </button>

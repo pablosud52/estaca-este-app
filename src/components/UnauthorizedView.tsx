@@ -51,7 +51,7 @@ export const UnauthorizedView: React.FC = () => {
               type="button"
               data-testid="unauthorized-switch-account-btn"
               onClick={() => signOut()}
-              className="pressable w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-sm hover:bg-slate-800"
+              className="pressable w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#083563] text-white text-xs font-bold shadow-sm hover:bg-[#072B52]"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Salir y probar con otra cuenta de Google</span>
@@ -60,7 +60,7 @@ export const UnauthorizedView: React.FC = () => {
             <button
               type="button"
               onClick={() => switchProfileById('lider-mj-01')}
-              className="pressable w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-sm hover:bg-slate-800"
+              className="pressable w-full py-2.5 px-4 rounded-xl bg-[#083563] text-white text-xs font-bold shadow-sm hover:bg-[#072B52]"
             >
               Volver a Perfil de Prueba (Líder MJ)
             </button>

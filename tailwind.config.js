@@ -15,11 +15,11 @@ export default {
       },
       colors: {
         stake: {
-          dark: '#0f2922',
-          primary: '#115e59',
-          accent: '#0d9488',
-          light: '#f0fdfa',
-          border: '#ccfbf1'
+          dark: '#051E3B',
+          primary: '#072B52',
+          accent: '#083563',
+          light: '#f0f7ff',
+          border: '#bae6fd'
         }
       },
       transitionTimingFunction: {

@@ -128,7 +128,7 @@ export const SupplierCategoriesModal: React.FC<SupplierCategoriesModalProps> = (
     >
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-[#083563] text-white flex items-center justify-center">
             <Tags className="w-4 h-4" />
           </div>
           <div>
@@ -167,7 +167,7 @@ export const SupplierCategoriesModal: React.FC<SupplierCategoriesModalProps> = (
             <button
               type="submit"
               disabled={busy || !newName.trim()}
-              className="pressable inline-flex items-center gap-1 px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-extrabold disabled:opacity-50"
+              className="pressable inline-flex items-center gap-1 px-3.5 py-2 rounded-xl bg-[#083563] text-white text-xs font-extrabold disabled:opacity-50"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Agregar</span>

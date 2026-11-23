@@ -724,7 +724,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                 }}
                 className={`py-1.5 px-3 text-xs font-extrabold transition rounded-none ${
                   isRealExpense
-                    ? 'bg-slate-900 text-white'
+                    ? 'bg-[#072B52] text-white'
                     : 'text-slate-600 hover:bg-slate-200/70'
                 }`}
               >
@@ -770,7 +770,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                       onClick={() => setExpenseType(item.id)}
                       className={`flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-2.5 text-xs font-bold transition rounded-none ${
                         active
-                          ? 'bg-slate-900 text-white'
+                          ? 'bg-[#072B52] text-white'
                           : 'text-slate-600 hover:bg-slate-200/70'
                       }`}
                     >
@@ -1500,7 +1500,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                 type="submit"
                 data-testid="submit-quick-expense-btn"
                 disabled={!canSubmit}
-                className="pressable px-5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-extrabold shadow-sm transition"
+                className="pressable px-5 py-2 rounded-xl bg-[#083563] hover:bg-[#072B52] disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-extrabold shadow-sm transition"
               >
                 {saving
                   ? 'Guardando...'

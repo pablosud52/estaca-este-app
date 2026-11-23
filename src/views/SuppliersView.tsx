@@ -276,7 +276,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
 
           <a
             href={`tel:${digits}`}
-            className="pressable p-1.5 rounded-lg text-white bg-slate-900 hover:bg-slate-800 border border-slate-900 shadow-xs transition touch-manipulation"
+            className="pressable p-1.5 rounded-lg text-white bg-[#072B52] hover:bg-[#083563] border border-[#072B52] shadow-xs transition touch-manipulation"
             title="Llamar"
             aria-label="Llamar"
           >
@@ -518,7 +518,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     setEditingSupplier(null);
                     setIsFormModalOpen(true);
                   }}
-                  className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold shadow-xs transition touch-manipulation"
+                  className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#083563] hover:bg-[#072B52] text-white text-xs font-extrabold shadow-xs transition touch-manipulation"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Nuevo proveedor</span>
@@ -536,7 +536,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               onClick={() => setActiveSubTab('ACTIVE')}
               className={`pressable px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
                 activeSubTab === 'ACTIVE'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
@@ -548,7 +548,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               onClick={() => setActiveSubTab('PENDING')}
               className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
                 activeSubTab === 'PENDING'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
@@ -612,7 +612,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     }}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
                       selectedCategory === 'TODOS'
-                        ? 'bg-slate-900 text-white'
+                        ? 'bg-[#072B52] text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
@@ -684,7 +684,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               onClick={() => setSortOrder('RELEVANCE')}
               className={`pressable h-full px-2.5 rounded-lg text-[11px] font-extrabold transition touch-manipulation whitespace-nowrap ${
                 sortOrder === 'RELEVANCE'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-[#072B52] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -695,7 +695,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               onClick={handleToggleAlpha}
               className={`pressable h-full px-2.5 rounded-lg text-[11px] font-extrabold transition touch-manipulation min-w-[38px] text-center ${
                 sortOrder === 'AZ' || sortOrder === 'ZA'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-[#072B52] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
               title="Cambiar orden alfabético"
@@ -842,7 +842,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                       setEditingSupplier(s);
                                       setIsFormModalOpen(true);
                                     }}
-                                    className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-slate-900 text-white hover:bg-slate-800 transition"
+                                    className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-[#072B52] text-white hover:bg-[#083563] transition"
                                   >
                                     <Pencil className="w-3 h-3" />
                                     <span>Completar</span>
@@ -972,7 +972,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                 setEditingSupplier(s);
                                 setIsFormModalOpen(true);
                               }}
-                              className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-slate-900 text-white"
+                              className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-[#072B52] text-white"
                             >
                               <Pencil className="w-3 h-3" />
                               <span>Completar</span>

@@ -624,16 +624,16 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   return (
     <div className="space-y-5 animate-fade-in">
       {/* ==================== MONITOR DE CONCILIACIÓN LCR ==================== */}
-      <div className="bg-slate-900 rounded-3xl p-5 text-white shadow-md border border-slate-800">
+      <div className="bg-gradient-to-br from-[#083563] via-[#072B52] to-[#051E3B] rounded-3xl p-5 text-white shadow-xl border border-white/10">
         {!canEdit && (
           <div
             data-testid="finance-readonly-banner"
-            className="mb-3 rounded-2xl bg-slate-800/90 border border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-200 flex items-center justify-between gap-2"
+            className="mb-3 rounded-2xl bg-white/10 border border-white/15 px-3.5 py-2 text-xs font-semibold text-sky-100 flex items-center justify-between gap-2"
           >
             <span>👁️ Vista de solo lectura — Solo Administradores y Secretario Financiero pueden editar finanzas.</span>
           </div>
         )}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/12">
           <div>
             <h2 className="text-base sm:text-lg font-extrabold text-white">
               Administración de Finanzas
@@ -1021,11 +1021,11 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               onClick={() => setSubTab('EXPENSES')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
                 subTab === 'EXPENSES'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              <Zap className={`w-3.5 h-3.5 ${subTab === 'EXPENSES' ? 'text-sky-300' : 'text-[#083563]'}`} />
               <span>Gastos</span>
             </button>
 
@@ -1035,11 +1035,11 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               onClick={() => setSubTab('WITHDRAWALS')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
                 subTab === 'WITHDRAWALS'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <Banknote className="w-3.5 h-3.5 text-emerald-400" />
+              <Banknote className={`w-3.5 h-3.5 ${subTab === 'WITHDRAWALS' ? 'text-sky-300' : 'text-[#083563]'}`} />
               <span>Movimientos</span>
             </button>
 
@@ -1049,11 +1049,11 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               onClick={() => setSubTab('BUDGETS')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
                 subTab === 'BUDGETS'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+              <Wallet className={`w-3.5 h-3.5 ${subTab === 'BUDGETS' ? 'text-sky-300' : 'text-[#083563]'}`} />
               <span>Presupuestos</span>
             </button>
 
@@ -1063,11 +1063,11 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               onClick={() => setSubTab('EXCEL_SYNC')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition ${
                 subTab === 'EXCEL_SYNC'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <FileSpreadsheet className={`w-3.5 h-3.5 ${subTab === 'EXCEL_SYNC' ? 'text-sky-300' : 'text-[#083563]'}`} />
               <span>Excel</span>
             </button>
           </div>
@@ -1108,7 +1108,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       onClick={() => setLedgerFilter(f.id)}
                       className={`px-2.5 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                         ledgerFilter === f.id
-                          ? 'bg-slate-900 text-white'
+                          ? 'bg-[#072B52] text-white'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                       }`}
                     >
@@ -1136,7 +1136,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       setEditingGroup(null);
                       setIsExpenseModalOpen(true);
                     }}
-                    className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
+                    className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#083563] hover:bg-[#072B52] text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Añadir Gasto</span>
@@ -1175,7 +1175,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       onClick={() => setWithdrawalTypeFilter(f.id)}
                       className={`px-2.5 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                         withdrawalTypeFilter === f.id
-                          ? 'bg-slate-900 text-white'
+                          ? 'bg-[#072B52] text-white'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                       }`}
                     >
@@ -1200,7 +1200,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                     type="button"
                     data-testid="open-add-movement-modal-btn"
                     onClick={() => setIsMovementModalOpen(true)}
-                    className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
+                    className="pressable inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-[#083563] hover:bg-[#072B52] text-white text-xs font-extrabold shadow-sm whitespace-nowrap"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Nuevo Movimiento</span>
@@ -1231,7 +1231,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   onClick={() => setBudgetSubTab('INCOMES')}
                   className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                     budgetSubTab === 'INCOMES'
-                      ? 'bg-slate-900 text-white'
+                      ? 'bg-[#072B52] text-white'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
@@ -1243,7 +1243,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   onClick={() => setBudgetSubTab('DISTRIBUTION')}
                   className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
                     budgetSubTab === 'DISTRIBUTION'
-                      ? 'bg-slate-900 text-white'
+                      ? 'bg-[#072B52] text-white'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >

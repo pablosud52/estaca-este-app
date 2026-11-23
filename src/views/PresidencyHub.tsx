@@ -2251,7 +2251,7 @@ export const PresidencyHub: React.FC = () => {
                 aria-label={isMobileDrawerOpen ? 'Cerrar menú' : 'Abrir menú de navegación'}
                 aria-expanded={isMobileDrawerOpen}
                 onClick={() => setIsMobileDrawerOpen((prev) => !prev)}
-                className="pressable md:hidden relative w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm flex-shrink-0"
+                className="pressable md:hidden relative w-9 h-9 rounded-xl bg-[#072B52] text-white flex items-center justify-center shadow-sm flex-shrink-0"
               >
                 <div className="w-4 h-4 relative flex items-center justify-center">
                   <span
@@ -2281,7 +2281,7 @@ export const PresidencyHub: React.FC = () => {
                 )}
               </button>
 
-              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm whitespace-nowrap truncate">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold bg-[#083563] text-white tracking-wide shadow-sm whitespace-nowrap truncate">
                 Estaca Montevideo Uruguay Este
               </span>
             </div>
@@ -2297,7 +2297,7 @@ export const PresidencyHub: React.FC = () => {
                     data-testid="year-selector-dropdown"
                     value={selectedYear}
                     onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 transition"
+                    className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#083563] transition"
                   >
                     {availableYears.map((yr) => (
                       <option key={yr} value={yr}>
@@ -2313,14 +2313,14 @@ export const PresidencyHub: React.FC = () => {
                 title={realAuthEmail ? `Conectado como ${realAuthEmail}` : undefined}
                 className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs"
               >
-                <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                <ShieldCheck className="w-4 h-4 text-[#083563] flex-shrink-0" />
                 <span
                   data-testid="hub-user-name"
                   className="font-extrabold text-slate-800"
                 >
                   {user.full_name}
                 </span>
-                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white">
+                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-[#083563] text-white">
                   {user.role}
                 </span>
               </div>
@@ -2355,11 +2355,11 @@ export const PresidencyHub: React.FC = () => {
                 }}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'DASHBOARD'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-[#072B52] text-white shadow-sm'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
                 }`}
               >
-                <LayoutDashboard className="w-4 h-4 text-emerald-400" />
+                <LayoutDashboard className={`w-4 h-4 ${activeTab === 'DASHBOARD' ? 'text-sky-300' : 'text-[#083563]'}`} />
                 <span>Panel</span>
               </button>
 
@@ -2376,11 +2376,11 @@ export const PresidencyHub: React.FC = () => {
                 }}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'CALENDAR'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-[#072B52] text-white shadow-sm'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
                 }`}
               >
-                <Calendar className="w-4 h-4 text-emerald-500" />
+                <Calendar className={`w-4 h-4 ${activeTab === 'CALENDAR' ? 'text-sky-300' : 'text-[#083563]'}`} />
                 <span>Calendario</span>
                 {hasCalendarAlert && (
                   <span className="inline-flex items-center gap-1">
@@ -2413,11 +2413,11 @@ export const PresidencyHub: React.FC = () => {
                 }}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'DIRECTORY'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-[#072B52] text-white shadow-sm'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
                 }`}
               >
-                <Users className="w-4 h-4 text-indigo-500" />
+                <Users className={`w-4 h-4 ${activeTab === 'DIRECTORY' ? 'text-sky-300' : 'text-indigo-500'}`} />
                 <span>Directorio</span>
               </button>
 
@@ -2431,11 +2431,11 @@ export const PresidencyHub: React.FC = () => {
                 }}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'SUPPLIERS'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-[#072B52] text-white shadow-sm'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
                 }`}
               >
-                <Building2 className="w-4 h-4 text-sky-500" />
+                <Building2 className={`w-4 h-4 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-sky-500'}`} />
                 <span>Proveedores</span>
               </button>
             </div>
@@ -2454,8 +2454,8 @@ export const PresidencyHub: React.FC = () => {
                     activeTab === 'OPERATIONS' ||
                     activeTab === 'LOGS' ||
                     activeTab === 'INFO'
-                      ? 'bg-emerald-900 text-white shadow-sm ring-2 ring-emerald-400/60'
-                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-200/90'
+                      ? 'bg-[#083563] text-white shadow-sm ring-2 ring-sky-300/60'
+                      : 'bg-sky-50 hover:bg-sky-100 text-[#083563] border border-sky-200/90'
                   }`}
                 >
                   <Shield
@@ -2464,8 +2464,8 @@ export const PresidencyHub: React.FC = () => {
                       activeTab === 'OPERATIONS' ||
                       activeTab === 'LOGS' ||
                       activeTab === 'INFO'
-                        ? 'text-emerald-300'
-                        : 'text-emerald-700'
+                        ? 'text-sky-300'
+                        : 'text-[#083563]'
                     }`}
                   />
                   <span>Administración</span>
@@ -2506,7 +2506,7 @@ export const PresidencyHub: React.FC = () => {
                           }}
                           className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
                             activeTab === 'USERS'
-                              ? 'bg-slate-900 text-white shadow-sm'
+                              ? 'bg-[#072B52] text-white shadow-sm'
                               : 'text-slate-700 hover:bg-slate-100'
                           }`}
                         >
@@ -2541,7 +2541,7 @@ export const PresidencyHub: React.FC = () => {
                         }}
                         className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
                           activeTab === 'SUPPLIERS'
-                            ? 'bg-slate-900 text-white shadow-sm'
+                            ? 'bg-[#072B52] text-white shadow-sm'
                             : 'text-slate-700 hover:bg-slate-100'
                         }`}
                       >
@@ -2561,12 +2561,12 @@ export const PresidencyHub: React.FC = () => {
                         }}
                         className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
                           activeTab === 'OPERATIONS'
-                            ? 'bg-slate-900 text-white shadow-sm'
+                            ? 'bg-[#072B52] text-white shadow-sm'
                             : 'text-slate-700 hover:bg-slate-100'
                         }`}
                       >
                         <span className="flex items-center gap-2.5">
-                          <FileEdit className="w-4 h-4 text-emerald-600" />
+                          <FileEdit className={`w-4 h-4 ${activeTab === 'OPERATIONS' ? 'text-sky-300' : 'text-[#083563]'}`} />
                           <span>Finanzas</span>
                         </span>
                         {hasFinanceAlert && (
@@ -2591,7 +2591,7 @@ export const PresidencyHub: React.FC = () => {
                           }}
                           className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
                             activeTab === 'LOGS'
-                              ? 'bg-slate-900 text-white shadow-sm'
+                              ? 'bg-[#072B52] text-white shadow-sm'
                               : 'text-slate-700 hover:bg-slate-100'
                           }`}
                         >
@@ -2613,7 +2613,7 @@ export const PresidencyHub: React.FC = () => {
                           }}
                           className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
                             activeTab === 'INFO'
-                              ? 'bg-slate-900 text-white shadow-sm'
+                              ? 'bg-[#072B52] text-white shadow-sm'
                               : 'text-slate-700 hover:bg-slate-100'
                           }`}
                         >
@@ -2649,7 +2649,7 @@ export const PresidencyHub: React.FC = () => {
               <div className="p-3.5 rounded-2xl bg-slate-100/90 border border-slate-200/90 space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 min-w-0">
-                    <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <ShieldCheck className="w-4 h-4 text-[#083563] flex-shrink-0" />
                     <span
                       data-testid="drawer-user-name"
                       className="text-xs font-extrabold text-slate-900 truncate"
@@ -2657,7 +2657,7 @@ export const PresidencyHub: React.FC = () => {
                       {user.full_name}
                     </span>
                   </span>
-                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white flex-shrink-0">
+                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-[#083563] text-white flex-shrink-0">
                     {user.role}
                   </span>
                 </div>
@@ -2680,11 +2680,11 @@ export const PresidencyHub: React.FC = () => {
                   onClick={() => selectTabAndCloseDrawer('DASHBOARD')}
                   className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'DASHBOARD'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <LayoutDashboard className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <LayoutDashboard className={`w-4 h-4 flex-shrink-0 ${activeTab === 'DASHBOARD' ? 'text-sky-300' : 'text-[#083563]'}`} />
                   <span>Panel</span>
                 </button>
 
@@ -2695,12 +2695,12 @@ export const PresidencyHub: React.FC = () => {
                   onClick={() => selectTabAndCloseDrawer('CALENDAR')}
                   className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'CALENDAR'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
                   <span className="inline-flex items-center gap-3">
-                    <Calendar className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <Calendar className={`w-4 h-4 flex-shrink-0 ${activeTab === 'CALENDAR' ? 'text-sky-300' : 'text-[#083563]'}`} />
                     <span>Calendario</span>
                   </span>
                   {hasCalendarAlert && (
@@ -2728,11 +2728,11 @@ export const PresidencyHub: React.FC = () => {
                   onClick={() => selectTabAndCloseDrawer('DIRECTORY')}
                   className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'DIRECTORY'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Users className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                  <Users className={`w-4 h-4 flex-shrink-0 ${activeTab === 'DIRECTORY' ? 'text-sky-300' : 'text-indigo-500'}`} />
                   <span>Directorio</span>
                 </button>
 
@@ -2743,18 +2743,18 @@ export const PresidencyHub: React.FC = () => {
                   onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
                   className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'SUPPLIERS'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  <Building2 className={`w-4 h-4 flex-shrink-0 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-sky-500'}`} />
                   <span>Proveedores</span>
                 </button>
 
                 {/* Bloque: ADMINISTRACIÓN (exclusivo para Presidencia y Admin) */}
                 {(user.role === 'ADMIN' || user.role === 'PRESIDENCIA') && (
                   <div className="pt-2.5 mt-1 border-t border-slate-100">
-                    <p className="px-1 mb-2 text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                    <p className="px-1 mb-2 text-[10px] font-black uppercase tracking-wider text-[#083563]">
                       Administración
                     </p>
 
@@ -2770,12 +2770,12 @@ export const PresidencyHub: React.FC = () => {
                           }}
                           className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                             activeTab === 'USERS'
-                              ? 'bg-emerald-900 text-white shadow-sm'
-                              : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                              ? 'bg-[#083563] text-white shadow-sm'
+                              : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
                           }`}
                         >
                           <span className="inline-flex items-center gap-3">
-                            <Users className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                            <Users className={`w-4 h-4 flex-shrink-0 ${activeTab === 'USERS' ? 'text-sky-300' : 'text-[#083563]'}`} />
                             <span>Directorio</span>
                           </span>
                           {hasDirectoryAlert && (
@@ -2802,11 +2802,11 @@ export const PresidencyHub: React.FC = () => {
                         onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
                         className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                           activeTab === 'SUPPLIERS'
-                            ? 'bg-emerald-900 text-white shadow-sm'
-                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                            ? 'bg-[#083563] text-white shadow-sm'
+                            : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
                         }`}
                       >
-                        <Building2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <Building2 className={`w-4 h-4 flex-shrink-0 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-[#083563]'}`} />
                         <span>Proveedores</span>
                       </button>
 
@@ -2817,12 +2817,12 @@ export const PresidencyHub: React.FC = () => {
                         onClick={() => selectTabAndCloseDrawer('OPERATIONS')}
                         className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                           activeTab === 'OPERATIONS'
-                            ? 'bg-emerald-900 text-white shadow-sm'
-                            : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                            ? 'bg-[#083563] text-white shadow-sm'
+                            : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
                         }`}
                       >
                         <span className="inline-flex items-center gap-3">
-                          <FileEdit className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <FileEdit className={`w-4 h-4 flex-shrink-0 ${activeTab === 'OPERATIONS' ? 'text-sky-300' : 'text-[#083563]'}`} />
                           <span>Finanzas</span>
                         </span>
                         {hasFinanceAlert && (
@@ -2844,11 +2844,11 @@ export const PresidencyHub: React.FC = () => {
                           onClick={() => selectTabAndCloseDrawer('LOGS')}
                           className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                             activeTab === 'LOGS'
-                              ? 'bg-emerald-900 text-white shadow-sm'
-                              : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                              ? 'bg-[#083563] text-white shadow-sm'
+                              : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
                           }`}
                         >
-                          <History className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <History className={`w-4 h-4 flex-shrink-0 ${activeTab === 'LOGS' ? 'text-sky-300' : 'text-[#083563]'}`} />
                           <span>Historial / Logs</span>
                         </button>
                       )}
@@ -2861,8 +2861,8 @@ export const PresidencyHub: React.FC = () => {
                           onClick={() => selectTabAndCloseDrawer('INFO')}
                           className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                             activeTab === 'INFO'
-                              ? 'bg-emerald-900 text-white shadow-sm'
-                              : 'bg-emerald-50/80 text-emerald-950 border border-emerald-200/80 hover:bg-emerald-100/70'
+                              ? 'bg-[#083563] text-white shadow-sm'
+                              : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
                           }`}
                         >
                           <BookOpen className="w-4 h-4 text-amber-600 flex-shrink-0" />
@@ -3121,7 +3121,7 @@ export const PresidencyHub: React.FC = () => {
                       >
                         <div>
                           <div className="flex items-center justify-between gap-2">
-                            <span className="inline-block text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-slate-900 text-white">
+                            <span className="inline-block text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-[#072B52] text-white">
                               {q.quarter}
                             </span>
                             <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
@@ -3265,7 +3265,7 @@ export const PresidencyHub: React.FC = () => {
                             {nextAct ? (
                               <div className="flex items-center justify-between gap-2 text-slate-600">
                                 <span className="inline-flex items-center gap-1.5 truncate font-medium">
-                                  <Calendar className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                                  <Calendar className="w-3.5 h-3.5 text-[#083563] flex-shrink-0" />
                                   <span className="truncate">
                                     {nextAct.estimated_cost > 0 ? '💰 ' : ''}
                                     {nextAct.title}
@@ -3287,7 +3287,7 @@ export const PresidencyHub: React.FC = () => {
                             type="button"
                             data-testid={`inspect-org-${stat.organization}`}
                             onClick={() => setInspectedOrg(stat.organization)}
-                            className="pressable w-full py-2.5 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-900 text-slate-900 hover:text-white text-xs font-extrabold tracking-wide transition text-center"
+                            className="pressable w-full py-2.5 px-3.5 rounded-xl bg-slate-100 hover:bg-[#072B52] text-[#072B52] hover:text-white text-xs font-extrabold tracking-wide transition text-center"
                           >
                             {OPEN_ORG_BUTTON_LABELS[stat.organization]}
                           </button>
@@ -3315,7 +3315,7 @@ export const PresidencyHub: React.FC = () => {
                   className="w-full sm:max-w-2xl max-h-[85dvh] bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
                 >
                   {/* Cabecera: "Gastos de Trimestre [X] · Total: $ [Monto]" y botón de cerrar (✕) */}
-                  <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+                  <div className="px-5 py-4 bg-gradient-to-r from-[#083563] via-[#072B52] to-[#051E3B] text-white flex items-center justify-between gap-3">
                     <h3
                       id="quarter-expenses-modal-title"
                       data-testid="quarter-expenses-modal-title"
@@ -3329,7 +3329,7 @@ export const PresidencyHub: React.FC = () => {
                       data-testid="close-quarter-expenses-modal"
                       aria-label="Cerrar desglose de gastos"
                       onClick={() => setSelectedQuarterModal(null)}
-                      className="pressable w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition flex-shrink-0"
+                      className="pressable w-8 h-8 rounded-xl bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition flex-shrink-0"
                     >
                       <X className="w-4 h-4" />
                     </button>

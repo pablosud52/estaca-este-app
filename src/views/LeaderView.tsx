@@ -608,7 +608,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 aria-label={isMobileDrawerOpen ? 'Cerrar menú' : 'Abrir menú de navegación'}
                 aria-expanded={isMobileDrawerOpen}
                 onClick={() => setIsMobileDrawerOpen((prev) => !prev)}
-                className="pressable md:hidden relative w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm flex-shrink-0"
+                className="pressable md:hidden relative w-9 h-9 rounded-xl bg-[#072B52] text-white flex items-center justify-center shadow-sm flex-shrink-0"
               >
                 <div className="w-4 h-4 relative flex items-center justify-center">
                   <span
@@ -631,7 +631,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
               <div className="flex flex-col space-y-0.5 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-emerald-900 text-emerald-50 tracking-wide shadow-sm truncate">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-[#083563] text-white tracking-wide shadow-sm truncate">
                     Estaca Montevideo Uruguay Este
                   </span>
                 </div>
@@ -650,7 +650,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                     data-testid="year-selector-dropdown"
                     value={activeYear}
                     onChange={(e) => handleYearSelect(Number(e.target.value))}
-                    className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-600 transition"
+                    className="appearance-none bg-slate-100 hover:bg-slate-200/80 text-slate-800 border border-slate-200 rounded-lg pl-2.5 pr-6 py-1 text-[11px] sm:text-xs font-extrabold cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#083563] transition"
                   >
                     {availableYears.map((yr) => (
                       <option key={yr} value={yr}>
@@ -666,7 +666,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 title={realAuthEmail ? `Conectado como ${realAuthEmail}` : undefined}
                 className="hidden md:inline-flex items-center gap-2 bg-slate-100 py-1 px-3 rounded-full border border-slate-200/90 text-xs"
               >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-[#083563] flex-shrink-0" />
                 <span
                   data-testid="header-user-name"
                   className="font-bold text-slate-800 max-w-[140px] truncate"
@@ -702,7 +702,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 onClick={onBackToHub}
                 className="pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-slate-100 text-slate-700 hover:bg-slate-200/80"
               >
-                <LayoutDashboard className="w-4 h-4 text-emerald-500" />
+                <LayoutDashboard className="w-4 h-4 text-[#083563]" />
                 <span>Panel</span>
               </button>
             ) : (
@@ -712,11 +712,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 onClick={() => setActiveTab('SUMMARY')}
                 className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   activeTab === 'SUMMARY'
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-[#072B52] text-white shadow-sm'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
                 }`}
               >
-                <LayoutDashboard className="w-4 h-4 text-emerald-400" />
+                <LayoutDashboard className={`w-4 h-4 ${activeTab === 'SUMMARY' ? 'text-sky-300' : 'text-[#083563]'}`} />
                 <span>Panel</span>
               </button>
             )}
@@ -727,11 +727,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               onClick={() => setActiveTab('CALENDAR')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                 activeTab === 'CALENDAR'
-                  ? 'bg-slate-900 text-white shadow-sm'
+                  ? 'bg-[#072B52] text-white shadow-sm'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
               }`}
             >
-              <Calendar className="w-4 h-4 text-emerald-500" />
+              <Calendar className={`w-4 h-4 ${activeTab === 'CALENDAR' ? 'text-sky-300' : 'text-[#083563]'}`} />
               <span>Calendario</span>
             </button>
 
@@ -741,11 +741,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               onClick={() => setActiveTab('DIRECTORY')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                 activeTab === 'DIRECTORY'
-                  ? 'bg-slate-900 text-white shadow-sm'
+                  ? 'bg-[#072B52] text-white shadow-sm'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
               }`}
             >
-              <Users className="w-4 h-4 text-indigo-500" />
+              <Users className={`w-4 h-4 ${activeTab === 'DIRECTORY' ? 'text-sky-300' : 'text-indigo-500'}`} />
               <span>Directorio</span>
             </button>
 
@@ -755,11 +755,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               onClick={() => setActiveTab('SUPPLIERS')}
               className={`pressable inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                 activeTab === 'SUPPLIERS'
-                  ? 'bg-slate-900 text-white shadow-sm'
+                  ? 'bg-[#072B52] text-white shadow-sm'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
               }`}
             >
-              <Building2 className="w-4 h-4 text-sky-500" />
+              <Building2 className={`w-4 h-4 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-sky-500'}`} />
               <span>Proveedores</span>
             </button>
           </nav>
@@ -783,7 +783,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               <div className="p-3.5 rounded-2xl bg-slate-100/90 border border-slate-200/90 space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 min-w-0">
-                    <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <ShieldCheck className="w-4 h-4 text-[#083563] flex-shrink-0" />
                     <span
                       data-testid="drawer-user-name"
                       className="text-xs font-extrabold text-slate-900 truncate"
@@ -791,7 +791,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                       {user.full_name}
                     </span>
                   </span>
-                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-white flex-shrink-0">
+                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-[#083563] text-white flex-shrink-0">
                     {ORGANIZATION_SHORT_LABELS[baseOrg]}
                   </span>
                 </div>
@@ -817,7 +817,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                     }}
                     className="pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition bg-slate-100 text-slate-800 hover:bg-slate-200/70"
                   >
-                    <LayoutDashboard className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <LayoutDashboard className="w-4 h-4 text-[#083563] flex-shrink-0" />
                     <span>Panel</span>
                   </button>
                 ) : (
@@ -827,11 +827,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                     onClick={() => selectTabAndCloseDrawer('SUMMARY')}
                     className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
                       activeTab === 'SUMMARY'
-                        ? 'bg-slate-900 text-white shadow-sm'
+                        ? 'bg-[#072B52] text-white shadow-sm'
                         : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                     }`}
                   >
-                    <LayoutDashboard className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                    <LayoutDashboard className={`w-4 h-4 flex-shrink-0 ${activeTab === 'SUMMARY' ? 'text-sky-300' : 'text-[#083563]'}`} />
                     <span>Panel</span>
                   </button>
                 )}
@@ -842,11 +842,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                   onClick={() => selectTabAndCloseDrawer('CALENDAR')}
                   className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'CALENDAR'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Calendar className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  <Calendar className={`w-4 h-4 flex-shrink-0 ${activeTab === 'CALENDAR' ? 'text-sky-300' : 'text-[#083563]'}`} />
                   <span>Calendario</span>
                 </button>
 
@@ -856,11 +856,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                   onClick={() => selectTabAndCloseDrawer('DIRECTORY')}
                   className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'DIRECTORY'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Users className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                  <Users className={`w-4 h-4 flex-shrink-0 ${activeTab === 'DIRECTORY' ? 'text-sky-300' : 'text-indigo-500'}`} />
                   <span>Directorio</span>
                 </button>
 
@@ -870,11 +870,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                   onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
                   className={`pressable w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'SUPPLIERS'
-                      ? 'bg-slate-900 text-white shadow-sm'
+                      ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Building2 className="w-4 h-4 text-sky-500 flex-shrink-0" />
+                  <Building2 className={`w-4 h-4 flex-shrink-0 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-sky-500'}`} />
                   <span>Proveedores</span>
                 </button>
               </div>
@@ -1148,7 +1148,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                           onClick={() => setQuarterFilter(q)}
                           className={`pressable px-2.5 py-1 rounded-none text-[11px] font-bold transition ${
                             quarterFilter === q
-                              ? 'bg-slate-900 text-white'
+                              ? 'bg-[#072B52] text-white'
                               : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                           }`}
                         >
@@ -1227,7 +1227,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
         >
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-teal-50 border border-teal-100 text-teal-700 flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-sky-50 border border-sky-200/80 text-[#083563] flex items-center justify-center flex-shrink-0">
                 <Calendar className="w-4 h-4" />
               </div>
               <div className="min-w-0">
@@ -1242,7 +1242,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 type="button"
                 data-testid="open-propose-modal-btn"
                 onClick={() => setIsProposeOpen(true)}
-                className="pressable inline-flex items-center gap-1.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm flex-shrink-0"
+                className="pressable inline-flex items-center gap-1.5 bg-[#083563] hover:bg-[#072B52] text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm flex-shrink-0"
               >
                 <Plus className="w-3.5 h-3.5 flex-shrink-0" />
                 <span className="flex flex-col sm:flex-row sm:gap-1 items-start sm:items-center leading-tight text-left">
@@ -1257,7 +1257,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-sky-50 text-[#083563] border border-sky-200/80">
                       {ORGANIZATION_SHORT_LABELS[nextUpcomingActivity.organization]}
                     </span>
                     {nextUpcomingActivity.status === 'PROPUESTA' && (
@@ -1277,7 +1277,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
               <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-600">
                 <span className="inline-flex items-center gap-1 font-semibold text-slate-800 tabular-nums">
-                  <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                  <Calendar className="w-3.5 h-3.5 text-[#083563]" />
                   <span data-testid="next-activity-date">
                     {formatDate(nextUpcomingActivity.event_date)}
                   </span>

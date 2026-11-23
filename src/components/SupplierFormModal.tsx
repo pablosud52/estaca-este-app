@@ -279,7 +279,7 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
     >
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50/80">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-[#083563] text-white flex items-center justify-center">
             <Store className="w-4 h-4" />
           </div>
           <div>
@@ -715,7 +715,7 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
           <button
             type="submit"
             disabled={saving}
-            className="pressable px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800 disabled:opacity-50 transition"
+            className="pressable px-4 py-2 rounded-xl bg-[#083563] text-white text-xs font-extrabold hover:bg-[#072B52] disabled:opacity-50 transition"
           >
             {saving
               ? 'Guardando...'

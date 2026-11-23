@@ -283,7 +283,7 @@ export const LeadersDirectoryView: React.FC = () => {
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
                       selectedOrgs.length === 0 ||
                       selectedOrgs.length === STAKE_ORG_STRUCTURE.length
-                        ? 'bg-slate-900 text-white'
+                        ? 'bg-[#072B52] text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
@@ -297,7 +297,7 @@ export const LeadersDirectoryView: React.FC = () => {
                       selectedOrgs.length === 2 &&
                       selectedOrgs.includes('HJ') &&
                       selectedOrgs.includes('MJ')
-                        ? 'bg-slate-900 text-white'
+                        ? 'bg-[#072B52] text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
@@ -335,7 +335,7 @@ export const LeadersDirectoryView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsOrgMenuOpen(false)}
-                    className="px-3 py-1 rounded-lg bg-slate-900 text-white text-[11px] font-bold hover:bg-slate-800 transition"
+                    className="px-3 py-1 rounded-lg bg-[#072B52] text-white text-[11px] font-bold hover:bg-[#083563] transition"
                   >
                     Listo
                   </button>
@@ -376,7 +376,7 @@ export const LeadersDirectoryView: React.FC = () => {
               onClick={selectAllOrgs}
               className={`px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition flex-shrink-0 ${
                 selectedOrgs.length === 0
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
@@ -391,7 +391,7 @@ export const LeadersDirectoryView: React.FC = () => {
                   selectedOrgs.length === 2 &&
                   selectedOrgs.includes('HJ') &&
                   selectedOrgs.includes('MJ')
-                    ? 'bg-slate-900 text-white'
+                    ? 'bg-[#072B52] text-white'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
@@ -409,7 +409,7 @@ export const LeadersDirectoryView: React.FC = () => {
                   onClick={() => selectSingleOrgChip(org.code)}
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap transition flex-shrink-0 ${
                     isSelected
-                      ? 'bg-slate-900 text-white'
+                      ? 'bg-[#072B52] text-white'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
@@ -494,7 +494,7 @@ export const LeadersDirectoryView: React.FC = () => {
                           className="p-4 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                         >
                           <div className="space-y-1 min-w-0">
-                            <p className="text-xs font-bold text-emerald-800">{displayCalling}</p>
+                            <p className="text-xs font-bold text-[#083563]">{displayCalling}</p>
                             <p className="text-sm font-extrabold text-slate-900">
                               {`${entry.first_name} ${entry.last_name}`.trim()}
                             </p>

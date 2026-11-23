@@ -6,7 +6,6 @@ import { UnauthorizedView } from './components/UnauthorizedView';
 import { LeaderView } from './views/LeaderView';
 import { PresidencyHub } from './views/PresidencyHub';
 import { ConsultaView } from './views/ConsultaView';
-import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { useModalScrollLock } from './utils/useModalScrollLock';
 
 const AppRouter: React.FC = () => {
@@ -15,7 +14,7 @@ const AppRouter: React.FC = () => {
   if (authStatus === 'loading') {
     return (
       <div className="min-h-[100dvh] bg-slate-50 flex flex-col items-center justify-center px-5">
-        <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-800 animate-spin mb-3" />
+        <div className="w-10 h-10 rounded-full border-4 border-sky-200 border-t-[#083563] animate-spin mb-3" />
         <p className="text-xs font-bold text-slate-500">Verificando sesión...</p>
       </div>
     );
@@ -50,7 +49,6 @@ export default function App() {
   return (
     <AuthProvider>
       <AppRouter />
-      <PwaInstallBanner />
       <DevRoleSwitcher />
     </AuthProvider>
   );

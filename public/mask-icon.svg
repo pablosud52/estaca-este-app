@@ -1,27 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#132a4a" />
-      <stop offset="100%" stop-color="#09182e" />
-    </linearGradient>
-    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f3d57a" />
-      <stop offset="50%" stop-color="#d4af37" />
-      <stop offset="100%" stop-color="#b58d24" />
+      <stop offset="0%" stop-color="#083563" />
+      <stop offset="50%" stop-color="#072B52" />
+      <stop offset="100%" stop-color="#051E3B" />
     </linearGradient>
   </defs>
 
-  <!-- Fondo azul marino profundo -->
   <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect x="6" y="6" width="500" height="500" rx="106" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="4" />
 
-  <!-- Anillo exterior sutil dorado -->
-  <circle cx="256" cy="256" r="204" fill="none" stroke="url(#goldGrad)" stroke-width="5" opacity="0.6" />
-  <circle cx="256" cy="256" r="188" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.14" />
-
-  <!-- Monograma EE más grande y centrado -->
   <text x="256" y="274" text-anchor="middle" font-family="Plus Jakarta Sans, Segoe UI, Arial, sans-serif" font-weight="800" font-size="188" letter-spacing="8" fill="#ffffff">EE</text>
-
-  <!-- Línea dorada divisoria y subtítulo más visible -->
-  <rect x="146" y="302" width="220" height="5" rx="2.5" fill="url(#goldGrad)" opacity="0.95" />
-  <text x="256" y="354" text-anchor="middle" font-family="Plus Jakarta Sans, Segoe UI, Arial, sans-serif" font-weight="700" font-size="34" letter-spacing="6" fill="#e2e8f0">ESTACA ESTE</text>
+  <rect x="136" y="308" width="240" height="4" rx="2" fill="#ffffff" fill-opacity="0.22" />
+  <text x="256" y="362" text-anchor="middle" font-family="Plus Jakarta Sans, Segoe UI, Arial, sans-serif" font-weight="700" font-size="34" letter-spacing="6" fill="#bae6fd" fill-opacity="0.9">ESTACA ESTE</text>
 </svg>

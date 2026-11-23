@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, LogIn, ShieldCheck } from 'lucide-react';
+import { LogIn, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getRememberMePreference,
@@ -34,12 +34,14 @@ export const LoginView: React.FC = () => {
       className="min-h-[100dvh] bg-slate-50 flex flex-col items-center justify-center px-5 py-10"
     >
       <div className="w-full max-w-md bg-white rounded-3xl p-7 sm:p-8 shadow-lg border border-slate-200/90">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center mx-auto mb-5 shadow-sm">
-          <Lock className="w-8 h-8" />
-        </div>
+        <img
+          src="/favicon.svg"
+          alt="Estaca Este"
+          className="w-16 h-16 rounded-2xl mx-auto mb-5 shadow-md"
+        />
 
         <div className="text-center">
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-900 mb-3">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-extrabold uppercase tracking-wider bg-[#083563] text-white shadow-sm mb-3">
             Estaca Montevideo Uruguay Este
           </span>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
@@ -59,7 +61,7 @@ export const LoginView: React.FC = () => {
             data-testid="login-google-btn"
             disabled={isLoading}
             onClick={handleGoogleLogin}
-            className="pressable w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-slate-900 text-white text-sm font-bold shadow-sm hover:bg-slate-800 disabled:opacity-60"
+            className="pressable w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-gradient-to-r from-[#083563] via-[#072B52] to-[#051E3B] text-white text-sm font-bold shadow-sm hover:brightness-110 disabled:opacity-60"
           >
             <LogIn className="w-4 h-4" />
             <span>{isLoading ? 'Conectando con Google...' : 'Ingresar con Google'}</span>
@@ -71,7 +73,7 @@ export const LoginView: React.FC = () => {
               data-testid="login-remember-checkbox"
               checked={rememberMe}
               onChange={(e) => handleRememberChange(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+              className="h-4 w-4 rounded border-slate-300 text-[#083563] focus:ring-[#083563] accent-[#083563]"
             />
             <span className="text-xs font-bold text-slate-700">
               Recordarme en este dispositivo
@@ -80,7 +82,7 @@ export const LoginView: React.FC = () => {
         </div>
 
         <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-[11px] text-slate-500">
-          <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+          <ShieldCheck className="w-4 h-4 text-[#083563] flex-shrink-0" />
           <span>Acceso exclusivo para líderes habilitados</span>
         </div>
       </div>

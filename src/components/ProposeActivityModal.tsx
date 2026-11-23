@@ -156,7 +156,7 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-sky-50 border border-sky-200/80 text-[#083563] flex items-center justify-center flex-shrink-0">
               <CalendarPlus className="w-5 h-5" />
             </div>
             <div className="min-w-0">
@@ -359,7 +359,7 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
               data-testid="seminario-checkbox-label"
               className={`pressable flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${
                 isSeminarioJoint
-                  ? 'bg-emerald-50/90 border-emerald-400 text-emerald-950'
+                  ? 'bg-sky-50/90 border-[#083563]/40 text-[#051E3B]'
                   : 'bg-slate-50 border-slate-200/90 text-slate-700 hover:bg-slate-100/70'
               }`}
             >
@@ -369,7 +369,7 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
                 type="checkbox"
                 checked={isSeminarioJoint}
                 onChange={(e) => setIsSeminarioJoint(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-[#083563] focus:ring-[#083563] accent-[#083563]"
               />
               <div className="flex-1 text-xs">
                 <div className="font-bold">
@@ -395,7 +395,7 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
               type="submit"
               data-testid="submit-activity-btn"
               disabled={isSubmitting}
-              className="pressable inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-800 hover:bg-emerald-900 text-white shadow-sm disabled:opacity-50"
+              className="pressable inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-[#083563] hover:bg-[#072B52] text-white shadow-sm disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>

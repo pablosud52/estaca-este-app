@@ -18,6 +18,9 @@ import {
   Trash2,
   CheckCircle2,
   Tags,
+  Settings2,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { SupplierRecord } from '../types/database';
 import { SupplierFormModal } from '../components/SupplierFormModal';
@@ -52,7 +55,30 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   onRenameCategory,
   onDeleteCategory,
 }) => {
+  const [isManageMode, setIsManageMode] = useState(false);
+  const [viewMode, setViewMode] = useState<'CARDS' | 'LIST'>('CARDS');
   const [activeSubTab, setActiveSubTab] = useState<SuppliersTab>('ACTIVE');
+  const isManaging = canManage && isManageMode;
+
+  useEffect(() => {
+    if (!canManage) {
+      setIsManageMode(false);
+      setViewMode('CARDS');
+      setActiveSubTab('ACTIVE');
+    }
+  }, [canManage]);
+
+  const toggleManageMode = () => {
+    if (!canManage) return;
+    setIsManageMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setViewMode('CARDS');
+        setActiveSubTab('ACTIVE');
+      }
+      return next;
+    });
+  };
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<SupplierRecord | null>(null);
@@ -110,7 +136,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     [suppliers]
   );
 
-  const currentTabSuppliers = canManage && activeSubTab === 'PENDING' ? pendingSuppliers : activeSuppliers;
+  const currentTabSuppliers = isManaging && activeSubTab === 'PENDING' ? pendingSuppliers : activeSuppliers;
 
   const getSupplierCategory = (s: SupplierRecord) => (s.category || 'Varios').trim() || 'Varios';
 
@@ -498,7 +524,69 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           </div>
 
           {canManage && (
-            <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              data-testid="suppliers-manage-toggle"
+              aria-pressed={isManaging}
+              onClick={toggleManageMode}
+              className={`pressable h-[34px] inline-flex items-center gap-1.5 px-3 rounded-xl text-xs font-bold transition touch-manipulation ${
+                isManaging
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
+              }`}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>{isManaging ? 'Gestionando' : 'Gestionar'}</span>
+              {!isManaging && pendingSuppliers.length > 0 && (
+                <span
+                  data-testid="suppliers-manage-pending-badge"
+                  className="inline-flex items-center gap-1 ml-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold tabular-nums"
+                >
+                  {pendingSuppliers.length}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {isManaging && (
+          <div
+            data-testid="suppliers-manage-bar"
+            className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2"
+          >
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div className="inline-flex items-center rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80">
+                <button
+                  type="button"
+                  data-testid="suppliers-tab-active"
+                  onClick={() => setActiveSubTab('ACTIVE')}
+                  className={`pressable px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
+                    activeSubTab === 'ACTIVE'
+                      ? 'bg-[#072B52] text-white'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  Directorio ({activeSuppliers.length})
+                </button>
+                <button
+                  type="button"
+                  data-testid="suppliers-tab-pending"
+                  onClick={() => setActiveSubTab('PENDING')}
+                  className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
+                    activeSubTab === 'PENDING'
+                      ? 'bg-[#072B52] text-white'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  <span>Pendientes</span>
+                  {pendingSuppliers.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                      {pendingSuppliers.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
               {onAddCategory && onRenameCategory && onDeleteCategory && (
                 <button
                   type="button"
@@ -507,9 +595,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                   className="pressable inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 shadow-2xs transition touch-manipulation"
                 >
                   <Tags className="w-3.5 h-3.5 text-slate-500" />
-                  <span className="hidden sm:inline">Rubros</span>
+                  <span>Rubros</span>
                 </button>
               )}
+
               {onCreateSupplier && (
                 <button
                   type="button"
@@ -525,40 +614,39 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                 </button>
               )}
             </div>
-          )}
-        </div>
 
-        {canManage && (
-          <div className="inline-flex items-center rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden divide-x divide-slate-200/80">
-            <button
-              type="button"
-              data-testid="suppliers-tab-active"
-              onClick={() => setActiveSubTab('ACTIVE')}
-              className={`pressable px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
-                activeSubTab === 'ACTIVE'
-                  ? 'bg-[#072B52] text-white'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
+            {/* Switch Tarjetas / Lista */}
+            <div
+              data-testid="suppliers-view-mode-switcher"
+              className="inline-flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80"
             >
-              Directorio ({activeSuppliers.length})
-            </button>
-            <button
-              type="button"
-              data-testid="suppliers-tab-pending"
-              onClick={() => setActiveSubTab('PENDING')}
-              className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold transition ${
-                activeSubTab === 'PENDING'
-                  ? 'bg-[#072B52] text-white'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <span>Pendientes</span>
-              {pendingSuppliers.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
-                  {pendingSuppliers.length}
-                </span>
-              )}
-            </button>
+              <button
+                type="button"
+                data-testid="suppliers-mode-cards-btn"
+                onClick={() => setViewMode('CARDS')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                  viewMode === 'CARDS'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Tarjetas</span>
+              </button>
+              <button
+                type="button"
+                data-testid="suppliers-mode-list-btn"
+                onClick={() => setViewMode('LIST')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+                  viewMode === 'LIST'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Lista</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -721,9 +809,12 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       </div>
 
-      {/* Lista / Tabla de proveedores */}
-      {canManage ? (
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
+      {/* Lista / Tarjetas de proveedores (siempre Tarjetas al entrar; Lista opcional dentro de Gestionar) */}
+      {isManaging && viewMode === 'LIST' ? (
+        <div
+          data-testid="suppliers-list-view-container"
+          className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden"
+        >
           {filteredSuppliers.length === 0 ? (
             <div className="py-12 text-center px-4">
               <p className="text-sm font-semibold text-slate-700">
@@ -1032,8 +1123,11 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           )}
         </div>
       ) : (
-        /* VISTA SOLO LECTURA PARA LÍDERES / CONSULTA */
-        <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-card">
+        /* VISTA EN TARJETAS (por defecto en Modo Lectura y en Gestionar hasta cambiar a Lista) */
+        <div
+          data-testid="suppliers-cards-view-container"
+          className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-card"
+        >
           <div className="relative overflow-y-auto scroll-smooth pr-1 max-h-[calc(100dvh-260px)] min-h-[320px]">
           {filteredSuppliers.length === 0 ? (
             <div className="text-center py-12 px-4 bg-white rounded-2xl border border-slate-300 shadow-sm my-2">
@@ -1085,12 +1179,83 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                       </p>
                     )}
 
-                    <div className="flex justify-end pt-0.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                      {isManaging ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {s.status === 'PENDIENTE' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingSupplier(s);
+                                  setIsFormModalOpen(true);
+                                }}
+                                className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-[#072B52] text-white hover:bg-[#083563] transition"
+                              >
+                                <Pencil className="w-3 h-3" />
+                                <span>Completar</span>
+                              </button>
+                              {onUpdateSupplier && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickApprove(s)}
+                                  className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Aprobar</span>
+                                </button>
+                              )}
+                              {onDeleteSupplier && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSupplierToDelete(s)}
+                                  className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition"
+                                  title="Descartar sugerencia"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {onUpdateSupplier && (
+                                <button
+                                  type="button"
+                                  data-testid={`edit-supplier-btn-${s.id}`}
+                                  onClick={() => {
+                                    setEditingSupplier(s);
+                                    setIsFormModalOpen(true);
+                                  }}
+                                  className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition"
+                                >
+                                  <Pencil className="w-3 h-3 text-slate-500" />
+                                  <span>Editar</span>
+                                </button>
+                              )}
+                              {onDeleteSupplier && (
+                                <button
+                                  type="button"
+                                  data-testid={`delete-supplier-btn-${s.id}`}
+                                  onClick={() => setSupplierToDelete(s)}
+                                  title="Eliminar proveedor"
+                                  aria-label={`Eliminar ${s.commercial_name}`}
+                                  className="pressable inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 bg-white hover:bg-rose-50 border border-rose-200/80 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <div />
+                      )}
+
                       <button
                         type="button"
                         onClick={() => toggleExpand(s.id)}
                         aria-expanded={isExpanded}
-                        className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-slate-700 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition touch-manipulation"
+                        className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-slate-700 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition touch-manipulation ml-auto"
                       >
                         <span>{isExpanded ? 'Menos' : '+ Más'}</span>
                         {isExpanded ? (

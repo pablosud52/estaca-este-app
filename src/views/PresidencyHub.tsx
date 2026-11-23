@@ -617,7 +617,12 @@ export const PresidencyHub: React.FC = () => {
   const userCanApproveCalendar = canApproveCalendar(user);
   const userCanViewLogs = canViewLogs(user);
 
-  // Indicadores unificados de alertas (Calendario unificado + Administración)
+  // Indicadores unificados de alertas (Calendario unificado + Proveedores + Administración)
+  const pendingSuppliersCount = useMemo(
+    () => suppliers.filter((s) => s.status === 'PENDIENTE').length,
+    [suppliers]
+  );
+  const userCanManageSuppliers = user.role === 'ADMIN' || userIsSuperAdmin;
   const hasCalendarAlert = userCanApproveCalendar && (pendingProposalsCount > 0 || pendingLcrCount > 0);
   const hasDirectoryAlert = userCanManageUsers && incompleteContactsCount > 0;
   const hasFinanceAlert = userCanEditFinances && executiveMetrics.pendingRenderTotal > 0;
@@ -2437,6 +2442,14 @@ export const PresidencyHub: React.FC = () => {
               >
                 <Building2 className={`w-4 h-4 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-sky-500'}`} />
                 <span>Proveedores</span>
+                {userCanManageSuppliers && pendingSuppliersCount > 0 && (
+                  <span
+                    data-testid="nav-suppliers-pending-count"
+                    className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums"
+                  >
+                    {pendingSuppliersCount}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -2531,27 +2544,7 @@ export const PresidencyHub: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 3. Proveedores */}
-                      <button
-                        type="button"
-                        data-testid="hub-admin-suppliers-btn"
-                        onClick={() => {
-                          setActiveTab('SUPPLIERS');
-                          setIsAdminMenuOpen(false);
-                        }}
-                        className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
-                          activeTab === 'SUPPLIERS'
-                            ? 'bg-[#072B52] text-white shadow-sm'
-                            : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <Building2 className="w-4 h-4 text-sky-600" />
-                          <span>Proveedores</span>
-                        </span>
-                      </button>
-
-                      {/* 4. Finanzas (Centro de Edición y Carga) */}
+                      {/* 2. Finanzas (Centro de Edición y Carga) */}
                       <button
                         type="button"
                         data-testid="hub-admin-operations-btn"
@@ -2741,14 +2734,21 @@ export const PresidencyHub: React.FC = () => {
                   type="button"
                   data-testid="drawer-nav-suppliers"
                   onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
-                  className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                  className={`pressable w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
                     activeTab === 'SUPPLIERS'
                       ? 'bg-[#072B52] text-white shadow-sm'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200/70'
                   }`}
                 >
-                  <Building2 className={`w-4 h-4 flex-shrink-0 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-sky-500'}`} />
-                  <span>Proveedores</span>
+                  <span className="inline-flex items-center gap-3">
+                    <Building2 className={`w-4 h-4 flex-shrink-0 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-sky-500'}`} />
+                    <span>Proveedores</span>
+                  </span>
+                  {userCanManageSuppliers && pendingSuppliersCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 tabular-nums">
+                      {pendingSuppliersCount}
+                    </span>
+                  )}
                 </button>
 
                 {/* Bloque: ADMINISTRACIÓN (exclusivo para Presidencia y Admin) */}
@@ -2795,22 +2795,7 @@ export const PresidencyHub: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 3. Proveedores */}
-                      <button
-                        type="button"
-                        data-testid="drawer-admin-suppliers-btn"
-                        onClick={() => selectTabAndCloseDrawer('SUPPLIERS')}
-                        className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
-                          activeTab === 'SUPPLIERS'
-                            ? 'bg-[#083563] text-white shadow-sm'
-                            : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
-                        }`}
-                      >
-                        <Building2 className={`w-4 h-4 flex-shrink-0 ${activeTab === 'SUPPLIERS' ? 'text-sky-300' : 'text-[#083563]'}`} />
-                        <span>Proveedores</span>
-                      </button>
-
-                      {/* 4. Finanzas (Operaciones y Carga) */}
+                      {/* 2. Finanzas (Operaciones y Carga) */}
                       <button
                         type="button"
                         data-testid="drawer-admin-operations-btn"

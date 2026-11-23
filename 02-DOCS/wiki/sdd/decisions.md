@@ -8,3 +8,8 @@
 - **Decisión 5 (Vinculación automática y manual):** Los eventos creados en la app pendientes de LCR son totalmente editables y se vinculan automáticamente por fecha + nombre normalizado (ignorando mayúsculas, tildes y espacios) al sincronizar o al guardar una edición, además de permitir vinculación manual en 1 clic.
 - **Decisión 6 (Permisos):** Todos los miembros de Presidencia (incluidos Secretarios) y Administradores tienen acceso a `Gestionar`, alineado al árbol de permisos vigente.
 - **Artefacto:** [calendario-unificado-lcr.md](specs/calendario-unificado-lcr.md)
+
+## 2026-11-22 — Spec `proveedores-unificado`
+- **Decisión 1 (Acceso único en menú):** Se elimina el botón duplicado de `Proveedores` dentro de *Administración* (PC y móvil), dejando un único botón `Proveedores` en la barra principal con contador discreto de pendientes visible solo para Administradores.
+- **Decisión 2 (Modo Lectura + interruptor `Gestionar`):** `Proveedores` abre siempre en Modo Lectura limpio. Solo Administradores y Super Admin ven el botón `Gestionar`, que habilita `+ Nuevo Proveedor`, `Categorías / Rubros`, `Directorio / Pendientes`, `Editar / Eliminar` y un switch `Tarjetas / Lista`.
+- **Artefacto:** [proveedores-unificado.md](specs/proveedores-unificado.md)

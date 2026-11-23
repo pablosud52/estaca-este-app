@@ -23,8 +23,8 @@
 
 #### 1. Finanzas: modales, fechas, alertas y Excel
 - [ ] **1.1 Pulir ventanas de carga (modales):** Revisar y mejorar el diseño y comodidad de las ventanas de carga de **Gastos** y **Movimientos** (`ExpenseFormModal.tsx`, `NewMovementModal.tsx`).
-- [ ] **1.2 Orden por fecha:** Agregar controles en las tablas de Finanzas para ordenar por fecha **ascendente y descendente**.
-- [ ] **1.3 Filtro por fechas:** Agregar un buscador o filtro específico por **rango/fecha** en cada sección de Finanzas (especialmente en **Gastos** y **Movimientos**).
+- [x] **1.2 Orden por fecha:** Controles en Gastos y Movimientos para ordenar por fecha ascendente y descendente desde el encabezado `Fecha` (PC) y botón compacto `Fecha ↓/↑` (móvil), manteniendo los Pendientes de LCR siempre arriba en Gastos.
+- [x] **1.3 Filtro por fechas:** Botón compacto `Fechas` (`Desde` / `Hasta` + `Limpiar fechas`) independiente en Gastos (sobre fecha contable LCR) y Movimientos, con estética alineada al azul marino institucional (`#072B52` / `#083563`).
 - [ ] **1.4 Alertas del panel de finanzas:** Verificar qué alertas tiene programadas hoy el panel de Finanzas y revisar dónde las muestra.
 - [ ] **1.5 Excel (exportar e importar):** Revisar todos los datos que exporta e importa `ExcelSyncPanel.tsx` y confirmar que todas las tablas estén completas y correctas.
 

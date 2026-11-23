@@ -19,3 +19,10 @@
 - **Decisión 2 (Modo Lectura + interruptor `Gestionar`):** `Directorio` abre siempre en Modo Lectura limpio. Solo Administradores y Super Admin ven el botón `Gestionar`, que habilita en la misma pantalla el panel completo de gestión de puestos, relevos y accesos.
 - **Decisión 3 (Simplificación visual de badges):** En modo gestión se reducen colores y etiquetas redundantes para mostrar claramente de un vistazo quién tiene acceso a la app y qué rol posee.
 - **Artefacto:** [directorio-unificado.md](specs/directorio-unificado.md)
+
+## 2026-11-22 — Spec `finanzas-fechas-estetica`
+- **Decisión 1 (Orden por fecha en Gastos y Movimientos):** Más recientes primero por defecto; en Gastos los Pendientes de LCR quedan siempre arriba y el resto se ordena al tocar el encabezado `Fecha` (o botón compacto `Fecha ↓/↑` en móvil).
+- **Decisión 2 (Filtro por fechas):** Botón compacto `Fechas` independiente en Gastos y Movimientos que despliega `Desde` / `Hasta` y `Limpiar fechas`, igual que en Calendario.
+- **Decisión 3 (Fecha de referencia en Gastos):** Se ordena y filtra por fecha contable / LCR (`expense_date`).
+- **Decisión 4 (Estética unificada):** Paleta azul marino institucional (`#072B52` / `#083563`) en controles y botones operativos, reservando verde solo para importes y confirmaciones positivas.
+- **Artefacto:** [finanzas-fechas-estetica.md](specs/finanzas-fechas-estetica.md)

@@ -1,8 +1,11 @@
 import React, { lazy, Suspense, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Ban,
   Banknote,
+  CalendarRange,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -16,6 +19,7 @@ import {
   Wallet,
   Zap,
 } from 'lucide-react';
+import { matchesDateRange } from '../lib/calendarHelpers';
 import {
   formatCurrency,
   formatDate,
@@ -151,9 +155,19 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     loadDismissedDuplicatePairs()
   );
 
-  // Filtros del Libro de Comprobantes y filas desplegadas (Varios)
+  // Filtros y orden del Libro de Comprobantes (Gastos) y filas desplegadas (Varios)
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [ledgerFilter, setLedgerFilter] = useState<'ALL' | 'PENDING_LCR' | 'PROJECTED'>('ALL');
+  const [ledgerSortDir, setLedgerSortDir] = useState<'desc' | 'asc'>('desc');
+  const [showLedgerDateFilter, setShowLedgerDateFilter] = useState(false);
+  const [ledgerDateFrom, setLedgerDateFrom] = useState('');
+  const [ledgerDateTo, setLedgerDateTo] = useState('');
+
+  // Orden y rango de fechas de Movimientos
+  const [withdrawalSortDir, setWithdrawalSortDir] = useState<'desc' | 'asc'>('desc');
+  const [showWithdrawalDateFilter, setShowWithdrawalDateFilter] = useState(false);
+  const [withdrawalDateFrom, setWithdrawalDateFrom] = useState('');
+  const [withdrawalDateTo, setWithdrawalDateTo] = useState('');
   const [expandedSharedKeys, setExpandedSharedKeys] = useState<Record<string, boolean>>({});
   const [selectedLcrKeys, setSelectedLcrKeys] = useState<string[]>([]);
   const [isBatchReconciling, setIsBatchReconciling] = useState(false);
@@ -420,19 +434,43 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
             return true;
           });
 
-    return sourceList.filter((m) => {
-      if (!q) return true;
-      const orgNames = m.records
-        .map((r) => ORGANIZATION_SHORT_LABELS[r.organization].toLowerCase())
-        .join(' ');
-      return (
-        m.primary.concept.toLowerCase().includes(q) ||
-        m.primary.supplier_name.toLowerCase().includes(q) ||
-        (m.primary.ref_number || '').toLowerCase().includes(q) ||
-        orgNames.includes(q)
-      );
-    });
-  }, [groupedMovements, projectedMovements, ledgerSearch, ledgerFilter]);
+    return sourceList
+      .filter((m) => {
+        if (
+          (ledgerDateFrom || ledgerDateTo) &&
+          !matchesDateRange(m.accountingDate, ledgerDateFrom, ledgerDateTo)
+        ) {
+          return false;
+        }
+        if (!q) return true;
+        const orgNames = m.records
+          .map((r) => ORGANIZATION_SHORT_LABELS[r.organization].toLowerCase())
+          .join(' ');
+        return (
+          m.primary.concept.toLowerCase().includes(q) ||
+          m.primary.supplier_name.toLowerCase().includes(q) ||
+          (m.primary.ref_number || '').toLowerCase().includes(q) ||
+          orgNames.includes(q)
+        );
+      })
+      .sort((a, b) => {
+        // Pendientes de LCR siempre arriba
+        if (a.isPendingLcr && !b.isPendingLcr) return -1;
+        if (!a.isPendingLcr && b.isPendingLcr) return 1;
+        // Orden por fecha contable / LCR
+        return ledgerSortDir === 'desc'
+          ? b.accountingDate.localeCompare(a.accountingDate)
+          : a.accountingDate.localeCompare(b.accountingDate);
+      });
+  }, [
+    groupedMovements,
+    projectedMovements,
+    ledgerSearch,
+    ledgerFilter,
+    ledgerDateFrom,
+    ledgerDateTo,
+    ledgerSortDir,
+  ]);
 
   const handleOpenPassToExpense = (m: GroupedExpenseMovement) => {
     setEditingGroup({
@@ -463,6 +501,12 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
         if (withdrawalTypeFilter !== 'ALL' && w.movementType !== withdrawalTypeFilter) {
           return false;
         }
+        if (
+          (withdrawalDateFrom || withdrawalDateTo) &&
+          !matchesDateRange(w.withdrawal_date, withdrawalDateFrom, withdrawalDateTo)
+        ) {
+          return false;
+        }
         if (!q) return true;
 
         const matchesText =
@@ -477,8 +521,19 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
         return matchesText || matchesAmount;
       })
-      .sort((a, b) => b.withdrawal_date.localeCompare(a.withdrawal_date));
-  }, [reconciliationStats.withdrawalDetails, withdrawalTypeFilter, withdrawalSearch]);
+      .sort((a, b) =>
+        withdrawalSortDir === 'desc'
+          ? b.withdrawal_date.localeCompare(a.withdrawal_date)
+          : a.withdrawal_date.localeCompare(b.withdrawal_date)
+      );
+  }, [
+    reconciliationStats.withdrawalDetails,
+    withdrawalTypeFilter,
+    withdrawalSearch,
+    withdrawalDateFrom,
+    withdrawalDateTo,
+    withdrawalSortDir,
+  ]);
 
   // =========================================================================
   // 3. HANDLERS
@@ -867,7 +922,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                         setSubTab('EXPENSES');
                         setLedgerFilter('PROJECTED');
                       }}
-                      className="pressable px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold"
+                      className="pressable px-2.5 py-1 rounded-xl bg-[#072B52] hover:bg-[#083563] text-white text-[11px] font-bold"
                     >
                       Ir a Proyectados
                     </button>
@@ -896,7 +951,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       type="button"
                       data-testid="checklist-go-withdrawals"
                       onClick={() => setSubTab('WITHDRAWALS')}
-                      className="pressable px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold"
+                      className="pressable px-2.5 py-1 rounded-xl bg-[#072B52] hover:bg-[#083563] text-white text-[11px] font-bold"
                     >
                       Ir a Retiros
                     </button>
@@ -1117,16 +1172,49 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   ))}
                 </div>
 
-                <div className="relative flex-1 sm:flex-none sm:w-56 md:w-64">
+                <div className="relative flex-1 sm:flex-none sm:w-52 md:w-60">
                   <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Buscar por propósito, proveedor o ref..."
                     value={ledgerSearch}
                     onChange={(e) => setLedgerSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#072B52]/20 focus:border-[#072B52] transition"
                   />
                 </div>
+
+                <button
+                  type="button"
+                  data-testid="ledger-date-filter-toggle"
+                  onClick={() => setShowLedgerDateFilter((prev) => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition whitespace-nowrap ${
+                    ledgerDateFrom || ledgerDateTo || showLedgerDateFilter
+                      ? 'bg-sky-50 border-[#072B52] text-[#072B52]'
+                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  }`}
+                  title="Filtrar por rango de fecha contable LCR"
+                >
+                  <CalendarRange className="w-3.5 h-3.5" />
+                  <span>Fechas</span>
+                  {(ledgerDateFrom || ledgerDateTo) && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#083563]" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="ledger-date-sort-mobile"
+                  onClick={() => setLedgerSortDir((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                  className="md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition whitespace-nowrap"
+                  title="Alternar orden por fecha contable"
+                >
+                  <span>Fecha</span>
+                  {ledgerSortDir === 'desc' ? (
+                    <ArrowDown className="w-3.5 h-3.5 text-[#072B52]" />
+                  ) : (
+                    <ArrowUp className="w-3.5 h-3.5 text-[#072B52]" />
+                  )}
+                </button>
 
                 {canEdit && (
                   <button
@@ -1143,6 +1231,48 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   </button>
                 )}
               </div>
+            </div>
+          )}
+
+          {subTab === 'EXPENSES' && (showLedgerDateFilter || ledgerDateFrom || ledgerDateTo) && (
+            <div
+              data-testid="ledger-date-range-bar"
+              className="border-t border-slate-100 bg-slate-50/70 px-4 py-2 flex flex-wrap items-center gap-2 text-xs"
+            >
+              <span className="text-[11px] font-bold text-slate-500">Fecha contable LCR:</span>
+              <label className="inline-flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-slate-600">Desde</span>
+                <input
+                  type="date"
+                  data-testid="ledger-date-from"
+                  value={ledgerDateFrom}
+                  onChange={(e) => setLedgerDateFrom(e.target.value)}
+                  className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                />
+              </label>
+              <label className="inline-flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-slate-600">Hasta</span>
+                <input
+                  type="date"
+                  data-testid="ledger-date-to"
+                  value={ledgerDateTo}
+                  onChange={(e) => setLedgerDateTo(e.target.value)}
+                  className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                />
+              </label>
+              {(ledgerDateFrom || ledgerDateTo) && (
+                <button
+                  type="button"
+                  data-testid="ledger-date-clear"
+                  onClick={() => {
+                    setLedgerDateFrom('');
+                    setLedgerDateTo('');
+                  }}
+                  className="px-2.5 py-1 rounded-xl text-[11px] font-bold text-[#072B52] bg-sky-50 border border-sky-200 hover:bg-sky-100 transition"
+                >
+                  Limpiar fechas
+                </button>
+              )}
             </div>
           )}
 
@@ -1184,16 +1314,51 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                   ))}
                 </div>
 
-                <div className="relative flex-1 sm:flex-none sm:w-56 md:w-64">
+                <div className="relative flex-1 sm:flex-none sm:w-52 md:w-60">
                   <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Buscar por ref., propósito o monto..."
                     value={withdrawalSearch}
                     onChange={(e) => setWithdrawalSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-slate-500 transition"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#072B52]/20 focus:border-[#072B52] transition"
                   />
                 </div>
+
+                <button
+                  type="button"
+                  data-testid="withdrawal-date-filter-toggle"
+                  onClick={() => setShowWithdrawalDateFilter((prev) => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition whitespace-nowrap ${
+                    withdrawalDateFrom || withdrawalDateTo || showWithdrawalDateFilter
+                      ? 'bg-sky-50 border-[#072B52] text-[#072B52]'
+                      : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  }`}
+                  title="Filtrar movimientos por rango de fechas"
+                >
+                  <CalendarRange className="w-3.5 h-3.5" />
+                  <span>Fechas</span>
+                  {(withdrawalDateFrom || withdrawalDateTo) && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#083563]" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="withdrawal-date-sort-mobile"
+                  onClick={() =>
+                    setWithdrawalSortDir((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                  }
+                  className="md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition whitespace-nowrap"
+                  title="Alternar orden por fecha"
+                >
+                  <span>Fecha</span>
+                  {withdrawalSortDir === 'desc' ? (
+                    <ArrowDown className="w-3.5 h-3.5 text-[#072B52]" />
+                  ) : (
+                    <ArrowUp className="w-3.5 h-3.5 text-[#072B52]" />
+                  )}
+                </button>
 
                 {canEdit && (
                   <button
@@ -1209,6 +1374,49 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               </div>
             </div>
           )}
+
+          {subTab === 'WITHDRAWALS' &&
+            (showWithdrawalDateFilter || withdrawalDateFrom || withdrawalDateTo) && (
+              <div
+                data-testid="withdrawal-date-range-bar"
+                className="border-t border-slate-100 bg-slate-50/70 px-4 py-2 flex flex-wrap items-center gap-2 text-xs"
+              >
+                <span className="text-[11px] font-bold text-slate-500">Rango de fechas:</span>
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-600">Desde</span>
+                  <input
+                    type="date"
+                    data-testid="withdrawal-date-from"
+                    value={withdrawalDateFrom}
+                    onChange={(e) => setWithdrawalDateFrom(e.target.value)}
+                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-600">Hasta</span>
+                  <input
+                    type="date"
+                    data-testid="withdrawal-date-to"
+                    value={withdrawalDateTo}
+                    onChange={(e) => setWithdrawalDateTo(e.target.value)}
+                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                  />
+                </label>
+                {(withdrawalDateFrom || withdrawalDateTo) && (
+                  <button
+                    type="button"
+                    data-testid="withdrawal-date-clear"
+                    onClick={() => {
+                      setWithdrawalDateFrom('');
+                      setWithdrawalDateTo('');
+                    }}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-bold text-[#072B52] bg-sky-50 border border-sky-200 hover:bg-sky-100 transition"
+                  >
+                    Limpiar fechas
+                  </button>
+                )}
+              </div>
+            )}
 
           {/* Controles fijos de Presupuestos (fusionados con la barra superior como Gastos y Movimientos) */}
           {subTab === 'BUDGETS' && (
@@ -1311,7 +1519,28 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                     <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                       <tr>
                         <th className="py-3 pl-3 pr-1 w-8" aria-label="Desplegar" />
-                        <th className="py-3 px-3 whitespace-nowrap">Fecha</th>
+                        <th className="py-3 px-3 whitespace-nowrap">
+                          <button
+                            type="button"
+                            data-testid="ledger-date-sort-header"
+                            onClick={() =>
+                              setLedgerSortDir((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                            }
+                            className="inline-flex items-center gap-1 uppercase tracking-wider font-bold text-[#072B52] hover:text-[#083563] transition cursor-pointer select-none"
+                            title={
+                              ledgerSortDir === 'desc'
+                                ? 'Ordenado de más reciente a más antiguo (clic para invertir)'
+                                : 'Ordenado de más antiguo a más reciente (clic para invertir)'
+                            }
+                          >
+                            <span>Fecha</span>
+                            {ledgerSortDir === 'desc' ? (
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            ) : (
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </th>
                         <th className="py-3 px-3 whitespace-nowrap">Referencia</th>
                         <th className="py-3 px-3 whitespace-nowrap">Organización</th>
                         <th className="py-3 px-3 whitespace-nowrap">Fecha Act.</th>
@@ -1475,7 +1704,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                                           title="Pasar a gasto real"
                                           data-testid={`pass-projected-btn-${m.primary.id}`}
                                           onClick={() => handleOpenPassToExpense(m)}
-                                          className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] font-bold whitespace-nowrap shadow-2xs"
+                                          className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-[#083563] hover:bg-[#072B52] text-white text-[11px] font-bold whitespace-nowrap shadow-2xs"
                                         >
                                           <Receipt className="w-3 h-3" />
                                           <span>Pasar a gasto</span>
@@ -1687,7 +1916,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                               type="button"
                               data-testid={`mob-pass-projected-btn-${m.primary.id}`}
                               onClick={() => handleOpenPassToExpense(m)}
-                              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] font-bold"
+                              className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#083563] hover:bg-[#072B52] text-white text-[11px] font-bold"
                             >
                               <Receipt className="w-3.5 h-3.5" />
                               <span>Pasar a gasto</span>
@@ -1740,7 +1969,28 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="py-3 px-4 whitespace-nowrap">Fecha</th>
+                      <th className="py-3 px-4 whitespace-nowrap">
+                        <button
+                          type="button"
+                          data-testid="withdrawal-date-sort-header"
+                          onClick={() =>
+                            setWithdrawalSortDir((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                          }
+                          className="inline-flex items-center gap-1 uppercase tracking-wider font-bold text-[#072B52] hover:text-[#083563] transition cursor-pointer select-none"
+                          title={
+                            withdrawalSortDir === 'desc'
+                              ? 'Ordenado de más reciente a más antiguo (clic para invertir)'
+                              : 'Ordenado de más antiguo a más reciente (clic para invertir)'
+                          }
+                        >
+                          <span>Fecha</span>
+                          {withdrawalSortDir === 'desc' ? (
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          ) : (
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </th>
                       <th className="py-3 px-3 whitespace-nowrap">Referencia</th>
                       <th className="py-3 px-3 whitespace-nowrap">Tipo</th>
                       <th className="py-3 px-3">Propósito</th>

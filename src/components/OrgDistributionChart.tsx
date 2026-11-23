@@ -199,19 +199,15 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
           data: periodStats.items.map((o) =>
             isPercent ? o.percent : o.amount
           ),
-          backgroundColor: periodStats.items.map((o) =>
-            o.isYouth
-              ? 'rgba(245, 158, 11, 0.90)' // ámbar cálido característico para Jóvenes
-              : isIncome
-              ? 'rgba(15, 118, 110, 0.85)' // teal-700 para ingresos
-              : 'rgba(225, 29, 72, 0.82)' // rose-600 para gastos
+          backgroundColor: periodStats.items.map(() =>
+            isIncome
+              ? 'rgba(8, 53, 99, 0.88)' // azul tarjeta (#083563) para ingresos
+              : 'rgba(190, 18, 60, 0.84)' // coral sobrio para gastos
           ),
-          hoverBackgroundColor: periodStats.items.map((o) =>
-            o.isYouth
-              ? 'rgba(217, 119, 6, 1)'
-              : isIncome
-              ? 'rgba(17, 94, 89, 1)'
-              : 'rgba(190, 18, 60, 1)'
+          hoverBackgroundColor: periodStats.items.map(() =>
+            isIncome
+              ? 'rgba(7, 43, 82, 1)' // #072B52
+              : 'rgba(159, 18, 57, 1)'
           ),
           borderRadius: 8,
           borderSkipped: false as const,
@@ -246,11 +242,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               ? formatPercentEs(item.percent)
               : formatCurrency(item.amount);
 
-          ctx.fillStyle = item.isYouth
-            ? '#b45309'
-            : metricMode === 'INGRESOS'
-            ? '#0f172a'
-            : '#881337';
+          ctx.fillStyle = metricMode === 'INGRESOS' ? '#072B52' : '#881337';
 
           if (isCompactCanvas) {
             ctx.save();
@@ -294,7 +286,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
           display: false,
         },
         tooltip: {
-          backgroundColor: '#0f172a',
+          backgroundColor: '#072B52',
           titleFont: {
             family: '"Plus Jakarta Sans", sans-serif',
             size: 12,
@@ -380,8 +372,8 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
           <div
             className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 transition-colors ${
               metricMode === 'INGRESOS'
-                ? 'bg-emerald-50 border border-emerald-100 text-emerald-800'
-                : 'bg-rose-50 border border-rose-100 text-rose-800'
+                ? 'bg-sky-50 border border-sky-200/80 text-[#083563]'
+                : 'bg-rose-50 border border-rose-200/80 text-rose-700'
             }`}
           >
             {metricMode === 'INGRESOS' ? (
@@ -411,7 +403,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               title="Ver jóvenes unificados en una sola barra (HJ + MJ + Seminario)"
               className={`pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 youthGrouping === 'UNIFICADOS'
-                  ? 'bg-amber-500 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
@@ -425,7 +417,7 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
               title="Separar jóvenes en Hombres Jóvenes, Mujeres Jóvenes y Seminario"
               className={`pressable px-2.5 py-1.5 rounded-none text-xs font-extrabold transition ${
                 youthGrouping === 'DESGLOSADOS'
-                  ? 'bg-amber-500 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
@@ -538,26 +530,19 @@ export const OrgDistributionChart: React.FC<OrgDistributionChartProps> = ({ orgS
         />
       </div>
 
-      {/* Leyenda limpia y elegante al pie (reemplaza a la reseña pesada) */}
+      {/* Leyenda limpia y unificada al pie */}
       <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-slate-500">
-        <div className="flex items-center gap-4">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
-            <span>
-              {youthGrouping === 'UNIFICADOS'
-                ? 'Jóvenes (HJ + MJ + Seminario)'
-                : 'Nuevas Generaciones'}
-            </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className={`w-2.5 h-2.5 rounded-full inline-block ${
+              metricMode === 'INGRESOS' ? 'bg-[#083563]' : 'bg-rose-700'
+            }`}
+          />
+          <span>
+            {metricMode === 'INGRESOS' ? 'Fondos asignados' : 'Gastos ejecutados'}
+            {youthGrouping === 'UNIFICADOS' ? ' · Jóvenes unificados (HJ + MJ + Seminario)' : ''}
           </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              className={`w-2.5 h-2.5 rounded-full inline-block ${
-                metricMode === 'INGRESOS' ? 'bg-teal-700' : 'bg-rose-600'
-              }`}
-            />
-            <span>Resto de Organizaciones</span>
-          </span>
-        </div>
+        </span>
 
         <span className="text-slate-400 text-[10px] tabular-nums">
           {metricMode === 'INGRESOS' ? 'Base: Fondos presupuestados' : 'Base: Gastos devengados'} ({periodFilter === 'GLOBAL' ? 'Anual' : periodFilter})

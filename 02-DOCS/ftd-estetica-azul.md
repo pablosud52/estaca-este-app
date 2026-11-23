@@ -14,6 +14,7 @@ Alinear el ícono de la app y toda la interfaz visual con la nueva estética de 
 - Parte 2: `npm run build` exitoso tras aplicar Estilo 1 en `tailwind.config.js`, `PresidencyHub.tsx` y `LeaderView.tsx`.
 - Parte 3: `npm run build` exitoso tras aplicar Opción 1 en `LoginView.tsx` y alinear botones, trimestres y modales en `PresidencyHub.tsx` y `LeaderView.tsx`.
 - Parte 4: `npm run build` exitoso tras alinear vistas (`CalendarView`, `SuppliersView`, `LeadersDirectoryView`), centro de Administración (`AdminOperationsCenter`, `FinancialInfoSection`), gráficos, banner PWA y modales.
+- Gráfico de distribución (`OrgDistributionChart.tsx`): botón Jóvenes unificado en `#072B52`, barras unificadas (Ingresos `#083563`, Gastos coral sobrio `rose-700`), tooltip `#072B52` y leyenda simplificada.
 
 ## Próximo paso
 Revisión visual en navegador por el usuario y commit/despliegue cuando esté conforme.

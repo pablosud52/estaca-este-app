@@ -7,6 +7,7 @@ import {
   Upload,
   AlertCircle,
   Check,
+  Wrench,
   X,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../lib/formatters';
@@ -231,6 +232,32 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
 
   return (
     <div data-testid="excel-sync-panel" className="space-y-5">
+      {/* AVISO TEMPORAL: EN CONSTRUCCIÓN */}
+      <div
+        data-testid="excel-under-construction-banner"
+        role="status"
+        className="rounded-3xl bg-gradient-to-br from-[#083563] via-[#072B52] to-[#051E3B] text-white p-5 sm:p-6 shadow-md border border-white/10 flex flex-col sm:flex-row sm:items-center gap-4"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-amber-400/20 border border-amber-300/30 text-amber-300 flex items-center justify-center flex-shrink-0">
+          <Wrench className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm sm:text-base font-extrabold tracking-tight">
+              Sincronización con Excel — En construcción
+            </h3>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-400/20 text-amber-200 border border-amber-300/30">
+              Deshabilitado temporalmente
+            </span>
+          </div>
+          <p className="text-xs text-sky-100/90 leading-relaxed">
+            Esta sección se habilitará al finalizar el ajuste completo de Finanzas para garantizar que
+            todas las hojas, columnas y validaciones de exportación e importación coincidan al 100% con
+            el sistema.
+          </p>
+        </div>
+      </div>
+
       {statusMessage && (
         <div
           data-testid="excel-sync-toast"
@@ -249,12 +276,12 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 opacity-60 pointer-events-none select-none" aria-disabled="true">
         {/* TARJETA 1: EXPORTAR LIBRO OFICIAL EXCEL */}
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/90 flex flex-col justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-2xl bg-slate-100 border border-slate-200 text-slate-500 flex items-center justify-center">
                 <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
@@ -262,13 +289,13 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
                   Respaldo y Exportación a Excel (.xlsx)
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Compatible con la estructura auditada de Ejemplo_DB_Finanzas.xlsx (ADR-014)
+                  En revisión para incluir todas las tablas actualizadas
                 </p>
               </div>
             </div>
 
             <div className="mt-4 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1.5">
-              <p className="font-bold text-slate-800">Hojas incluidas en la exportación:</p>
+              <p className="font-bold text-slate-800">Hojas previstas en la exportación:</p>
               <ul className="grid grid-cols-2 gap-1 text-[11px] font-medium text-slate-600">
                 <li>• PRESUPUESTO_ASIGNACION ({budgets.length})</li>
                 <li>• MOVIMIENTOS_GASTOS ({expenses.length})</li>
@@ -282,12 +309,13 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
 
           <button
             type="button"
+            disabled
             data-testid="btn-export-excel"
             onClick={handleExportExcel}
-            className="pressable w-full py-3 px-4 rounded-2xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"
+            className="w-full py-3 px-4 rounded-2xl bg-slate-300 text-slate-600 text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 cursor-not-allowed"
           >
             <Download className="w-4 h-4" />
-            <span>📥 Exportar Excel</span>
+            <span>Exportar Excel (En construcción)</span>
           </button>
         </div>
 
@@ -295,7 +323,7 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/90 flex flex-col justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-sky-50 border border-sky-200 text-sky-800 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-2xl bg-slate-100 border border-slate-200 text-slate-500 flex items-center justify-center">
                 <Upload className="w-5 h-5" />
               </div>
               <div>
@@ -303,47 +331,29 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
                   Importación con Vista Previa (Preview)
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Valida columnas e importes antes de impactar en la base de datos
+                  Deshabilitada temporalmente hasta definir el formato final
                 </p>
               </div>
             </div>
 
             <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={async (e) => {
-                e.preventDefault();
-                setIsDragging(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) {
-                  const buf = await file.arrayBuffer();
-                  processExcelBuffer(buf, file.name);
-                }
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              className={`mt-4 p-5 rounded-2xl border-2 border-dashed text-center cursor-pointer transition ${
-                isDragging
-                  ? 'border-emerald-600 bg-emerald-50/60'
-                  : 'border-slate-300 hover:border-emerald-600 bg-slate-50/60'
-              }`}
+              className="mt-4 p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/60 text-center"
             >
               <input
                 ref={fileInputRef}
                 data-testid="excel-file-input"
                 type="file"
                 accept=".xlsx,.xls"
+                disabled
                 onChange={handleFileChange}
                 className="hidden"
               />
               <Upload className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
-              <p className="text-xs font-extrabold text-slate-800">
-                Arrastra aquí tu archivo .xlsx o toca para seleccionar
+              <p className="text-xs font-extrabold text-slate-600">
+                Carga de archivos deshabilitada temporalmente
               </p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Valida automáticamente hojas y formato numérico
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Se activará al completar la actualización de Finanzas
               </p>
             </div>
           </div>
@@ -351,19 +361,21 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <button
               type="button"
+              disabled
               data-testid="btn-import-excel-trigger"
               onClick={() => fileInputRef.current?.click()}
-              className="pressable py-2.5 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm"
+              className="py-2.5 px-4 rounded-2xl bg-slate-300 text-slate-600 text-xs font-extrabold flex items-center justify-center gap-2 cursor-not-allowed"
             >
-              <Upload className="w-4 h-4 text-emerald-400" />
-              <span>📤 Importar Excel</span>
+              <Upload className="w-4 h-4" />
+              <span>Importar Excel (Deshabilitado)</span>
             </button>
 
             <button
               type="button"
+              disabled
               data-testid="btn-preview-template-excel"
               onClick={handleSimulateTemplatePreview}
-              className="pressable py-2.5 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-200"
+              className="py-2.5 px-3 rounded-2xl bg-slate-100 text-slate-400 text-xs font-bold border border-slate-200 cursor-not-allowed"
             >
               Validar Plantilla Activa
             </button>

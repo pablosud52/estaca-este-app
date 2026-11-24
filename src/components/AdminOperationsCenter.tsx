@@ -16,6 +16,7 @@ import {
   Plus,
   Receipt,
   Search,
+  Trash2,
   Wallet,
   Zap,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import {
   getExpenseEffectiveDate,
   getExpenseWithdrawalAllocations,
   getQuarterFromDate,
+  getTodayLocalIso,
   isExpenseApplied,
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
@@ -41,6 +43,7 @@ import {
   SupplierRecord,
 } from '../types/database';
 import { computeClosingCapStats, computeYearIncomeSummary } from '../lib/budgetUtils';
+import { useAuth } from '../context/AuthContext';
 import {
   detectDuplicateGroups,
   dismissDuplicateGroupPairs,
@@ -87,6 +90,7 @@ interface AdminOperationsCenterProps {
     targetWithdrawalRef?: string
   ) => Promise<void>;
   onCloseWithdrawalInZero?: (id: number, returnAmount: number, returnDate: string) => Promise<void>;
+  onDeleteWithdrawal?: (id: number) => Promise<void>;
   onCreateSupplier: (supplier: Omit<SupplierRecord, 'id'>) => Promise<void>;
   onSaveBudgetAllocation?: (
     allocation: Omit<BudgetAllocation, 'id' | 'total_assigned'> & { id?: number }
@@ -126,17 +130,25 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   onReconcileLcrExpense,
   onReconcileLcrExpenseGroup,
   onCreateWithdrawal,
+  onCloseWithdrawalInZero,
+  onDeleteWithdrawal,
   onCreateSupplier,
   onSaveBudgetAllocation,
   onSaveOpeningBalance,
   onSaveQuarterIncomes,
   onResetFutureYearProjection,
 }) => {
+  const { user } = useAuth();
   const [subTab, setSubTab] = useState<'EXPENSES' | 'WITHDRAWALS' | 'BUDGETS' | 'EXCEL_SYNC'>(
     'EXPENSES'
   );
   const [budgetSubTab, setBudgetSubTab] = useState<'INCOMES' | 'DISTRIBUTION'>('INCOMES');
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [confirmWithdrawalAction, setConfirmWithdrawalAction] = useState<{
+    id: number;
+    type: 'close' | 'delete';
+  } | null>(null);
+  const [confirmResetProjection, setConfirmResetProjection] = useState(false);
 
   const budgetYearSummary = useMemo(
     () => computeYearIncomeSummary(budgetIncomes, selectedYear),
@@ -182,11 +194,11 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   const [withdrawalSearch, setWithdrawalSearch] = useState('');
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayStr = useMemo(() => getTodayLocalIso(), []);
 
-  const triggerToast = (msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 4500);
+  const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToastMsg({ text: msg, type });
+    setTimeout(() => setToastMsg(null), type === 'error' ? 6000 : 4500);
   };
 
   // =========================================================================
@@ -194,22 +206,11 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
   // =========================================================================
   const reconciliationStats = useMemo(() => {
     const appliedExpenses = expenses.filter((e) => isExpenseApplied(e));
-    const yearWithdrawals = withdrawals.filter((w) =>
-      w.withdrawal_date.startsWith(String(selectedYear))
-    );
-    const cashWithdrawalsOnly = yearWithdrawals.filter(
-      (w) => !w.movement_type || w.movement_type === 'EFECTIVO'
-    );
+    const allAppliedExpenses = (allExpenses ?? expenses).filter((e) => isExpenseApplied(e));
 
-    const totalWithdrawn = cashWithdrawalsOnly.reduce((acc, w) => acc + Number(w.amount), 0);
-    const totalReturnedDeposits = cashWithdrawalsOnly.reduce(
-      (acc, w) => acc + Number(w.returned_amount || 0),
-      0
-    );
-
-    // Sumar cuánto consumió cada retiro usando `withdrawal_allocations` (soporta hasta 2 retiros por gasto)
+    // Sumar cuánto consumió cada retiro usando `withdrawal_allocations` (soporta hasta 2 retiros por gasto y arrastre entre años)
     const renderedByRef = new Map<string, number>();
-    appliedExpenses.forEach((exp) => {
+    allAppliedExpenses.forEach((exp) => {
       const allocs = getExpenseWithdrawalAllocations(exp);
       allocs.forEach((a) => {
         renderedByRef.set(
@@ -219,7 +220,28 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       });
     });
 
-    const withdrawalDetails = yearWithdrawals.map((w) => {
+    const yearStartStr = `${selectedYear}-01-01`;
+    const relevantWithdrawals = withdrawals.filter((w) => {
+      if (w.withdrawal_date.startsWith(String(selectedYear))) return true;
+      // Mantener visibles retiros de efectivo abiertos de años anteriores (ej. diciembre del año previo)
+      const isCash = !w.movement_type || w.movement_type === 'EFECTIVO';
+      if (!isCash || w.withdrawal_date >= yearStartStr || w.status === 'CERRADO_EN_CERO') return false;
+      const spent = renderedByRef.get(w.withdrawal_ref) || 0;
+      const pending = Number((Number(w.amount) - spent - Number(w.returned_amount || 0)).toFixed(2));
+      return pending > 0;
+    });
+
+    const cashWithdrawalsOnly = relevantWithdrawals.filter(
+      (w) => !w.movement_type || w.movement_type === 'EFECTIVO'
+    );
+
+    const totalWithdrawn = cashWithdrawalsOnly.reduce((acc, w) => acc + Number(w.amount), 0);
+    const totalReturnedDeposits = cashWithdrawalsOnly.reduce(
+      (acc, w) => acc + Number(w.returned_amount || 0),
+      0
+    );
+
+    const withdrawalDetails = relevantWithdrawals.map((w) => {
       const mType: MovementType = w.movement_type || 'EFECTIVO';
       const renderedAmount =
         mType === 'EFECTIVO' ? renderedByRef.get(w.withdrawal_ref) || 0 : Number(w.amount);
@@ -319,7 +341,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       totalPendingDifference,
       semaphoreState,
     };
-  }, [withdrawals, expenses, budgets, selectedYear]);
+  }, [withdrawals, expenses, allExpenses, budgets, selectedYear]);
 
   const openWithdrawalOptions: OpenWithdrawalOption[] = useMemo(
     () =>
@@ -637,34 +659,105 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
           ? '1 comprobante marcado como registrado en LCR.'
           : `${count} comprobantes marcados como registrados en LCR.`
       );
+    } catch (err) {
+      triggerToast(
+        err instanceof Error ? err.message : 'No se pudieron conciliar los comprobantes en LCR.',
+        'error'
+      );
     } finally {
       setIsBatchReconciling(false);
     }
   };
 
   const handleReconcileGroup = async (movement: GroupedExpenseMovement) => {
-    if (onReconcileLcrExpenseGroup) {
-      await onReconcileLcrExpenseGroup(movement.ids);
-    } else {
-      for (const id of movement.ids) {
-        await onReconcileLcrExpense(id);
+    try {
+      if (onReconcileLcrExpenseGroup) {
+        await onReconcileLcrExpenseGroup(movement.ids);
+      } else {
+        for (const id of movement.ids) {
+          await onReconcileLcrExpense(id);
+        }
       }
+      triggerToast(
+        `Comprobante "${movement.primary.concept}" (${formatCurrency(
+          movement.totalGross
+        )}) marcado como registrado en LCR.`
+      );
+    } catch (err) {
+      triggerToast(
+        err instanceof Error ? err.message : 'No se pudo conciliar el comprobante en LCR.',
+        'error'
+      );
     }
-    triggerToast(
-      `Comprobante "${movement.primary.concept}" (${formatCurrency(
-        movement.totalGross
-      )}) marcado como registrado en LCR.`
-    );
   };
 
   const handleDeleteDuplicateMovement = async (movement: GroupedExpenseMovement) => {
     if (!onDeleteExpenseGroup) return;
-    await onDeleteExpenseGroup(movement.ids);
-    triggerToast(
-      `Gasto duplicado "${movement.primary.concept}" (${formatCurrency(
-        movement.totalGross
-      )}) eliminado.`
-    );
+    try {
+      await onDeleteExpenseGroup(movement.ids);
+      triggerToast(
+        `Gasto duplicado "${movement.primary.concept}" (${formatCurrency(
+          movement.totalGross
+        )}) eliminado.`
+      );
+    } catch (err) {
+      triggerToast(
+        err instanceof Error ? err.message : 'No se pudo eliminar el gasto duplicado.',
+        'error'
+      );
+    }
+  };
+
+  const handleCloseWithdrawalRow = async (w: {
+    id: number;
+    withdrawal_ref: string;
+    pendingToRender: number;
+  }) => {
+    if (!onCloseWithdrawalInZero) return;
+    try {
+      await onCloseWithdrawalInZero(w.id, w.pendingToRender, todayStr);
+      setConfirmWithdrawalAction(null);
+      triggerToast(
+        `Retiro ${w.withdrawal_ref} cerrado en 0,00 (devolución registrada: ${formatCurrency(
+          w.pendingToRender
+        )}).`
+      );
+    } catch (err) {
+      triggerToast(
+        err instanceof Error ? err.message : 'No se pudo cerrar el retiro en cero.',
+        'error'
+      );
+    }
+  };
+
+  const handleDeleteWithdrawalRow = async (w: {
+    id: number;
+    withdrawal_ref: string;
+    movementType: MovementType;
+  }) => {
+    if (!onDeleteWithdrawal) return;
+    const hasLinkedExpenses = (allExpenses ?? expenses).some((exp) => {
+      if (exp.withdrawal_ref === w.withdrawal_ref) return true;
+      return getExpenseWithdrawalAllocations(exp).some((a) => a.withdrawal_ref === w.withdrawal_ref);
+    });
+    if (hasLinkedExpenses) {
+      setConfirmWithdrawalAction(null);
+      triggerToast(
+        `No se puede eliminar ${w.withdrawal_ref} porque tiene gastos vinculados. Edita o elimina esos gastos primero.`,
+        'error'
+      );
+      return;
+    }
+    try {
+      await onDeleteWithdrawal(w.id);
+      setConfirmWithdrawalAction(null);
+      triggerToast(`Movimiento ${w.withdrawal_ref} eliminado.`);
+    } catch (err) {
+      triggerToast(
+        err instanceof Error ? err.message : 'No se pudo eliminar el movimiento.',
+        'error'
+      );
+    }
   };
 
   const handleIgnoreDuplicateGroup = (group: DuplicateGroup) => {
@@ -722,17 +815,17 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
           <div
             data-testid="monitor-card-global-budget"
-            className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80"
+            className="p-3.5 rounded-2xl bg-white/10 border border-white/15"
           >
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-sky-200">
               Presupuesto Global
             </span>
             <p
               data-testid="monitor-global-budget-amount"
-              className="text-lg font-extrabold text-emerald-300 tabular-nums mt-1"
+              className="text-lg font-extrabold text-white tabular-nums mt-1"
             >
               {formatCurrency(reconciliationStats.globalBudgetAvailable)}
             </p>
@@ -740,15 +833,15 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
           <div
             data-testid="monitor-card-cash-on-hand"
-            className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80"
+            className="p-3.5 rounded-2xl bg-white/10 border border-white/15"
           >
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-200">
               Monto en Efectivo
             </span>
             <p
               data-testid="monitor-cash-on-hand-amount"
               className={`text-lg font-extrabold tabular-nums mt-1 ${
-                reconciliationStats.cashOnHand < 0 ? 'text-rose-300' : 'text-white'
+                reconciliationStats.cashOnHand < 0 ? 'text-rose-200' : 'text-white'
               }`}
             >
               {formatCurrency(reconciliationStats.cashOnHand)}
@@ -757,22 +850,22 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
           <div
             data-testid="monitor-card-pending-lcr"
-            className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80"
+            className="p-3.5 rounded-2xl bg-white/10 border border-white/15"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-rose-300">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-rose-200">
                 Pendientes en LCR
               </span>
               <span
                 data-testid="monitor-pending-lcr-count"
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 tabular-nums"
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/25 text-rose-100 tabular-nums"
               >
                 {reconciliationStats.pendingLcrExpenses.length} en mano
               </span>
             </div>
             <p
               data-testid="monitor-pending-lcr-amount"
-              className="text-lg font-extrabold text-rose-300 tabular-nums mt-1"
+              className="text-lg font-extrabold text-rose-200 tabular-nums mt-1"
             >
               {formatCurrency(reconciliationStats.pendingLcrTotalAmount)}
             </p>
@@ -780,20 +873,14 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               data-testid="monitor-cash-after-pending-lcr"
               className={`text-[11px] mt-1 tabular-nums font-semibold ${
                 reconciliationStats.cashAfterPendingLcr < 0
-                  ? 'text-rose-300'
-                  : 'text-slate-400'
+                  ? 'text-rose-200'
+                  : 'text-sky-100/80'
               }`}
             >
               Efectivo − Pend. LCR:{' '}
               {formatCurrency(reconciliationStats.cashAfterPendingLcr)}
             </p>
           </div>
-
-          <div
-            data-testid="monitor-card-placeholder"
-            aria-hidden="true"
-            className="p-3.5 rounded-2xl bg-slate-800/40 border border-dashed border-slate-700/70 min-h-[92px]"
-          />
         </div>
       </div>
 
@@ -1016,10 +1103,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               <button
                 key={m.key}
                 type="button"
-                onClick={() => {
-                  setEditingGroup({ ids: m.ids, records: m.records });
-                  setIsExpenseModalOpen(true);
-                }}
+                onClick={() => handleOpenPassToExpense(m)}
                 className="px-3 py-1.5 rounded-xl bg-amber-900 hover:bg-amber-950 text-white text-[11px] font-extrabold"
               >
                 Rendir: {m.primary.concept}
@@ -1058,16 +1142,24 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       {toastMsg && (
         <div
           data-testid="admin-ops-toast"
-          role="status"
-          className="p-3.5 rounded-2xl bg-emerald-900 text-white text-xs font-bold shadow-sm flex items-center gap-2"
+          role={toastMsg.type === 'error' ? 'alert' : 'status'}
+          className={`p-3.5 rounded-2xl text-white text-xs font-bold shadow-sm flex items-center gap-2 ${
+            toastMsg.type === 'error'
+              ? 'bg-rose-700 border border-rose-600'
+              : 'bg-emerald-900'
+          }`}
         >
-          <CheckCircle2 className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-          <span>{toastMsg}</span>
+          {toastMsg.type === 'error' ? (
+            <AlertTriangle className="w-4 h-4 text-rose-200 flex-shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-300 flex-shrink-0" />
+          )}
+          <span>{toastMsg.text}</span>
         </div>
       )}
 
       {/* ==================== BLOQUE FIJO ÚNICO AL HACER SCROLL (PESTAÑAS + CONTROLES EN UNA SOLA CAJA) ==================== */}
-      <div className="sticky top-[62px] md:top-[108px] z-20 bg-slate-50 pt-1 pb-2">
+      <div className="sticky top-[62px] md:top-[108px] z-20 bg-slate-100/95 pt-1 pb-2">
         <div className="bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden">
           <div className="px-3 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <button
@@ -1179,7 +1271,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                     placeholder="Buscar por propósito, proveedor o ref..."
                     value={ledgerSearch}
                     onChange={(e) => setLedgerSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#072B52]/20 focus:border-[#072B52] transition"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-base sm:text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#072B52]/20 focus:border-[#072B52] transition"
                   />
                 </div>
 
@@ -1242,23 +1334,23 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
               <span className="text-[11px] font-bold text-slate-500">Fecha contable LCR:</span>
               <label className="inline-flex items-center gap-1.5">
                 <span className="text-[11px] font-semibold text-slate-600">Desde</span>
-                <input
-                  type="date"
-                  data-testid="ledger-date-from"
-                  value={ledgerDateFrom}
-                  onChange={(e) => setLedgerDateFrom(e.target.value)}
-                  className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
-                />
-              </label>
-              <label className="inline-flex items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-slate-600">Hasta</span>
-                <input
-                  type="date"
-                  data-testid="ledger-date-to"
-                  value={ledgerDateTo}
-                  onChange={(e) => setLedgerDateTo(e.target.value)}
-                  className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
-                />
+                  <input
+                    type="date"
+                    data-testid="ledger-date-from"
+                    value={ledgerDateFrom}
+                    onChange={(e) => setLedgerDateFrom(e.target.value)}
+                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-base sm:text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-600">Hasta</span>
+                  <input
+                    type="date"
+                    data-testid="ledger-date-to"
+                    value={ledgerDateTo}
+                    onChange={(e) => setLedgerDateTo(e.target.value)}
+                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-base sm:text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                  />
               </label>
               {(ledgerDateFrom || ledgerDateTo) && (
                 <button
@@ -1281,7 +1373,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
             <div className="border-t border-slate-200 px-4 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div className="flex items-center">
                 <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                  <span>Movimientos Tarjeta y Transferencias</span>
+                  <span>Movimientos de Efectivo y Salidas Directas</span>
                   <span className="text-xs font-bold text-slate-400 tabular-nums">
                     {filteredWithdrawals.length}
                   </span>
@@ -1321,7 +1413,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                     placeholder="Buscar por ref., propósito o monto..."
                     value={withdrawalSearch}
                     onChange={(e) => setWithdrawalSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#072B52]/20 focus:border-[#072B52] transition"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-300 text-base sm:text-xs font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-400 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#072B52]/20 focus:border-[#072B52] transition"
                   />
                 </div>
 
@@ -1389,7 +1481,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                     data-testid="withdrawal-date-from"
                     value={withdrawalDateFrom}
                     onChange={(e) => setWithdrawalDateFrom(e.target.value)}
-                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-base sm:text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
                   />
                 </label>
                 <label className="inline-flex items-center gap-1.5">
@@ -1399,7 +1491,7 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                     data-testid="withdrawal-date-to"
                     value={withdrawalDateTo}
                     onChange={(e) => setWithdrawalDateTo(e.target.value)}
-                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
+                    className="px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-base sm:text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#072B52]/20"
                   />
                 </label>
                 {(withdrawalDateFrom || withdrawalDateTo) && (
@@ -1420,43 +1512,100 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
 
           {/* Controles fijos de Presupuestos (fusionados con la barra superior como Gastos y Movimientos) */}
           {subTab === 'BUDGETS' && (
-            <div className="border-t border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-start gap-6 sm:gap-8">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                  <span>Presupuestos ({selectedYear})</span>
-                </h3>
-                {selectedYear > new Date().getFullYear() && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-900 border border-sky-200">
-                    Modo proyección
-                  </span>
-                )}
+            <div className="border-t border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    <span>Presupuestos ({selectedYear})</span>
+                  </h3>
+                  {selectedYear > new Date().getFullYear() && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-sky-100 text-sky-900 border border-sky-200">
+                      Modo proyección
+                    </span>
+                  )}
+                </div>
+
+                <div className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200 overflow-hidden divide-x divide-slate-200">
+                  <button
+                    type="button"
+                    data-testid="budget-subtab-incomes"
+                    onClick={() => setBudgetSubTab('INCOMES')}
+                    className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
+                      budgetSubTab === 'INCOMES'
+                        ? 'bg-[#072B52] text-white'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    1. Ingresos del Año
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="budget-subtab-distribution"
+                    onClick={() => setBudgetSubTab('DISTRIBUTION')}
+                    className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
+                      budgetSubTab === 'DISTRIBUTION'
+                        ? 'bg-[#072B52] text-white'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                  >
+                    2. Distribución por Organización
+                  </button>
+                </div>
               </div>
 
-              <div className="inline-flex items-center bg-slate-100 rounded-xl border border-slate-200 overflow-hidden divide-x divide-slate-200">
-                <button
-                  type="button"
-                  data-testid="budget-subtab-incomes"
-                  onClick={() => setBudgetSubTab('INCOMES')}
-                  className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
-                    budgetSubTab === 'INCOMES'
-                      ? 'bg-[#072B52] text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                  }`}
+              <div className="flex flex-wrap items-center gap-2">
+                <div
+                  data-testid="annual-income-grand-total"
+                  className="px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-200 text-xs font-extrabold text-[#072B52] tabular-nums"
                 >
-                  1. Ingresos del Año
-                </button>
-                <button
-                  type="button"
-                  data-testid="budget-subtab-distribution"
-                  onClick={() => setBudgetSubTab('DISTRIBUTION')}
-                  className={`px-3 py-1.5 rounded-none text-[11px] font-bold whitespace-nowrap transition ${
-                    budgetSubTab === 'DISTRIBUTION'
-                      ? 'bg-[#072B52] text-white'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                  }`}
-                >
-                  2. Distribución por Organización
-                </button>
+                  Total anual: {formatCurrency(budgetYearSummary.annualTotalAvailable)}
+                </div>
+
+                {canEdit &&
+                  selectedYear > new Date().getFullYear() &&
+                  onResetFutureYearProjection &&
+                  (confirmResetProjection ? (
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="confirm-reset-future-projection-btn"
+                        onClick={async () => {
+                          try {
+                            await onResetFutureYearProjection(selectedYear);
+                            setConfirmResetProjection(false);
+                            triggerToast(`Proyección del año ${selectedYear} restablecida.`);
+                          } catch (err) {
+                            setConfirmResetProjection(false);
+                            triggerToast(
+                              err instanceof Error
+                                ? err.message
+                                : `No se pudo restablecer la proyección de ${selectedYear}.`,
+                              'error'
+                            );
+                          }
+                        }}
+                        className="pressable px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold transition"
+                      >
+                        Confirmar limpieza {selectedYear}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmResetProjection(false)}
+                        className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-slate-600 hover:bg-slate-100 transition"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="reset-future-projection-btn"
+                      onClick={() => setConfirmResetProjection(true)}
+                      className="pressable px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-extrabold transition"
+                    >
+                      Limpiar proyección
+                    </button>
+                  ))}
               </div>
             </div>
           )}
@@ -1828,8 +1977,13 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                             <div className="min-w-0 flex-1 space-y-1">
                               <div className="flex items-center gap-2 flex-wrap text-xs">
                                 <span className="font-bold text-slate-800 tabular-nums">
-                                  {formatDate(m.effectiveDate)}
+                                  {formatDate(m.accountingDate)}
                                 </span>
+                                {m.effectiveDate !== m.accountingDate && (
+                                  <span className="text-[10px] font-semibold text-slate-500 tabular-nums">
+                                    (Act: {formatDate(m.effectiveDate)})
+                                  </span>
+                                )}
                                 <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                                   {!m.isApplied
                                     ? 'PROYECTADO'
@@ -1998,12 +2152,19 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                       <th className="py-3 px-3 text-right whitespace-nowrap">Pendiente</th>
                       <th className="py-3 px-4 text-right whitespace-nowrap">Monto</th>
                       <th className="py-3 pr-4 text-right whitespace-nowrap">Estado</th>
+                      {canEdit && (
+                        <th className="py-3 pr-4 text-right whitespace-nowrap">Acciones</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {filteredWithdrawals.map((w) => {
                       const isCash = w.movementType === 'EFECTIVO';
                       const isOpen = isCash && w.pendingToRender > 0;
+                      const isConfirmingClose =
+                        confirmWithdrawalAction?.id === w.id && confirmWithdrawalAction.type === 'close';
+                      const isConfirmingDelete =
+                        confirmWithdrawalAction?.id === w.id && confirmWithdrawalAction.type === 'delete';
                       return (
                         <tr
                           key={w.id}
@@ -2052,6 +2213,79 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                               </span>
                             )}
                           </td>
+                          {canEdit && (
+                            <td className="py-3 pr-4 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                {isConfirmingClose ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      data-testid={`confirm-close-withdrawal-${w.withdrawal_ref}`}
+                                      onClick={() => handleCloseWithdrawalRow(w)}
+                                      className="pressable px-2.5 py-1 rounded-lg bg-[#072B52] hover:bg-[#051E3B] text-white text-[10px] font-extrabold"
+                                    >
+                                      Confirmar 0,00
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmWithdrawalAction(null)}
+                                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </>
+                                ) : isConfirmingDelete ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      data-testid={`confirm-delete-withdrawal-${w.withdrawal_ref}`}
+                                      onClick={() => handleDeleteWithdrawalRow(w)}
+                                      className="pressable px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-extrabold"
+                                    >
+                                      Eliminar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmWithdrawalAction(null)}
+                                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {isOpen && onCloseWithdrawalInZero && (
+                                      <button
+                                        type="button"
+                                        data-testid={`close-withdrawal-btn-${w.withdrawal_ref}`}
+                                        onClick={() =>
+                                          setConfirmWithdrawalAction({ id: w.id, type: 'close' })
+                                        }
+                                        className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-[#072B52] border border-sky-200 text-[10px] font-extrabold"
+                                        title="Registrar devolución del saldo pendiente y cerrar en 0,00"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>Cerrar en 0</span>
+                                      </button>
+                                    )}
+                                    {onDeleteWithdrawal && (
+                                      <button
+                                        type="button"
+                                        data-testid={`delete-withdrawal-btn-${w.withdrawal_ref}`}
+                                        onClick={() =>
+                                          setConfirmWithdrawalAction({ id: w.id, type: 'delete' })
+                                        }
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                        title="Eliminar movimiento"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -2064,6 +2298,10 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                 {filteredWithdrawals.map((w) => {
                   const isCash = w.movementType === 'EFECTIVO';
                   const isOpen = isCash && w.pendingToRender > 0;
+                  const isConfirmingClose =
+                    confirmWithdrawalAction?.id === w.id && confirmWithdrawalAction.type === 'close';
+                  const isConfirmingDelete =
+                    confirmWithdrawalAction?.id === w.id && confirmWithdrawalAction.type === 'delete';
                   return (
                     <div
                       key={`mob-w-${w.id}`}
@@ -2106,6 +2344,73 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
                           )}
                         </div>
                       </div>
+
+                      {canEdit && (isOpen || onDeleteWithdrawal) && (
+                        <div className="pt-2 border-t border-slate-200/70 flex items-center justify-end gap-2">
+                          {isConfirmingClose ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleCloseWithdrawalRow(w)}
+                                className="pressable px-3 py-1.5 rounded-lg bg-[#072B52] text-white text-[11px] font-extrabold"
+                              >
+                                Confirmar cierre en 0,00
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmWithdrawalAction(null)}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-slate-500 hover:bg-slate-100"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : isConfirmingDelete ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteWithdrawalRow(w)}
+                                className="pressable px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[11px] font-extrabold"
+                              >
+                                Confirmar eliminar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmWithdrawalAction(null)}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-slate-500 hover:bg-slate-100"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {isOpen && onCloseWithdrawalInZero && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setConfirmWithdrawalAction({ id: w.id, type: 'close' })
+                                  }
+                                  className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-50 text-[#072B52] border border-sky-200 text-[11px] font-extrabold"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Cerrar en 0</span>
+                                </button>
+                              )}
+                              {onDeleteWithdrawal && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setConfirmWithdrawalAction({ id: w.id, type: 'delete' })
+                                  }
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 text-[11px] font-bold"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Eliminar</span>
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2183,8 +2488,9 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
       {/* ==================== MODAL DE NUEVO MOVIMIENTO ==================== */}
       <NewMovementModal
         isOpen={isMovementModalOpen}
-        defaultResponsible="Pablo Lamela"
+        defaultResponsible={user.full_name || 'Administrador'}
         openWithdrawals={openWithdrawalOptions}
+        existingRefs={withdrawals.map((w) => w.withdrawal_ref)}
         onClose={() => setIsMovementModalOpen(false)}
         onSave={handleSaveNewMovement}
       />

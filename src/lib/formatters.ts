@@ -29,6 +29,17 @@ export function formatCurrency(amount: number | null | undefined, includeSymbol 
 }
 
 /**
+ * Fecha local actual en formato YYYY-MM-DD (evita desfasajes UTC después de las 21:00 en UTC-3).
+ */
+export function getTodayLocalIso(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
  * Formato oficial de fecha: `dd/mm/aaaa`
  * Evita desfasajes de zona horaria parseando directamente componentes YYYY-MM-DD.
  */

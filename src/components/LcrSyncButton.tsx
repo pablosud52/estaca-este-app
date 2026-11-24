@@ -148,7 +148,7 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
         title="Sincronización automática activa. Úsalo solo si cargaste cambios recientes en LCR."
         className={`pressable inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
           isSyncing
-            ? 'bg-slate-800 text-white cursor-wait opacity-90'
+            ? 'bg-[#072B52] text-white cursor-wait opacity-90'
             : isInCooldown
             ? 'bg-slate-100 text-slate-600 border border-slate-200 cursor-not-allowed'
             : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/90'
@@ -163,10 +163,17 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
             <span>Sincronizando...</span>
           </>
         ) : isInCooldown ? (
-          <>
-            <Check className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Calendario al día</span>
-          </>
+          usedFallback ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 text-amber-600" />
+              <span>Sin conexión directa</span>
+            </>
+          ) : (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Calendario al día</span>
+            </>
+          )
         ) : (
           <>
             <RefreshCw className="w-3.5 h-3.5 text-slate-400" />

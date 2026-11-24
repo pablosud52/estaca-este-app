@@ -269,14 +269,25 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
           sum += parseLocaleAmount(a.amount, true);
         });
       }
-      if (q === 'T1' && incomeSummary.hasSavedOpeningBalance && !openingClearedToSuggestion) {
-        sum += incomeSummary.appliedOpeningBalance;
+      if (q === 'T1') {
+        if (openingEditing) {
+          sum +=
+            openingInput.trim() === '' && suggestedOpening.isAvailable
+              ? suggestedOpening.suggestedAmount
+              : parseLocaleAmount(openingInput, false);
+        } else if (incomeSummary.hasSavedOpeningBalance && !openingClearedToSuggestion) {
+          sum += incomeSummary.appliedOpeningBalance;
+        }
       }
       totals[q] = Number(sum.toFixed(2));
     });
     return totals;
   }, [
     quarterDrafts,
+    openingEditing,
+    openingInput,
+    suggestedOpening.isAvailable,
+    suggestedOpening.suggestedAmount,
     incomeSummary.hasSavedOpeningBalance,
     incomeSummary.appliedOpeningBalance,
     openingClearedToSuggestion,
@@ -703,7 +714,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                   data-testid={`save-quarter-income-${q}`}
                   disabled={qd.saving}
                   onClick={() => handleSaveQuarter(q)}
-                  className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-[11px] font-bold shadow-sm transition"
+                  className="pressable inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#072B52] hover:bg-[#051E3B] text-white text-[11px] font-bold shadow-sm transition"
                 >
                   <Save className="w-3 h-3" />
                   <span>{qd.saving ? 'Guardando...' : 'Guardar'}</span>
@@ -767,7 +778,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                           handleUnitAmountChange(q, u.slot_index, formatCurrency(numVal, false));
                         }}
                         onChange={(e) => handleUnitAmountChange(q, u.slot_index, e.target.value)}
-                        className="w-full pl-5 pr-2 py-1 rounded-lg border border-slate-200 focus:border-emerald-700 focus:outline-none text-right text-xs font-extrabold tabular-nums bg-white disabled:bg-slate-50/60 disabled:border-transparent disabled:text-slate-900"
+                        className="w-full pl-5 pr-2 py-1 rounded-lg border border-slate-200 focus:border-[#083563] focus:outline-none text-right text-base sm:text-xs font-extrabold tabular-nums bg-white disabled:bg-slate-50/60 disabled:border-transparent disabled:text-slate-900"
                       />
                     </div>
                   </div>
@@ -829,7 +840,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                               handleUpdateAdjustment(q, adj.localKey, 'description', e.target.value)
                             }
                             placeholder={`Ajuste ${idx + 1}`}
-                            className="w-24 sm:w-28 min-w-0 px-1.5 py-1 rounded-md border border-slate-200 text-[11px] font-semibold text-slate-600 focus:outline-none focus:border-emerald-700 disabled:bg-transparent disabled:border-transparent truncate"
+                            className="w-24 sm:w-28 min-w-0 px-1.5 py-1 rounded-md border border-slate-200 text-base sm:text-[11px] font-semibold text-slate-600 focus:outline-none focus:border-[#083563] disabled:bg-transparent disabled:border-transparent truncate"
                           />
                           <div className="relative flex-1 min-w-0">
                             <input
@@ -867,8 +878,8 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                                 handleUpdateAdjustment(q, adj.localKey, 'amount', e.target.value)
                               }
                               placeholder="-0,00"
-                              className={`w-full px-2 py-1 rounded-lg border border-slate-200 focus:border-emerald-700 focus:outline-none text-right text-xs font-extrabold tabular-nums disabled:bg-slate-50/60 disabled:border-transparent ${
-                                numVal < 0 ? 'text-rose-700' : 'text-emerald-800'
+                              className={`w-full px-2 py-1 rounded-lg border border-slate-200 focus:border-[#083563] focus:outline-none text-right text-base sm:text-xs font-extrabold tabular-nums disabled:bg-slate-50/60 disabled:border-transparent ${
+                                numVal < 0 ? 'text-rose-700' : 'text-[#072B52]'
                               }`}
                             />
                           </div>
@@ -893,17 +904,19 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
         </div>
 
         {/* Botón Añadir Ajuste al pie */}
-        <div className="p-3 pt-0">
-          <button
-            type="button"
-            data-testid={`add-adjustment-${q}`}
-            onClick={() => handleAddAdjustment(q)}
-            className="pressable w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 hover:border-emerald-600 hover:bg-emerald-50/50 text-slate-600 hover:text-emerald-900 text-[11px] font-bold transition"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Añadir ajuste (+ / -)</span>
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="p-3 pt-0">
+            <button
+              type="button"
+              data-testid={`add-adjustment-${q}`}
+              onClick={() => handleAddAdjustment(q)}
+              className="pressable w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 hover:border-[#083563] hover:bg-sky-50/70 text-slate-600 hover:text-[#072B52] text-[11px] font-bold transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Añadir ajuste (+ / -)</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -953,11 +966,11 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
               onClick={() => setActiveSubTab('INCOMES')}
               className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold whitespace-nowrap transition ${
                 activeSubTab === 'INCOMES'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+              <TrendingUp className="w-3.5 h-3.5 text-sky-300" />
               <span>1. Ingresos del Año</span>
             </button>
 
@@ -967,11 +980,11 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
               onClick={() => setActiveSubTab('DISTRIBUTION')}
               className={`pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-extrabold whitespace-nowrap transition ${
                 activeSubTab === 'DISTRIBUTION'
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-[#072B52] text-white'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
-              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+              <Wallet className="w-3.5 h-3.5 text-sky-300" />
               <span>2. Distribución por Organización</span>
               {hasNegativeEstaca && (
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
@@ -1101,10 +1114,10 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                   onBlur={handleOpeningBlur}
                   onChange={(e) => handleOpeningChange(e.target.value)}
                   placeholder="0,00"
-                  className={`w-full pl-6 pr-2.5 py-1.5 rounded-xl border text-right text-xs sm:text-sm font-extrabold tabular-nums transition ${
+                  className={`w-full pl-6 pr-2.5 py-1.5 rounded-xl border text-right text-base sm:text-sm font-extrabold tabular-nums transition ${
                     !openingEditing && isOpeningApplied
-                      ? 'bg-white/80 border-emerald-200 text-emerald-950'
-                      : 'bg-white border-slate-300 focus:border-emerald-700 focus:outline-none text-slate-900'
+                      ? 'bg-white/80 border-sky-200 text-[#072B52]'
+                      : 'bg-white border-slate-300 focus:border-[#083563] focus:outline-none text-slate-900'
                   }`}
                 />
               </div>
@@ -1116,7 +1129,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                     data-testid="save-opening-balance-btn"
                     disabled={openingSaving}
                     onClick={handleSaveOpening}
-                    className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold shadow-sm transition"
+                    className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#072B52] hover:bg-[#051E3B] text-white text-xs font-bold shadow-sm transition"
                   >
                     <Check className="w-3.5 h-3.5" />
                     <span>{openingSaving ? '...' : 'Guardar'}</span>
@@ -1126,7 +1139,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                     type="button"
                     data-testid="edit-opening-balance-btn"
                     onClick={() => setOpeningEditing(true)}
-                    className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-emerald-300 hover:bg-emerald-100 text-emerald-900 text-xs font-bold transition"
+                    className="pressable inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-sky-300 hover:bg-sky-50 text-[#072B52] text-xs font-bold transition"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Editar</span>
@@ -1143,7 +1156,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                 onClick={() => setMobileQuarter(q)}
                 className={`py-2 rounded-xl text-xs font-extrabold transition ${
                   mobileQuarter === q
-                    ? 'bg-slate-900 text-white shadow-sm'
+                    ? 'bg-[#072B52] text-white shadow-sm'
                     : 'bg-slate-100 text-slate-600'
                 }`}
               >
@@ -1208,7 +1221,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                 className={`pressable inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition ${
                   hasNegativeEstaca
                     ? 'bg-rose-100 text-rose-400 cursor-not-allowed'
-                    : 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-sm'
+                    : 'bg-[#072B52] hover:bg-[#051E3B] text-white shadow-sm'
                 }`}
               >
                 <Save className="w-3.5 h-3.5" />
@@ -1268,7 +1281,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                                 onFocus={() => handleFieldFocus(org, field)}
                                 onBlur={() => handleFieldBlur(org, field)}
                                 onChange={(e) => handleFieldChange(org, field, e.target.value)}
-                                className="w-20 sm:w-[88px] px-2 py-1 rounded-lg border border-slate-200 focus:border-emerald-700 focus:outline-none text-right text-xs font-semibold tabular-nums bg-white disabled:bg-slate-50 disabled:text-slate-600"
+                                className="w-20 sm:w-[88px] px-2 py-1 rounded-lg border border-slate-200 focus:border-[#083563] focus:outline-none text-right text-base sm:text-xs font-semibold tabular-nums bg-white disabled:bg-slate-50 disabled:text-slate-600"
                               />
                             </div>
                           </td>
@@ -1287,7 +1300,7 @@ export const BudgetManagementSection: React.FC<BudgetManagementSectionProps> = (
                               hasNegativeEstaca && d.dirty
                                 ? 'bg-rose-100 text-rose-400 cursor-not-allowed'
                                 : d.dirty
-                                ? 'bg-emerald-800 hover:bg-emerald-900 text-white shadow-sm'
+                                ? 'bg-[#072B52] hover:bg-[#051E3B] text-white shadow-sm'
                                 : 'bg-slate-100 text-slate-400 cursor-default'
                             }`}
                           >

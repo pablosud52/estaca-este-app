@@ -25,6 +25,7 @@ import {
   formatDate,
   getExpenseEffectiveDate,
   getQuarterFromDate,
+  getTodayLocalIso,
   isExpenseApplied,
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
@@ -37,6 +38,7 @@ import {
   OrganizationCode,
   QuarterCode,
   QuarterSummary,
+  SupplierRecord,
 } from '../types/database';
 import { ProposeActivityModal } from '../components/ProposeActivityModal';
 import {
@@ -103,6 +105,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
   const [budgets, setBudgets] = useState<BudgetAllocation[]>(SEED_BUDGET_ALLOCATIONS);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(SEED_EXPENSES);
+  const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
   const [activities, setActivities] = useState<ActivityRecord[]>(() => [
     ...SEED_ACTIVITIES,
     ...loadSessionProposals(),
@@ -150,13 +153,23 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
     async function fetchSupabaseData() {
       try {
-        const [budgetRes, expenseRes, activityRes] = await Promise.all([
+        const [budgetRes, expenseRes, activityRes, supplierRes] = await Promise.all([
           supabase.from('budget_allocations').select('*'),
           supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
           supabase.from('activities').select('*').order('event_date', { ascending: true }),
+          supabase.from('suppliers').select('*').order('commercial_name', { ascending: true }),
         ]);
 
         if (!active) return;
+
+        if (!supplierRes.error && supplierRes.data && supplierRes.data.length > 0) {
+          setSuppliers(
+            supplierRes.data.map((s) => ({
+              ...s,
+              rating: Number(s.rating || 0),
+            })) as SupplierRecord[]
+          );
+        }
 
         if (!budgetRes.error && budgetRes.data && budgetRes.data.length > 0) {
           setBudgets(
@@ -454,7 +467,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   }, [financialSummary.orgExpenses, quarterFilter, activities]);
 
   // Fecha de referencia actual para separar actividades pasadas (realizadas) de las próximas futuras
-  const referenceToday = new Date().toISOString().slice(0, 10);
+  const referenceToday = getTodayLocalIso();
 
   // Determina si una actividad corresponde a la agenda propia de la organización (incluyendo Seminario, MeetUP y actividades conjuntas HJ/MJ)
   const isOwnOrgOrYouthJointActivity = (act: ActivityRecord): boolean => {
@@ -540,7 +553,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     // Solo persistir en Supabase cuando no es simulación de desarrollo ni prueba automatizada con sufijo numérico
     if (!isSimulating && !/\d{4}$/.test(proposal.title.trim())) {
       try {
-        const { data: inserted } = await supabase
+        const { data: inserted, error } = await supabase
           .from('activities')
           .insert([
             {
@@ -554,20 +567,26 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               description: proposal.description || null,
               estimated_cost: proposal.estimated_cost,
               has_budget: proposal.estimated_cost > 0,
-              origin: 'propuesta_lider',
               status: 'PROPUESTA',
             },
           ])
           .select('id')
           .single();
 
+        if (error) {
+          console.error('Error guardando propuesta en Supabase:', error);
+          setToastMessage('La propuesta se guardó localmente, pero hubo un error al sincronizar con la base de datos.');
+          setTimeout(() => setToastMessage(null), 5000);
+          return;
+        }
+
         if (inserted && typeof inserted.id === 'number') {
           setActivities((prev) =>
             prev.map((item) => (item.id === tempId ? { ...item, id: inserted.id } : item))
           );
         }
-      } catch {
-        // Mantiene el estado optimista local si falla la red
+      } catch (err) {
+        console.error('Error de red guardando propuesta:', err);
       }
     }
 
@@ -904,7 +923,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       ) : activeTab === 'SUPPLIERS' ? (
         <main className="max-w-4xl w-full mx-auto px-4 pt-2 pb-2 flex-1">
           <SuppliersView
-            suppliers={SEED_SUPPLIERS}
+            suppliers={suppliers}
             onBack={() => setActiveTab('SUMMARY')}
             embedded
           />
@@ -1117,7 +1136,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               <span className="flex items-center gap-2">
                 <span>Historial Anual de Gastos</span>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 tabular-nums">
-                  {financialSummary.orgExpenses.length}
+                  {filteredExpenses.length}
                 </span>
               </span>
               <ChevronDown

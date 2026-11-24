@@ -1,5 +1,6 @@
 import { BudgetIncomeEntry, ExpenseRecord, QuarterCode } from '../types/database';
 import { INITIAL_OPENING_BALANCE_2026 } from '../data/seedData';
+import { isExpenseApplied } from './formatters';
 
 export interface YearIncomeSummary {
   openingBalanceRow?: BudgetIncomeEntry;
@@ -113,7 +114,7 @@ export function computeClosingCapStats(
     expenses
       .filter((e) => {
         if (e.is_reimbursable_oai || e.status === 'REEMBOLSADO_OAI') return false;
-        if (e.is_applied === false) return false;
+        if (!isExpenseApplied(e)) return false;
         const effectiveDate = getExpenseEffectiveDate(e);
         return parseInt(effectiveDate.slice(0, 4), 10) === year;
       })

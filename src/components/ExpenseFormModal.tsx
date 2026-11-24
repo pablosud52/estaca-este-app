@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
   Banknote,
   Calendar,
+  ChevronDown,
   CreditCard,
   Plus,
   RotateCcw,
+  Search,
   Send,
   Sparkles,
   Store,
@@ -21,6 +23,7 @@ import {
   formatCurrency,
   formatDate,
   getExpenseWithdrawalAllocations,
+  getTodayLocalIso,
   ORGANIZATION_LABELS,
   parseMmddMontoShortcut,
 } from '../lib/formatters';
@@ -83,7 +86,7 @@ interface ExpenseFormModalProps {
   onCreateSupplier: (supplier: Omit<SupplierRecord, 'id'>) => Promise<void>;
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => getTodayLocalIso();
 
 function distributeEvenly(total: number, count: number): number[] {
   if (count <= 0) return [];
@@ -138,7 +141,10 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const [newSupplierName, setNewSupplierName] = useState('');
   const [newSupplierCategory, setNewSupplierCategory] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [showAdvancedAccounting, setShowAdvancedAccounting] = useState(false);
   const [duplicateMatches, setDuplicateMatches] = useState<DuplicateDraftMatch[]>([]);
   const [pendingSaveRecords, setPendingSaveRecords] = useState<Array<
     Omit<ExpenseRecord, 'id'>
@@ -152,18 +158,25 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const isDirectOrTransfer =
     expenseType === 'DIRECTO_TARJETA' || expenseType === 'TRANSFERENCIA';
 
+  const suppliersRef = useRef(suppliers);
+  suppliersRef.current = suppliers;
+
   // Retiros disponibles ordenados del más antiguo al más nuevo, sumando lo que ya tenía asignado este gasto si se está editando
   const availableWithdrawals = useMemo(() => {
     const editedMap = new Map<string, number>();
     if (editGroup?.records.length) {
-      const first = editGroup.records[0];
-      const existingAllocs = getExpenseWithdrawalAllocations({
-        withdrawal_allocations: first.withdrawal_allocations,
-        withdrawal_ref: first.withdrawal_ref,
-        gross_amount: editGroup.records.reduce((acc, r) => acc + Number(r.gross_amount), 0),
-      });
-      existingAllocs.forEach((a) => {
-        editedMap.set(a.withdrawal_ref, (editedMap.get(a.withdrawal_ref) || 0) + a.amount);
+      editGroup.records.forEach((rec) => {
+        const existingAllocs = getExpenseWithdrawalAllocations({
+          withdrawal_allocations: rec.withdrawal_allocations,
+          withdrawal_ref: rec.withdrawal_ref,
+          gross_amount: Number(rec.gross_amount || 0),
+        });
+        existingAllocs.forEach((a) => {
+          editedMap.set(
+            a.withdrawal_ref,
+            Number(((editedMap.get(a.withdrawal_ref) || 0) + a.amount).toFixed(2))
+          );
+        });
       });
     }
 
@@ -175,8 +188,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       ),
     }));
 
-    // Preservar retiros cerrados o de años anteriores ya vinculados al gasto que se edita
-    const currentGross = parseFloat(grossAmount.replace(',', '.')) || 0;
+    // Preservar retiros cerrados o de años anteriores ya vinculados al gasto que se edita (tope = monto ya asignado)
     editedMap.forEach((amt, ref) => {
       if (!openRefs.has(ref) && amt > 0) {
         list.push({
@@ -186,7 +198,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
           amount: amt,
           pendingToRender: 0,
           purpose: 'Retiro cerrado / histórico',
-          effectiveAvailable: Number(Math.max(amt, currentGross).toFixed(2)),
+          effectiveAvailable: Number(amt.toFixed(2)),
         });
       }
     });
@@ -194,7 +206,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     return list
       .filter((w) => w.effectiveAvailable > 0)
       .sort((a, b) => a.withdrawal_date.localeCompare(b.withdrawal_date));
-  }, [openWithdrawals, editGroup, grossAmount]);
+  }, [openWithdrawals, editGroup]);
 
   // Inicializar formulario al abrir
   useEffect(() => {
@@ -278,7 +290,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       setDirectRefNumber('');
       setManualWithdrawalRef1(null);
       setManualWithdrawalRef2(null);
-      setSupplierName(suppliers[0]?.commercial_name || '');
+      setSupplierName(suppliersRef.current[0]?.commercial_name || '');
       setConcept('');
       setStatusLcr('REGISTRADO_LCR');
       setIsReimbursableOai(false);
@@ -286,22 +298,76 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     }
     setDuplicateMatches([]);
     setPendingSaveRecords(null);
-  }, [isOpen, editGroup, suppliers]);
+    setSaveError(null);
+    setSupplierSearch('');
+    setShowAdvancedAccounting(
+      Boolean(
+        editGroup &&
+          (editGroup.records.some((r) => Number(r.external_reimbursement || 0) > 0) ||
+            editGroup.records.some((r) => Boolean(r.is_reimbursable_oai)))
+      )
+    );
+  }, [isOpen, editGroup]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, saving, onClose]);
 
   useEffect(() => {
     setDuplicateMatches([]);
     setPendingSaveRecords(null);
-  }, [grossAmount, supplierName, accountingDate, activityDate, directRefNumber, expenseType]);
+  }, [
+    grossAmount,
+    supplierName,
+    accountingDate,
+    activityDate,
+    directRefNumber,
+    expenseType,
+    concept,
+    participants,
+    externalReimbursement,
+    isReimbursableOai,
+    statusLcr,
+    keepRemainingProjected,
+    manualWithdrawalRef1,
+    manualWithdrawalRef2,
+  ]);
 
   const parsedTotalGross = useMemo(() => {
-    const n = parseFloat(grossAmount);
+    const n = parseFloat(grossAmount.replace(',', '.'));
     return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : 0;
   }, [grossAmount]);
 
   const parsedExternalReimb = useMemo(() => {
-    const n = parseFloat(externalReimbursement);
+    const n = parseFloat(externalReimbursement.replace(',', '.'));
     return Number.isFinite(n) && n > 0 ? Number(n.toFixed(2)) : 0;
   }, [externalReimbursement]);
+
+  const filteredSuppliers = useMemo(() => {
+    const q = supplierSearch.trim().toLowerCase();
+    if (!q) return suppliers;
+    return suppliers.filter(
+      (s) =>
+        s.commercial_name.toLowerCase().includes(q) ||
+        (s.category || '').toLowerCase().includes(q)
+    );
+  }, [suppliers, supplierSearch]);
+
+  const filteredActivities = useMemo(() => {
+    const activeYear = (activityDate || accountingDate || todayIso()).slice(0, 4);
+    return activities
+      .filter((a) => {
+        if (String(a.id) === selectedActivityId) return true;
+        if (a.status === 'CANCELADA' || a.status === 'RECHAZADA') return false;
+        return a.event_date.startsWith(activeYear);
+      })
+      .sort((a, b) => a.event_date.localeCompare(b.event_date));
+  }, [activities, activityDate, accountingDate, selectedActivityId]);
 
   // Cálculo automático de hasta 2 retiros en cascada (modo EFECTIVO)
   const cashCoverage = useMemo(() => {
@@ -434,6 +500,8 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     parsedTotalGross > 0 && Math.abs(allocationDiff) > 0.01;
 
   const hasInsufficientCash = isCashMode && cashCoverage.uncovered > 0.01;
+  const hasExcessReimbursement =
+    isRealExpense && parsedTotalGross > 0 && parsedExternalReimb > parsedTotalGross;
 
   const canSubmit =
     !saving &&
@@ -444,7 +512,8 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     (isRealExpense ? Boolean(supplierName.trim()) : true) &&
     !hasAllocationMismatch &&
     !hasZeroOrNegativeParticipant &&
-    !hasInsufficientCash;
+    !hasInsufficientCash &&
+    !hasExcessReimbursement;
 
   const usedOrgs = useMemo(
     () => new Set(participants.map((p) => p.organization)),
@@ -663,8 +732,15 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
         }
       }
 
+      setSaveError(null);
       await onSave(recordsToSave, editGroup?.ids);
       onClose();
+    } catch (err) {
+      setSaveError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo guardar el gasto en la base de datos. Intenta nuevamente.'
+      );
     } finally {
       setSaving(false);
     }
@@ -673,9 +749,16 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const handleConfirmSaveDespiteDuplicate = async () => {
     if (!pendingSaveRecords) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await onSave(pendingSaveRecords, editGroup?.ids);
       onClose();
+    } catch (err) {
+      setSaveError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo guardar el gasto en la base de datos. Intenta nuevamente.'
+      );
     } finally {
       setSaving(false);
     }
@@ -689,25 +772,35 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="expense-modal-title"
+      onClick={() => {
+        if (!saving) onClose();
+      }}
     >
-      <div className="bg-white w-full sm:max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 max-h-[92vh] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+      <div
+        className="bg-white w-full sm:max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 max-h-[92dvh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header fijo */}
+        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between shrink-0">
           <h3 id="expense-modal-title" className="text-base font-extrabold text-slate-900">
             {editGroup ? 'Editar Movimiento' : 'Añadir Gasto'}
           </h3>
           <button
             type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+            disabled={saving}
+            onClick={() => {
+              if (!saving) onClose();
+            }}
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-40"
             aria-label="Cerrar"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit} className="px-5 pt-3.5 pb-5 overflow-y-auto space-y-4">
+        {/* Form con cuerpo desplazable y pie fijo */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="px-5 pt-3.5 pb-4 overflow-y-auto flex-1 space-y-4">
           {/* Selector doble tipo switch en forma de pastilla */}
           <div className="space-y-2">
             {/* Switch principal: Gasto Real vs Proyectado */}
@@ -824,13 +917,13 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <label
                   htmlFor="modal-mmdd-input"
-                  className="text-xs font-bold text-slate-700 flex items-center gap-1.5"
+                  className="text-xs font-bold text-[#072B52] flex items-center gap-1.5"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                  <Sparkles className="w-3.5 h-3.5 text-[#083563]" />
                   <span>Atajo rápido MMDD-MONTO</span>
                 </label>
                 {shortcutBadge && (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-800 text-white tabular-nums">
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#072B52] text-white tabular-nums">
                     {shortcutBadge}
                   </span>
                 )}
@@ -842,7 +935,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                 placeholder="Ej: 1115-5000 (completa fecha y monto)"
                 value={shortcutInput}
                 onChange={(e) => handleShortcutChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-base sm:text-sm font-mono font-bold text-slate-900 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400"
               />
             </div>
           )}
@@ -854,23 +947,20 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-500" />
                   <span>
-                    Vincular a actividad del calendario{' '}
-                    {expenseType === 'PROYECTADO_ACTIVIDAD' ? '*' : '(opcional)'}
+                    Vincular a actividad del calendario (opcional · año {(activityDate || accountingDate || todayIso()).slice(0, 4)})
                   </span>
                 </label>
                 <select
                   value={selectedActivityId}
                   onChange={(e) => handleActivityLinkChange(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm bg-white"
                 >
                   <option value="">— Sin vincular (carga libre) —</option>
-                  {activities
-                    .filter((a) => a.status !== 'CANCELADA' && a.status !== 'RECHAZADA')
-                    .map((act) => (
-                      <option key={act.id} value={act.id}>
-                        {formatDate(act.event_date)} • {act.title} ({ORGANIZATION_LABELS[act.organization]})
-                      </option>
-                    ))}
+                  {filteredActivities.map((act) => (
+                    <option key={act.id} value={act.id}>
+                      {formatDate(act.event_date)} • {act.title} ({ORGANIZATION_LABELS[act.organization]})
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
@@ -890,7 +980,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   setActivityDate(e.target.value);
                   setActivityDateTouched(true);
                 }}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm tabular-nums"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm tabular-nums"
               />
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Visible al líder y define el trimestre
@@ -910,7 +1000,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   onChange={(e) =>
                     handleAccountingDateOrAmountChange(e.target.value, grossAmount)
                   }
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm tabular-nums"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm tabular-nums"
                 />
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Uso interno de control y rendición LCR
@@ -937,7 +1027,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                 onChange={(e) =>
                   handleAccountingDateOrAmountChange(accountingDate, e.target.value)
                 }
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-extrabold tabular-nums"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm font-extrabold tabular-nums"
               />
             </div>
 
@@ -954,7 +1044,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   placeholder={expenseType === 'TRANSFERENCIA' ? 'Ej: TRF1095' : 'Ej: 1095082'}
                   value={directRefNumber}
                   onChange={(e) => setDirectRefNumber(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm font-mono"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm font-mono"
                 />
               </div>
             )}
@@ -971,7 +1061,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   Retiros de efectivo vinculados (automático)
                 </span>
                 {cashCoverage.allocations.length === 2 && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-white">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#072B52] text-white">
                     2 retiros encadenados
                   </span>
                 )}
@@ -997,7 +1087,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                         data-testid="withdrawal-select-1"
                         value={cashCoverage.w1.withdrawal_ref}
                         onChange={(e) => setManualWithdrawalRef1(e.target.value)}
-                        className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white"
+                        className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-base sm:text-xs font-mono font-bold bg-white"
                       >
                         {availableWithdrawals.map((w) => (
                           <option key={w.withdrawal_ref} value={w.withdrawal_ref}>
@@ -1019,7 +1109,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                         data-testid="withdrawal-select-2"
                         value={cashCoverage.w2.withdrawal_ref}
                         onChange={(e) => setManualWithdrawalRef2(e.target.value)}
-                        className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold bg-white"
+                        className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-base sm:text-xs font-mono font-bold bg-white"
                       >
                         {availableWithdrawals
                           .filter((w) => w.withdrawal_ref !== cashCoverage.w1?.withdrawal_ref)
@@ -1084,7 +1174,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   onClick={handleAddParticipant}
                   className="pressable inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-800"
                 >
-                  <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                  <Plus className="w-3.5 h-3.5 text-[#083563]" />
                   <span>Añadir</span>
                 </button>
               )}
@@ -1106,7 +1196,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                       onChange={(e) =>
                         handleParticipantOrgChange(p.uid, e.target.value as OrganizationCode)
                       }
-                      className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold bg-white"
+                      className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm font-bold bg-white"
                     >
                       {TARGET_ORGS.filter(
                         (org) => org === p.organization || !usedOrgs.has(org)
@@ -1135,12 +1225,12 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                           handleParticipantAmountChange(p.uid, e.target.value)
                         }
                         placeholder="0,00"
-                        className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm font-bold tabular-nums text-right ${
+                        className={`w-full px-3 py-2 rounded-xl border text-base sm:text-sm font-bold tabular-nums text-right ${
                           isInvalidZero
                             ? 'border-rose-500 bg-rose-50 text-rose-700'
                             : p.isAuto
                             ? 'border-slate-200 bg-slate-200/70 text-slate-600'
-                            : 'border-emerald-600 bg-white text-slate-900'
+                            : 'border-[#083563] bg-white text-slate-900'
                         }`}
                       />
                       {!isSingle && !p.isAuto && (
@@ -1181,24 +1271,41 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
           {/* Proveedor y Concepto */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {isRealExpense && (
-              <div>
-                <div className="flex items-center justify-between mb-1">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-700">Proveedor *</label>
                   <button
                     type="button"
                     onClick={() => setIsAddingSupplier((v) => !v)}
-                    className="text-[11px] font-bold text-emerald-800 hover:underline flex items-center gap-1"
+                    className="text-[11px] font-bold text-[#072B52] hover:underline flex items-center gap-1"
                   >
                     <Store className="w-3 h-3" />
                     <span>{isAddingSupplier ? 'Cancelar' : '+ Nuevo'}</span>
                   </button>
                 </div>
+                {suppliers.length > 8 && (
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={supplierSearch}
+                      onChange={(e) => setSupplierSearch(e.target.value)}
+                      placeholder="Filtrar proveedor por nombre o rubro..."
+                      className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-base sm:text-xs text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#083563]"
+                    />
+                  </div>
+                )}
                 <select
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm bg-white"
                 >
-                  {suppliers.map((s) => (
+                  <option value="">— Seleccionar proveedor —</option>
+                  {supplierName &&
+                    !filteredSuppliers.some((s) => s.commercial_name === supplierName) && (
+                      <option value={supplierName}>{supplierName}</option>
+                    )}
+                  {filteredSuppliers.map((s) => (
                     <option key={s.id} value={s.commercial_name}>
                       {s.commercial_name}
                     </option>
@@ -1218,7 +1325,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                 placeholder="Ej: Compra de materiales para actividad"
                 value={concept}
                 onChange={(e) => setConcept(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-sm"
               />
             </div>
           </div>
@@ -1231,12 +1338,12 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                   placeholder="Nombre del proveedor *"
                   value={newSupplierName}
                   onChange={(e) => setNewSupplierName(e.target.value)}
-                  className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                  className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-base sm:text-xs bg-white"
                 />
                 <select
                   value={newSupplierCategory === '__NEW__' ? '__NEW__' : newSupplierCategory}
                   onChange={(e) => setNewSupplierCategory(e.target.value)}
-                  className="w-full sm:w-44 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                  className="w-full sm:w-44 px-3 py-1.5 rounded-xl border border-slate-300 text-base sm:text-xs bg-white"
                 >
                   <option value="">Rubro (opcional)</option>
                   <option value="__NEW__">+ Añadir nuevo rubro...</option>
@@ -1253,17 +1360,24 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                     type="text"
                     autoFocus
                     placeholder="Nuevo rubro..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = e.currentTarget.value.trim();
+                        setNewSupplierCategory(val || '');
+                      }
+                    }}
                     onBlur={(e) => {
                       const val = e.target.value.trim();
                       setNewSupplierCategory(val || '');
                     }}
-                    className="w-full sm:w-40 px-3 py-1.5 rounded-xl border border-slate-300 text-xs bg-white"
+                    className="w-full sm:w-40 px-3 py-1.5 rounded-xl border border-slate-300 text-base sm:text-xs bg-white"
                   />
                 )}
                 <button
                   type="button"
                   onClick={handleQuickAddSupplier}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                  className="px-3 py-1.5 rounded-xl bg-[#072B52] hover:bg-[#051E3B] text-white text-xs font-bold"
                 >
                   Sugerir
                 </button>
@@ -1274,50 +1388,79 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             </div>
           )}
 
-          {/* Estado LCR, Reintegro externo y Reembolsable OAI (solo para gastos reales) */}
+          {/* Estado LCR + Opciones contables avanzadas colapsables */}
           {isRealExpense && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Estado LCR</label>
-                <select
-                  value={statusLcr}
-                  onChange={(e) =>
-                    setStatusLcr(e.target.value as 'REGISTRADO_LCR' | 'PENDIENTE_LCR')
-                  }
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white"
+            <div className="space-y-2.5 pt-1">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2.5">
+                <div className="sm:w-64">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Estado LCR</label>
+                  <select
+                    value={statusLcr}
+                    onChange={(e) =>
+                      setStatusLcr(e.target.value as 'REGISTRADO_LCR' | 'PENDIENTE_LCR')
+                    }
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-base sm:text-xs font-bold bg-white"
+                  >
+                    <option value="REGISTRADO_LCR">✓ Registrado en LCR</option>
+                    <option value="PENDIENTE_LCR">Pendiente asentar LCR</option>
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedAccounting((v) => !v)}
+                  className="inline-flex items-center justify-between sm:justify-start gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
                 >
-                  <option value="REGISTRADO_LCR">✓ Registrado en LCR</option>
-                  <option value="PENDIENTE_LCR">Pendiente asentar LCR</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Reintegro otras estacas ($)
-                </label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  placeholder="0,00"
-                  value={externalReimbursement}
-                  onChange={(e) => setExternalReimbursement(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs tabular-nums"
-                />
-              </div>
-
-              <div className="flex items-end pb-2">
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isReimbursableOai}
-                    onChange={(e) => setIsReimbursableOai(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-emerald-700"
+                  <span>
+                    Opciones contables avanzadas
+                    {(parsedExternalReimb > 0 || isReimbursableOai) && ' (activas)'}
+                  </span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform ${
+                      showAdvancedAccounting ? 'rotate-180' : ''
+                    }`}
                   />
-                  <span>Reembolsable OAI</span>
-                </label>
+                </button>
               </div>
+
+              {showAdvancedAccounting && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Reintegro otras estacas ($)
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      value={externalReimbursement}
+                      onChange={(e) => setExternalReimbursement(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-xl border bg-white text-base sm:text-xs tabular-nums ${
+                        hasExcessReimbursement ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-300'
+                      }`}
+                    />
+                    {hasExcessReimbursement && (
+                      <p className="text-[11px] font-bold text-rose-600 mt-1">
+                        El reintegro no puede superar el monto total del gasto.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-end pb-2">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isReimbursableOai}
+                        onChange={(e) => setIsReimbursableOai(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-[#072B52]"
+                      />
+                      <span>Reembolsable OAI (no descuenta presupuesto)</span>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1353,7 +1496,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
                       onClick={() => setKeepRemainingProjected(false)}
                       className={`px-3 py-2 rounded-xl text-left text-[11px] font-bold border transition ${
                         !keepRemainingProjected
-                          ? 'bg-slate-900 text-white border-slate-900'
+                          ? 'bg-[#072B52] text-white border-[#072B52]'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
@@ -1451,17 +1594,38 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             </div>
           )}
 
-          {/* Footer */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+          {saveError && (
+            <div
+              role="alert"
+              className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-bold text-rose-800 flex items-center gap-2"
+            >
+              <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+              <span>{saveError}</span>
+            </div>
+          )}
+          </div>
+
+          {/* Footer fijo */}
+          <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 shrink-0">
             <div>
-              {editGroup && onDelete && (
+              {editGroup && editGroup.ids.length > 0 && onDelete && (
                 confirmDelete ? (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={async () => {
-                        await onDelete(editGroup.ids);
-                        onClose();
+                        setSaveError(null);
+                        try {
+                          await onDelete(editGroup.ids);
+                          onClose();
+                        } catch (err) {
+                          setSaveError(
+                            err instanceof Error
+                              ? err.message
+                              : 'No se pudo eliminar el gasto. Intenta nuevamente.'
+                          );
+                          setConfirmDelete(false);
+                        }
                       }}
                       className="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-bold"
                     >
@@ -1491,8 +1655,11 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                disabled={saving}
+                onClick={() => {
+                  if (!saving) onClose();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40"
               >
                 Cancelar
               </button>

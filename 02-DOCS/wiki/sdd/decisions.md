@@ -26,3 +26,10 @@
 - **Decisión 3 (Fecha de referencia en Gastos):** Se ordena y filtra por fecha contable / LCR (`expense_date`).
 - **Decisión 4 (Estética unificada):** Paleta azul marino institucional (`#072B52` / `#083563`) en controles y botones operativos, reservando verde solo para importes y confirmaciones positivas.
 - **Artefacto:** [finanzas-fechas-estetica.md](specs/finanzas-fechas-estetica.md)
+
+## 2026-11-23 — Spec `normativas-rediseno`
+- **Decisión 1 (Nombre, ubicación y visibilidad):** La sección se llama **`Normativas`**, vive dentro de **`Administración`** (junto a Finanzas y Logs) y vuelve a habilitarse para **Presidencia de Estaca (incluidos Secretarios) y Administradores** (quitando el aviso de borrador).
+- **Decisión 2 (3 pestañas limpias):** `Uso Apropiado de los Fondos` (abierta por defecto), `Cierre Anual` y `Excepción de Dinero`.
+- **Decisión 3 (Consulta interactiva):** `Uso Apropiado de los Fondos` incluye buscador en tiempo real, filtros por las 5 categorías y las notas `(A)`–`(L)` integradas directamente dentro de cada uno de los 27 conceptos.
+- **Decisión 4 (Respaldo PDF):** Cada pestaña incluye en su cabecera el botón **`Ver PDF oficial`** que abre el PDF original en pestaña nueva.
+- **Artefacto:** [normativas-rediseno.md](specs/normativas-rediseno.md)

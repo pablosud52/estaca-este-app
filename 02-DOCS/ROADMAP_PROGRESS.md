@@ -1,7 +1,7 @@
 # ROADMAP_PROGRESS.md - Estado y Plan de Avance del Proyecto
 
 > **Fase Actual**: Puesta a Punto y Cierre hacia Producción (`https://estacaeste.vercel.app`)  
-> **Última Actualización**: 2026-11-22
+> **Última Actualización**: 2026-11-23
 
 ---
 
@@ -16,7 +16,7 @@
 - **Proveedores (`GUIA PROVEEDORES`):** Sección unificada en un solo botón del menú principal (sin duplicado en Administración), Modo Lectura en Tarjetas por defecto y botón interruptor `Gestionar` (solo Administradores) con switch `Tarjetas / Lista`, alta, edición, baja, rubros y pestaña `Pendientes` para sugerencias desde Finanzas.
 - **Finanzas (base):** Cabecera unificada en una sola caja, pestaña `Movimientos` (ex `Retiros`) estandarizada con pastilla dividida y `NewMovementModal`, carga de gastos con 5 tipos y dos fechas por actividad, y sección `Presupuestos` (`budget_incomes`).
 - **Tablero de Presidencia:** Tarjeta principal compacta, abreviaturas ajustadas y solo actividades vigentes.
-- **Info. Normativas (ocultamiento temporal):** Oculta para Presidencia y visible solo para Super Admin (`pablosud52@gmail.com`) con cartel de aviso hasta completar sus reformas.
+- **Normativas (`FinancialInfoSection.tsx` + `PdfViewerModal.tsx`):** Sección renombrada a **`Normativas`** dentro de `Administración`, habilitada para toda la Presidencia de Estaca (incluidos secretarios) y Administradores, con 3 pestañas (`Uso Apropiado de los Fondos` interactiva con buscador, filtros por categoría y notas integradas A–L; `Cierre Anual` con regla del 50%; y `Excepción de Dinero` del 27/03/2024) y visor PDF integrado dentro de la app con descarga y compartir.
 - **Seguridad RLS, PWA y Producción:** Acceso público (`anon`) cerrado en las 8 tablas operativas de Supabase (`07_close_anon_rls_operational_tables.sql`), íconos PWA en azul marino (`public/`), aviso de instalación (`PwaInstallBanner.tsx`), bloqueo de scroll del fondo en modales/menú (`useModalScrollLock.ts`) y publicación en `https://estacaeste.vercel.app`.
 
 ### ⏳ Listado Numerado de Pendientes
@@ -32,7 +32,7 @@
 - [ ] **2.1 Capturar correos de usuarios que intentan entrar:** Si una persona entra con Google y aún no tiene permiso, guardar/tomar su correo para que el Administrador pueda darle de alta después — ya sea asignándole un puesto existente del Directorio (para actualizarle el correo) o creándolo desde cero con todos sus datos.
 
 #### 4. Info. Normativas y Logs *(al final de todo)*
-- [ ] **4.1 Info. Normativas:** *(Ya oculta para Presidencia)* Cambiar el nombre **`Información / Normativas`** a **`Info. Normativas`** y rediseñar esa sección (`FinancialInfoSection.tsx`).
+- [x] **4.1 Normativas:** Renombrada a **`Normativas`**, activada para Presidencia de Estaca y Administradores, rediseñada en 3 pestañas (`Uso Apropiado de los Fondos` interactivo con buscador y filtros, `Cierre Anual`, `Excepción de Dinero`) y con visor PDF oficial integrado en la app (`PdfViewerModal.tsx`).
 - [ ] **4.2 Sección de Logs:** Revisar y validar la interfaz/acceso del registro de acciones (`AuditLogsPanel`) para el Administrador.
 
 ---

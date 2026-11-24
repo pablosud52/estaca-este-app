@@ -577,7 +577,7 @@ export const PresidencyHub: React.FC = () => {
       orgStats,
       nonReimbursableExpenses,
     };
-  }, [budgets, expenses, selectedYear]);
+  }, [budgets, budgetIncomes, expenses, selectedYear]);
 
   // Gastos filtrados para el modal interactivo del trimestre seleccionado
   const selectedQuarterExpenses = useMemo(() => {
@@ -1239,36 +1239,37 @@ export const PresidencyHub: React.FC = () => {
     });
 
     if (!isSimulating) {
-      try {
-        const { data: inserted } = await supabase
-          .from('activities')
-          .insert([
-            {
-              ical_uid: uid,
-              title: proposal.title,
-              event_date: proposal.event_date,
-              start_time: proposal.start_time,
-              end_time: proposal.end_time || null,
-              location: proposal.location,
-              organization: proposal.organization,
-              description: proposal.description || null,
-              estimated_cost: proposal.estimated_cost,
-              has_budget: proposal.estimated_cost > 0,
-              origin: 'propuesta_lider',
-              status: 'APROBADA',
-            },
-          ])
-          .select('id')
-          .single();
+      const { data: inserted, error } = await supabase
+        .from('activities')
+        .insert([
+          {
+            ical_uid: uid,
+            title: proposal.title,
+            event_date: proposal.event_date,
+            start_time: proposal.start_time,
+            end_time: proposal.end_time || null,
+            location: proposal.location,
+            organization: proposal.organization,
+            description: proposal.description || null,
+            estimated_cost: proposal.estimated_cost,
+            has_budget: proposal.estimated_cost > 0,
+            status: 'APROBADA',
+          },
+        ])
+        .select('id')
+        .single();
 
-        if (inserted && typeof inserted.id === 'number') {
-          createdRecord = { ...createdRecord, id: inserted.id };
-          setActivities((prev) =>
-            prev.map((a) => (a.id === tempId ? { ...a, id: inserted.id } : a))
-          );
-        }
-      } catch {
-        // Estado local ya actualizado
+      if (error) {
+        console.error('Error guardando actividad directa en Supabase:', error);
+        setActivities((prev) => prev.filter((a) => a.id !== tempId));
+        throw new Error(formatSupabaseError(error, 'No se pudo guardar la actividad en la base de datos.'));
+      }
+
+      if (inserted && typeof inserted.id === 'number') {
+        createdRecord = { ...createdRecord, id: inserted.id };
+        setActivities((prev) =>
+          prev.map((a) => (a.id === tempId ? { ...a, id: inserted.id } : a))
+        );
       }
     }
 
@@ -1277,21 +1278,49 @@ export const PresidencyHub: React.FC = () => {
     }
   };
 
+  const formatSupabaseError = (
+    error: { code?: string; message?: string } | null | undefined,
+    fallback: string
+  ): string => {
+    if (!error) return fallback;
+    if (error.code === '23505') {
+      return 'Ya existe un registro con esa misma referencia. Verifica los datos e intenta nuevamente.';
+    }
+    if (error.code === '42501') {
+      return 'No tienes permisos para guardar este cambio en la base de datos.';
+    }
+    return `${fallback}${error.message ? ` (${error.message})` : ''}`;
+  };
+
   // =========================================================================
   // HANDLERS EXCLUSIVOS DEL PANEL DE ADMINISTRADOR (Paso 6.4)
   // =========================================================================
   const handleCreateExpense = async (newExpense: Omit<ExpenseRecord, 'id'>) => {
     const tempId = Date.now();
     const record: ExpenseRecord = { ...newExpense, id: tempId };
-    setExpenses((prev) => [record, ...prev]);
 
     if (!isSimulating) {
-      try {
-        await supabase.from('expenses').insert([newExpense]);
-      } catch {
-        // Estado local ya actualizado
+      const { net_amount: _ignored, ...dbPayload } = newExpense;
+      const { data, error } = await supabase.from('expenses').insert([dbPayload]).select().single();
+      if (error) {
+        console.error('Error creando gasto en Supabase:', error);
+        throw new Error(formatSupabaseError(error, 'No se pudo guardar el gasto en la base de datos.'));
       }
+      if (data) {
+        const inserted: ExpenseRecord = {
+          ...data,
+          gross_amount: Number(data.gross_amount),
+          external_reimbursement: Number(data.external_reimbursement),
+          net_amount: Number(data.net_amount),
+        };
+        setExpenses((prev) => [inserted, ...prev]);
+      } else {
+        setExpenses((prev) => [record, ...prev]);
+      }
+    } else {
+      setExpenses((prev) => [record, ...prev]);
     }
+
     void recordAuditLog({
       actor: user,
       actionType: 'CREATE',
@@ -1308,15 +1337,29 @@ export const PresidencyHub: React.FC = () => {
       ...item,
       id: baseId + idx,
     }));
-    setExpenses((prev) => [...records, ...prev]);
 
     if (!isSimulating) {
-      try {
-        await supabase.from('expenses').insert(expensesList);
-      } catch {
-        // Estado local ya actualizado
+      const dbPayloads = expensesList.map(({ net_amount: _ignored, ...rest }) => rest);
+      const { data, error } = await supabase.from('expenses').insert(dbPayloads).select();
+      if (error) {
+        console.error('Error creando gastos múltiples en Supabase:', error);
+        throw new Error(formatSupabaseError(error, 'No se pudo guardar el gasto compartido en la base de datos.'));
       }
+      if (data && data.length > 0) {
+        const inserted = data.map((e) => ({
+          ...e,
+          gross_amount: Number(e.gross_amount),
+          external_reimbursement: Number(e.external_reimbursement),
+          net_amount: Number(e.net_amount),
+        })) as ExpenseRecord[];
+        setExpenses((prev) => [...inserted, ...prev]);
+      } else {
+        setExpenses((prev) => [...records, ...prev]);
+      }
+    } else {
+      setExpenses((prev) => [...records, ...prev]);
     }
+
     if (expensesList.length > 0) {
       const total = expensesList.reduce((acc, item) => acc + Number(item.gross_amount || 0), 0);
       void recordAuditLog({
@@ -1329,16 +1372,16 @@ export const PresidencyHub: React.FC = () => {
   };
 
   const handleReconcileLcrExpense = async (id: number) => {
+    if (!isSimulating) {
+      const { error } = await supabase.from('expenses').update({ status: 'REGISTRADO_LCR' }).eq('id', id);
+      if (error) {
+        console.error('Error conciliando gasto en LCR:', error);
+        throw new Error(formatSupabaseError(error, 'No se pudo conciliar el comprobante en LCR.'));
+      }
+    }
     setExpenses((prev) =>
       prev.map((e) => (e.id === id ? { ...e, status: 'REGISTRADO_LCR' } : e))
     );
-    if (!isSimulating) {
-      try {
-        await supabase.from('expenses').update({ status: 'REGISTRADO_LCR' }).eq('id', id);
-      } catch {
-        // Estado local ya actualizado
-      }
-    }
     void recordAuditLog({
       actor: user,
       actionType: 'RECONCILE',
@@ -1349,16 +1392,16 @@ export const PresidencyHub: React.FC = () => {
 
   const handleReconcileLcrExpenseGroup = async (ids: number[]) => {
     if (ids.length === 0) return;
+    if (!isSimulating) {
+      const { error } = await supabase.from('expenses').update({ status: 'REGISTRADO_LCR' }).in('id', ids);
+      if (error) {
+        console.error('Error conciliando grupo de gastos en LCR:', error);
+        throw new Error(formatSupabaseError(error, 'No se pudieron conciliar los comprobantes en LCR.'));
+      }
+    }
     setExpenses((prev) =>
       prev.map((e) => (ids.includes(e.id) ? { ...e, status: 'REGISTRADO_LCR' } : e))
     );
-    if (!isSimulating) {
-      try {
-        await supabase.from('expenses').update({ status: 'REGISTRADO_LCR' }).in('id', ids);
-      } catch {
-        // Estado local ya actualizado
-      }
-    }
     void recordAuditLog({
       actor: user,
       actionType: 'RECONCILE',
@@ -1417,23 +1460,103 @@ export const PresidencyHub: React.FC = () => {
       id: baseId + idx,
     }));
 
-    setExpenses((prev) => {
-      const remaining = existingIds?.length
-        ? prev.filter((e) => !existingIds.includes(e.id))
-        : prev;
-      return [...localRecords, ...remaining];
-    });
-
-    // Sincronizar salida directa en cash_withdrawals
-    if (prevDirectRef && prevDirectRef !== assignedDirectRef) {
-      setWithdrawals((prev) => prev.filter((w) => w.withdrawal_ref !== prevDirectRef));
-      if (!isSimulating) {
-        supabase
+    // Sincronizar salida directa en cash_withdrawals y guardar gastos en Supabase primero cuando no es simulación
+    if (!isSimulating) {
+      if (prevDirectRef && prevDirectRef !== assignedDirectRef) {
+        const { error: delPrevDirErr } = await supabase
           .from('cash_withdrawals')
           .delete()
-          .eq('withdrawal_ref', prevDirectRef)
-          .then(() => {});
+          .eq('withdrawal_ref', prevDirectRef);
+        if (delPrevDirErr) {
+          console.error('Error eliminando salida directa anterior:', delPrevDirErr);
+          throw new Error(formatSupabaseError(delPrevDirErr, 'No se pudo actualizar la salida directa anterior.'));
+        }
       }
+
+      if (isDirectMovement && assignedDirectRef) {
+        const autoWithdrawal: Omit<CashWithdrawalRecord, 'id'> = {
+          withdrawal_ref: assignedDirectRef,
+          withdrawal_date: first.expense_date,
+          amount: totalGross,
+          responsible_person: user.full_name || 'Administrador',
+          purpose: first.concept,
+          movement_type: first.expense_type === 'TRANSFERENCIA' ? 'TRANSFERENCIA' : 'DIRECTO_TARJETA',
+          status: 'CERRADO_EN_CERO',
+          return_date: null,
+          returned_amount: 0,
+        };
+
+        const { data: existingW, error: findWErr } = await supabase
+          .from('cash_withdrawals')
+          .select('id')
+          .eq('withdrawal_ref', assignedDirectRef)
+          .maybeSingle();
+
+        if (findWErr) {
+          console.error('Error verificando salida directa:', findWErr);
+          throw new Error(formatSupabaseError(findWErr, 'No se pudo verificar el movimiento directo.'));
+        }
+
+        if (existingW?.id) {
+          const { error: updWErr } = await supabase
+            .from('cash_withdrawals')
+            .update(autoWithdrawal)
+            .eq('id', existingW.id);
+          if (updWErr) {
+            console.error('Error actualizando salida directa:', updWErr);
+            throw new Error(formatSupabaseError(updWErr, 'No se pudo actualizar el movimiento directo.'));
+          }
+        } else {
+          const { error: insWErr } = await supabase.from('cash_withdrawals').insert([autoWithdrawal]);
+          if (insWErr) {
+            console.error('Error insertando salida directa:', insWErr);
+            throw new Error(formatSupabaseError(insWErr, 'No se pudo registrar el movimiento directo.'));
+          }
+        }
+      }
+
+      const dbPayloads = normalizedRecords.map(({ net_amount: _ignored, ...rest }) => rest);
+      const { data, error: insExpErr } = await supabase.from('expenses').insert(dbPayloads).select();
+      if (insExpErr) {
+        console.error('Error guardando gastos en Supabase:', insExpErr);
+        throw new Error(formatSupabaseError(insExpErr, 'No se pudo guardar el gasto en la base de datos.'));
+      }
+
+      if (existingIds && existingIds.length > 0) {
+        const { error: delExpErr } = await supabase.from('expenses').delete().in('id', existingIds);
+        if (delExpErr) {
+          console.error('Error reemplazando gastos anteriores en Supabase:', delExpErr);
+        }
+      }
+
+      const syncedRecords: ExpenseRecord[] =
+        data && data.length > 0
+          ? (data.map((e) => ({
+              ...e,
+              gross_amount: Number(e.gross_amount),
+              external_reimbursement: Number(e.external_reimbursement),
+              net_amount: Number(e.net_amount),
+            })) as ExpenseRecord[])
+          : localRecords;
+
+      setExpenses((prev) => {
+        const remaining = existingIds?.length
+          ? prev.filter((e) => !existingIds.includes(e.id))
+          : prev;
+        return [...syncedRecords, ...remaining];
+      });
+    } else {
+      setExpenses((prev) => {
+        const remaining = existingIds?.length
+          ? prev.filter((e) => !existingIds.includes(e.id))
+          : prev;
+        return [...localRecords, ...remaining];
+      });
+    }
+
+    // Actualizar estado local de withdrawals para salidas directas
+    if (prevDirectRef && prevDirectRef !== assignedDirectRef) {
+      setWithdrawals((prev) => prev.filter((w) => w.withdrawal_ref !== prevDirectRef));
     }
 
     if (isDirectMovement && assignedDirectRef) {
@@ -1458,51 +1581,6 @@ export const PresidencyHub: React.FC = () => {
         }
         return [{ ...autoWithdrawal, id: baseId + 999 }, ...prev];
       });
-
-      if (!isSimulating) {
-        try {
-          const { data: existingW } = await supabase
-            .from('cash_withdrawals')
-            .select('id')
-            .eq('withdrawal_ref', assignedDirectRef)
-            .maybeSingle();
-          if (existingW?.id) {
-            await supabase
-              .from('cash_withdrawals')
-              .update(autoWithdrawal)
-              .eq('id', existingW.id);
-          } else {
-            await supabase.from('cash_withdrawals').insert([autoWithdrawal]);
-          }
-        } catch {
-          // Estado local ya actualizado
-        }
-      }
-    }
-
-    if (!isSimulating) {
-      try {
-        if (existingIds && existingIds.length > 0) {
-          await supabase.from('expenses').delete().in('id', existingIds);
-        }
-        const dbPayloads = normalizedRecords.map(({ net_amount: _ignored, ...rest }) => rest);
-        const { data } = await supabase.from('expenses').insert(dbPayloads).select();
-        if (data && data.length > 0) {
-          const inserted = data.map((e) => ({
-            ...e,
-            gross_amount: Number(e.gross_amount),
-            external_reimbursement: Number(e.external_reimbursement),
-            net_amount: Number(e.net_amount),
-          })) as ExpenseRecord[];
-          const tempIds = new Set(localRecords.map((r) => r.id));
-          setExpenses((prev) => [
-            ...inserted,
-            ...prev.filter((e) => !tempIds.has(e.id)),
-          ]);
-        }
-      } catch {
-        // Estado local ya actualizado
-      }
     }
     if (normalizedRecords.length > 0) {
       const total = normalizedRecords.reduce((acc, r) => acc + Number(r.gross_amount || 0), 0);
@@ -1521,15 +1599,26 @@ export const PresidencyHub: React.FC = () => {
       .filter((e) => e.activity_id === activityId && e.expense_type === 'PROYECTADO_ACTIVIDAD')
       .map((e) => e.id);
 
-    if (projectedIds.length > 0) {
-      setExpenses((prev) => prev.filter((e) => !projectedIds.includes(e.id)));
-      if (!isSimulating) {
-        try {
-          await supabase.from('expenses').delete().in('id', projectedIds);
-        } catch {
-          // Estado local ya actualizado
+    if (!isSimulating) {
+      if (projectedIds.length > 0) {
+        const { error: delErr } = await supabase.from('expenses').delete().in('id', projectedIds);
+        if (delErr) {
+          console.error('Error eliminando gastos proyectados:', delErr);
+          throw new Error(formatSupabaseError(delErr, 'No se pudo eliminar la reserva proyectada.'));
         }
       }
+      const { error: actErr } = await supabase
+        .from('activities')
+        .update({ has_budget: false, estimated_cost: 0 })
+        .eq('id', activityId);
+      if (actErr) {
+        console.error('Error actualizando actividad sin gasto:', actErr);
+        throw new Error(formatSupabaseError(actErr, 'No se pudo actualizar la actividad en la base de datos.'));
+      }
+    }
+
+    if (projectedIds.length > 0) {
+      setExpenses((prev) => prev.filter((e) => !projectedIds.includes(e.id)));
     }
 
     const targetAct = activities.find((a) => a.id === activityId);
@@ -1538,16 +1627,6 @@ export const PresidencyHub: React.FC = () => {
         a.id === activityId ? { ...a, has_budget: false, estimated_cost: 0 } : a
       )
     );
-    if (!isSimulating) {
-      try {
-        await supabase
-          .from('activities')
-          .update({ has_budget: false, estimated_cost: 0 })
-          .eq('id', activityId);
-      } catch {
-        // Estado local ya actualizado
-      }
-    }
     void recordAuditLog({
       actor: user,
       actionType: 'UPDATE',
@@ -1560,12 +1639,47 @@ export const PresidencyHub: React.FC = () => {
     if (ids.length === 0) return;
     const deletedRows = expenses.filter((e) => ids.includes(e.id));
 
-    setExpenses((prev) => prev.filter((e) => !ids.includes(e.id)));
-
-    // Si se elimina un PROYECTADO_ACTIVIDAD, desmarcar presupuesto en la actividad del calendario
     const projectedActIds = deletedRows
       .filter((r) => r.expense_type === 'PROYECTADO_ACTIVIDAD' && r.activity_id)
       .map((r) => r.activity_id as number);
+
+    const directRefs = deletedRows
+      .filter(
+        (r) =>
+          (r.expense_type === 'DIRECTO_TARJETA' || r.expense_type === 'TRANSFERENCIA') &&
+          r.withdrawal_ref
+      )
+      .map((r) => r.withdrawal_ref as string);
+
+    if (!isSimulating) {
+      const { error: delExpErr } = await supabase.from('expenses').delete().in('id', ids);
+      if (delExpErr) {
+        console.error('Error eliminando gastos:', delExpErr);
+        throw new Error(formatSupabaseError(delExpErr, 'No se pudo eliminar el gasto de la base de datos.'));
+      }
+
+      if (projectedActIds.length > 0) {
+        const { error: actErr } = await supabase
+          .from('activities')
+          .update({ has_budget: false, estimated_cost: 0 })
+          .in('id', projectedActIds);
+        if (actErr) {
+          console.error('Error actualizando actividad tras borrar proyectado:', actErr);
+        }
+      }
+
+      if (directRefs.length > 0) {
+        const { error: wErr } = await supabase
+          .from('cash_withdrawals')
+          .delete()
+          .in('withdrawal_ref', directRefs);
+        if (wErr) {
+          console.error('Error eliminando salida directa vinculada:', wErr);
+        }
+      }
+    }
+
+    setExpenses((prev) => prev.filter((e) => !ids.includes(e.id)));
 
     if (projectedActIds.length > 0) {
       setActivities((prev) =>
@@ -1575,48 +1689,12 @@ export const PresidencyHub: React.FC = () => {
             : a
         )
       );
-      if (!isSimulating) {
-        try {
-          await supabase
-            .from('activities')
-            .update({ has_budget: false, estimated_cost: 0 })
-            .in('id', projectedActIds);
-        } catch {
-          // Estado local ya actualizado
-        }
-      }
     }
-
-    // Si se elimina un DIRECTO_TARJETA / TRANSFERENCIA, limpiar su salida directa vinculada
-    const directRefs = deletedRows
-      .filter(
-        (r) =>
-          (r.expense_type === 'DIRECTO_TARJETA' || r.expense_type === 'TRANSFERENCIA') &&
-          r.withdrawal_ref
-      )
-      .map((r) => r.withdrawal_ref as string);
 
     if (directRefs.length > 0) {
       setWithdrawals((prev) => prev.filter((w) => !directRefs.includes(w.withdrawal_ref)));
-      if (!isSimulating) {
-        try {
-          await supabase
-            .from('cash_withdrawals')
-            .delete()
-            .in('withdrawal_ref', directRefs);
-        } catch {
-          // Estado local ya actualizado
-        }
-      }
     }
 
-    if (!isSimulating) {
-      try {
-        await supabase.from('expenses').delete().in('id', ids);
-      } catch {
-        // Estado local ya actualizado
-      }
-    }
     if (deletedRows.length > 0) {
       void recordAuditLog({
         actor: user,
@@ -1630,12 +1708,6 @@ export const PresidencyHub: React.FC = () => {
   const handleSaveBudgetAllocation = async (
     allocation: Omit<BudgetAllocation, 'id' | 'total_assigned'> & { id?: number }
   ) => {
-    void recordAuditLog({
-      actor: user,
-      actionType: 'UPDATE',
-      section: 'PRESUPUESTOS',
-      summary: `Guardó presupuesto ${allocation.year} de ${ORGANIZATION_SHORT_LABELS[allocation.organization]}`,
-    });
     const total = Number(
       (
         Number(allocation.t1_assigned) +
@@ -1652,29 +1724,28 @@ export const PresidencyHub: React.FC = () => {
     );
 
     if (existing) {
+      if (!isSimulating) {
+        const { error } = await supabase
+          .from('budget_allocations')
+          .update({
+            t1_assigned: allocation.t1_assigned,
+            t2_assigned: allocation.t2_assigned,
+            t3_assigned: allocation.t3_assigned,
+            t4_assigned: allocation.t4_assigned,
+            notes: allocation.notes ?? null,
+          })
+          .eq('id', existing.id);
+        if (error) {
+          console.error('Error actualizando presupuesto:', error);
+          throw new Error(formatSupabaseError(error, 'No se pudo actualizar el presupuesto.'));
+        }
+      }
       const updated: BudgetAllocation = {
         ...existing,
         ...allocation,
         total_assigned: total,
       };
       setBudgets((prev) => prev.map((b) => (b.id === existing.id ? updated : b)));
-
-      if (!isSimulating) {
-        try {
-          await supabase
-            .from('budget_allocations')
-            .update({
-              t1_assigned: allocation.t1_assigned,
-              t2_assigned: allocation.t2_assigned,
-              t3_assigned: allocation.t3_assigned,
-              t4_assigned: allocation.t4_assigned,
-              notes: allocation.notes ?? null,
-            })
-            .eq('id', existing.id);
-        } catch {
-          // Estado local ya actualizado
-        }
-      }
     } else {
       const tempId = Date.now();
       const created: BudgetAllocation = {
@@ -1688,40 +1759,50 @@ export const PresidencyHub: React.FC = () => {
         total_assigned: total,
         notes: allocation.notes,
       };
-      setBudgets((prev) => [...prev, created]);
 
       if (!isSimulating) {
-        try {
-          const { data } = await supabase
-            .from('budget_allocations')
-            .insert([
-              {
-                year: allocation.year,
-                organization: allocation.organization,
-                t1_assigned: allocation.t1_assigned,
-                t2_assigned: allocation.t2_assigned,
-                t3_assigned: allocation.t3_assigned,
-                t4_assigned: allocation.t4_assigned,
-                notes: allocation.notes ?? null,
-              },
-            ])
-            .select();
-          if (data && data[0]) {
-            const realRow = {
-              ...data[0],
-              t1_assigned: Number(data[0].t1_assigned),
-              t2_assigned: Number(data[0].t2_assigned),
-              t3_assigned: Number(data[0].t3_assigned),
-              t4_assigned: Number(data[0].t4_assigned),
-              total_assigned: Number(data[0].total_assigned),
-            } as BudgetAllocation;
-            setBudgets((prev) => prev.map((b) => (b.id === tempId ? realRow : b)));
-          }
-        } catch {
-          // Estado local ya actualizado
+        const { data, error } = await supabase
+          .from('budget_allocations')
+          .insert([
+            {
+              year: allocation.year,
+              organization: allocation.organization,
+              t1_assigned: allocation.t1_assigned,
+              t2_assigned: allocation.t2_assigned,
+              t3_assigned: allocation.t3_assigned,
+              t4_assigned: allocation.t4_assigned,
+              notes: allocation.notes ?? null,
+            },
+          ])
+          .select();
+        if (error) {
+          console.error('Error creando presupuesto:', error);
+          throw new Error(formatSupabaseError(error, 'No se pudo guardar el presupuesto.'));
         }
+        if (data && data[0]) {
+          const realRow = {
+            ...data[0],
+            t1_assigned: Number(data[0].t1_assigned),
+            t2_assigned: Number(data[0].t2_assigned),
+            t3_assigned: Number(data[0].t3_assigned),
+            t4_assigned: Number(data[0].t4_assigned),
+            total_assigned: Number(data[0].total_assigned),
+          } as BudgetAllocation;
+          setBudgets((prev) => [...prev, realRow]);
+        } else {
+          setBudgets((prev) => [...prev, created]);
+        }
+      } else {
+        setBudgets((prev) => [...prev, created]);
       }
     }
+
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'PRESUPUESTOS',
+      summary: `Guardó presupuesto ${allocation.year} de ${ORGANIZATION_SHORT_LABELS[allocation.organization]}`,
+    });
   };
 
   const handleSaveOpeningBalance = async (year: number, amount: number, lcrRef?: string) => {
@@ -1734,17 +1815,17 @@ export const PresidencyHub: React.FC = () => {
         amount,
         lcr_ref: lcrRef ?? existing.lcr_ref,
       };
-      setBudgetIncomes((prev) => prev.map((i) => (i.id === existing.id ? updated : i)));
       if (!isSimulating) {
-        try {
-          await supabase
-            .from('budget_incomes')
-            .update({ amount, lcr_ref: updated.lcr_ref ?? null })
-            .eq('id', existing.id);
-        } catch {
-          // Estado local actualizado
+        const { error } = await supabase
+          .from('budget_incomes')
+          .update({ amount, lcr_ref: updated.lcr_ref ?? null })
+          .eq('id', existing.id);
+        if (error) {
+          console.error('Error actualizando saldo inicial:', error);
+          throw new Error(formatSupabaseError(error, 'No se pudo actualizar el saldo inicial.'));
         }
       }
+      setBudgetIncomes((prev) => prev.map((i) => (i.id === existing.id ? updated : i)));
     } else {
       const tempId = Date.now();
       const created: BudgetIncomeEntry = {
@@ -1757,32 +1838,42 @@ export const PresidencyHub: React.FC = () => {
         description: `Saldo Inicial ${year}`,
         amount,
       };
-      setBudgetIncomes((prev) => [...prev, created]);
       if (!isSimulating) {
-        try {
-          const { data } = await supabase
-            .from('budget_incomes')
-            .insert([
-              {
-                year,
-                quarter: 'T1',
-                entry_type: 'SALDO_INICIAL',
-                slot_index: 0,
-                lcr_ref: created.lcr_ref,
-                description: created.description,
-                amount,
-              },
-            ])
-            .select();
-          if (data && data[0]) {
-            const realRow = { ...data[0], amount: Number(data[0].amount) } as BudgetIncomeEntry;
-            setBudgetIncomes((prev) => prev.map((i) => (i.id === tempId ? realRow : i)));
-          }
-        } catch {
-          // Estado local actualizado
+        const { data, error } = await supabase
+          .from('budget_incomes')
+          .insert([
+            {
+              year,
+              quarter: 'T1',
+              entry_type: 'SALDO_INICIAL',
+              slot_index: 0,
+              lcr_ref: created.lcr_ref,
+              description: created.description,
+              amount,
+            },
+          ])
+          .select();
+        if (error) {
+          console.error('Error guardando saldo inicial:', error);
+          throw new Error(formatSupabaseError(error, 'No se pudo guardar el saldo inicial.'));
         }
+        if (data && data[0]) {
+          const realRow = { ...data[0], amount: Number(data[0].amount) } as BudgetIncomeEntry;
+          setBudgetIncomes((prev) => [...prev, realRow]);
+        } else {
+          setBudgetIncomes((prev) => [...prev, created]);
+        }
+      } else {
+        setBudgetIncomes((prev) => [...prev, created]);
       }
     }
+
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'PRESUPUESTOS',
+      summary: `Guardó saldo inicial ${year} por ${formatCurrency(amount)}`,
+    });
   };
 
   const handleSaveQuarterIncomes = async (
@@ -1815,72 +1906,106 @@ export const PresidencyHub: React.FC = () => {
       })),
     ];
 
-    setBudgetIncomes((prev) => [
-      ...prev.filter(
-        (i) =>
-          !(
-            Number(i.year) === year &&
-            i.quarter === quarter &&
-            (i.entry_type === 'INGRESO_UNIDAD' || i.entry_type === 'AJUSTE')
-          )
-      ),
-      ...newEntries,
-    ]);
-
     if (!isSimulating) {
-      try {
-        await supabase
+      const prevQuarterRows = budgetIncomes.filter(
+        (i) =>
+          Number(i.year) === year &&
+          i.quarter === quarter &&
+          (i.entry_type === 'INGRESO_UNIDAD' || i.entry_type === 'AJUSTE')
+      );
+      const prevIds = prevQuarterRows.map((i) => i.id).filter((id) => Number.isFinite(id));
+
+      const payload = newEntries.map(({ id: _omit, ...rest }) => rest);
+      const { data, error: insErr } =
+        payload.length > 0
+          ? await supabase.from('budget_incomes').insert(payload).select()
+          : { data: [] as BudgetIncomeEntry[], error: null };
+
+      if (insErr) {
+        console.error('Error guardando ingresos del trimestre:', insErr);
+        throw new Error(
+          formatSupabaseError(insErr, `No se pudieron guardar los ingresos de ${quarter} ${year}.`)
+        );
+      }
+
+      if (prevIds.length > 0) {
+        const { error: delErr } = await supabase
           .from('budget_incomes')
           .delete()
-          .eq('year', year)
-          .eq('quarter', quarter)
-          .in('entry_type', ['INGRESO_UNIDAD', 'AJUSTE']);
-
-        const payload = newEntries.map(({ id: _omit, ...rest }) => rest);
-        const { data } = await supabase.from('budget_incomes').insert(payload).select();
-        if (data && data.length > 0) {
-          const synced = data.map((row) => ({
-            ...row,
-            year: Number(row.year),
-            slot_index:
-              row.slot_index !== null && row.slot_index !== undefined
-                ? Number(row.slot_index)
-                : null,
-            amount: Number(row.amount),
-          })) as BudgetIncomeEntry[];
-          setBudgetIncomes((prev) => [
-            ...prev.filter(
-              (i) =>
-                !(
-                  Number(i.year) === year &&
-                  i.quarter === quarter &&
-                  (i.entry_type === 'INGRESO_UNIDAD' || i.entry_type === 'AJUSTE')
-                )
-            ),
-            ...synced,
-          ]);
+          .in('id', prevIds);
+        if (delErr) {
+          console.error('Error limpiando ingresos anteriores del trimestre:', delErr);
         }
-      } catch {
-        // Estado local ya actualizado
       }
+
+      const synced: BudgetIncomeEntry[] =
+        data && data.length > 0
+          ? (data.map((row) => ({
+              ...row,
+              year: Number(row.year),
+              slot_index:
+                row.slot_index !== null && row.slot_index !== undefined
+                  ? Number(row.slot_index)
+                  : null,
+              amount: Number(row.amount),
+            })) as BudgetIncomeEntry[])
+          : [];
+
+      setBudgetIncomes((prev) => [
+        ...prev.filter(
+          (i) =>
+            !(
+              Number(i.year) === year &&
+              i.quarter === quarter &&
+              (i.entry_type === 'INGRESO_UNIDAD' || i.entry_type === 'AJUSTE')
+            )
+        ),
+        ...synced,
+      ]);
+    } else {
+      setBudgetIncomes((prev) => [
+        ...prev.filter(
+          (i) =>
+            !(
+              Number(i.year) === year &&
+              i.quarter === quarter &&
+              (i.entry_type === 'INGRESO_UNIDAD' || i.entry_type === 'AJUSTE')
+            )
+        ),
+        ...newEntries,
+      ]);
     }
+
+    const quarterTotal = newEntries.reduce((acc, item) => acc + Number(item.amount || 0), 0);
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'PRESUPUESTOS',
+      summary: `Guardó ingresos de ${quarter} ${year} por ${formatCurrency(quarterTotal)}`,
+    });
   };
 
   const handleResetFutureYearProjection = async (year: number) => {
     if (year <= new Date().getFullYear()) return;
-    setBudgetIncomes((prev) => prev.filter((i) => Number(i.year) !== year));
-    setBudgets((prev) => prev.filter((b) => Number(b.year) !== year));
 
     if (!isSimulating) {
-      try {
-        await Promise.all([
-          supabase.from('budget_incomes').delete().eq('year', year),
-          supabase.from('budget_allocations').delete().eq('year', year),
-        ]);
-      } catch {
-        // Estado local limpiado
+      const [incRes, budRes] = await Promise.all([
+        supabase.from('budget_incomes').delete().eq('year', year),
+        supabase.from('budget_allocations').delete().eq('year', year),
+      ]);
+      if (incRes.error || budRes.error) {
+        console.error('Error restableciendo proyección futura:', incRes.error || budRes.error);
+        throw new Error(
+          formatSupabaseError(
+            incRes.error || budRes.error,
+            `No se pudo restablecer la proyección de ${year}.`
+          )
+        );
       }
     }
+
+    setBudgetIncomes((prev) => prev.filter((i) => Number(i.year) !== year));
+    setBudgets((prev) => prev.filter((b) => Number(b.year) !== year));
     void recordAuditLog({
       actor: user,
       actionType: 'DELETE',
@@ -1893,7 +2018,8 @@ export const PresidencyHub: React.FC = () => {
     newWithdrawal: Omit<CashWithdrawalRecord, 'id'>,
     targetWithdrawalRef?: string
   ) => {
-    const record: CashWithdrawalRecord = { ...newWithdrawal, id: Date.now() };
+    const tempId = Date.now();
+    let record: CashWithdrawalRecord = { ...newWithdrawal, id: tempId };
 
     // Si es un Depósito, aplicarlo al retiro seleccionado (o en orden FIFO a los retiros abiertos del año)
     const depositUpdates: Array<{
@@ -1960,18 +2086,26 @@ export const PresidencyHub: React.FC = () => {
       }
     }
 
-    setWithdrawals((prev) => {
-      const updated = prev.map((w) => {
-        const match = depositUpdates.find((u) => u.id === w.id);
-        return match ? { ...w, ...match } : w;
-      });
-      return [record, ...updated];
-    });
-
     if (!isSimulating) {
-      try {
-        await supabase.from('cash_withdrawals').insert([newWithdrawal]);
-        await Promise.all(
+      const { data: insertedW, error: insErr } = await supabase
+        .from('cash_withdrawals')
+        .insert([newWithdrawal])
+        .select()
+        .single();
+      if (insErr) {
+        console.error('Error registrando movimiento en Supabase:', insErr);
+        throw new Error(formatSupabaseError(insErr, 'No se pudo guardar el movimiento en la base de datos.'));
+      }
+      if (insertedW) {
+        record = {
+          ...insertedW,
+          amount: Number(insertedW.amount),
+          returned_amount: Number(insertedW.returned_amount || 0),
+        } as CashWithdrawalRecord;
+      }
+
+      if (depositUpdates.length > 0) {
+        const updateResults = await Promise.all(
           depositUpdates.map((u) =>
             supabase
               .from('cash_withdrawals')
@@ -1983,10 +2117,21 @@ export const PresidencyHub: React.FC = () => {
               .eq('id', u.id)
           )
         );
-      } catch {
-        // Estado local ya actualizado
+        const firstErr = updateResults.find((r) => r.error)?.error;
+        if (firstErr) {
+          console.error('Error aplicando depósito a retiros abiertos:', firstErr);
+        }
       }
     }
+
+    setWithdrawals((prev) => {
+      const updated = prev.map((w) => {
+        const match = depositUpdates.find((u) => u.id === w.id);
+        return match ? { ...w, ...match } : w;
+      });
+      return [record, ...updated];
+    });
+
     void recordAuditLog({
       actor: user,
       actionType: 'CREATE',
@@ -2000,37 +2145,65 @@ export const PresidencyHub: React.FC = () => {
     returnAmount: number,
     returnDate: string
   ) => {
+    const target = withdrawals.find((w) => w.id === id);
+    const nextReturned = Number(
+      (Number(target?.returned_amount || 0) + Number(returnAmount || 0)).toFixed(2)
+    );
+    const nextReturnDate = returnAmount > 0 ? returnDate : target?.return_date || null;
+
+    if (!isSimulating) {
+      const { error } = await supabase
+        .from('cash_withdrawals')
+        .update({
+          returned_amount: nextReturned,
+          return_date: nextReturnDate,
+          status: 'CERRADO_EN_CERO',
+        })
+        .eq('id', id);
+      if (error) {
+        console.error('Error cerrando retiro en cero:', error);
+        throw new Error(formatSupabaseError(error, 'No se pudo cerrar el retiro en cero.'));
+      }
+    }
+
     setWithdrawals((prev) =>
       prev.map((w) =>
         w.id === id
           ? {
               ...w,
-              returned_amount: Number(w.returned_amount || 0) + returnAmount,
-              return_date: returnAmount > 0 ? returnDate : w.return_date,
+              returned_amount: nextReturned,
+              return_date: nextReturnDate,
               status: 'CERRADO_EN_CERO',
             }
           : w
       )
     );
-    if (!isSimulating) {
-      try {
-        await supabase
-          .from('cash_withdrawals')
-          .update({
-            returned_amount: returnAmount,
-            return_date: returnAmount > 0 ? returnDate : null,
-            status: 'CERRADO_EN_CERO',
-          })
-          .eq('id', id);
-      } catch {
-        // Estado local ya actualizado
-      }
-    }
     void recordAuditLog({
       actor: user,
       actionType: 'UPDATE',
       section: 'FINANZAS',
-      summary: `Cerró retiro #${id} en $ 0,00 (devolución: ${formatCurrency(returnAmount)})`,
+      summary: `Cerró retiro ${target?.withdrawal_ref || `#${id}`} en 0,00 (devolución: ${formatCurrency(returnAmount)})`,
+    });
+  };
+
+  const handleDeleteWithdrawal = async (id: number) => {
+    const target = withdrawals.find((w) => w.id === id);
+    if (!target) return;
+
+    if (!isSimulating) {
+      const { error } = await supabase.from('cash_withdrawals').delete().eq('id', id);
+      if (error) {
+        console.error('Error eliminando movimiento:', error);
+        throw new Error(formatSupabaseError(error, 'No se pudo eliminar el movimiento de la base de datos.'));
+      }
+    }
+
+    setWithdrawals((prev) => prev.filter((w) => w.id !== id));
+    void recordAuditLog({
+      actor: user,
+      actionType: 'DELETE',
+      section: 'FINANZAS',
+      summary: `Eliminó movimiento "${target.withdrawal_ref}" por ${formatCurrency(target.amount)}`,
     });
   };
 
@@ -2574,8 +2747,8 @@ export const PresidencyHub: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 6. Información / Normativas (oculta temporalmente, solo visible para Super Admin) */}
-                      {userIsSuperAdmin && (
+                      {/* 6. Normativas (visible para Presidencia de Estaca y Administradores) */}
+                      {(user.role === 'ADMIN' || user.role === 'PRESIDENCIA' || userIsSuperAdmin) && (
                         <button
                           type="button"
                           data-testid="hub-admin-info-btn"
@@ -2590,8 +2763,12 @@ export const PresidencyHub: React.FC = () => {
                           }`}
                         >
                           <span className="flex items-center gap-2.5">
-                            <BookOpen className="w-4 h-4 text-amber-600" />
-                            <span>Información / Normativas</span>
+                            <BookOpen
+                              className={`w-4 h-4 ${
+                                activeTab === 'INFO' ? 'text-sky-300' : 'text-[#083563]'
+                              }`}
+                            />
+                            <span>Normativas</span>
                           </span>
                         </button>
                       )}
@@ -2797,8 +2974,8 @@ export const PresidencyHub: React.FC = () => {
                         </button>
                       )}
 
-                      {/* 6. Información / Normativas (oculta temporalmente, solo visible para Super Admin) */}
-                      {userIsSuperAdmin && (
+                      {/* 6. Normativas (visible para Presidencia de Estaca y Administradores) */}
+                      {(user.role === 'ADMIN' || user.role === 'PRESIDENCIA' || userIsSuperAdmin) && (
                         <button
                           type="button"
                           data-testid="drawer-admin-info-btn"
@@ -2809,8 +2986,12 @@ export const PresidencyHub: React.FC = () => {
                               : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
                           }`}
                         >
-                          <BookOpen className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                          <span>Información / Normativas</span>
+                          <BookOpen
+                            className={`w-4 h-4 flex-shrink-0 ${
+                              activeTab === 'INFO' ? 'text-sky-200' : 'text-[#083563]'
+                            }`}
+                          />
+                          <span>Normativas</span>
                         </button>
                       )}
                     </div>
@@ -2842,7 +3023,7 @@ export const PresidencyHub: React.FC = () => {
             initialManageMode={openUsersWithIncompleteFilter}
             initialFilterIncomplete={openUsersWithIncompleteFilter}
           />
-        ) : activeTab === 'INFO' && userIsSuperAdmin ? (
+        ) : activeTab === 'INFO' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA' || userIsSuperAdmin) ? (
           <FinancialInfoSection />
         ) : activeTab === 'OPERATIONS' && (user.role === 'ADMIN' || user.role === 'PRESIDENCIA') ? (
           <AdminOperationsCenter
@@ -2868,6 +3049,7 @@ export const PresidencyHub: React.FC = () => {
             onReconcileLcrExpenseGroup={handleReconcileLcrExpenseGroup}
             onCreateWithdrawal={handleCreateWithdrawal}
             onCloseWithdrawalInZero={handleCloseWithdrawalInZero}
+            onDeleteWithdrawal={handleDeleteWithdrawal}
             onCreateSupplier={handleCreateSupplier}
             onSaveBudgetAllocation={handleSaveBudgetAllocation}
             onSaveOpeningBalance={handleSaveOpeningBalance}

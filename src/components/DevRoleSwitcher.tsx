@@ -225,27 +225,28 @@ export const DevRoleSwitcher: React.FC = () => {
                     switchProfileById(item.id);
                     setIsOpen(false);
                   }}
-                  className={`pressable w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 transition ${
+                  className={`pressable w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-2.5 transition ${
                     isSelected
                       ? 'bg-white/15 border border-sky-300/40 text-white shadow-sm'
                       : 'border border-transparent hover:bg-white/10 text-sky-100/85'
                   }`}
                 >
-                  <span className="text-xs font-bold truncate min-w-0 flex-1">
-                    {item.label}
-                  </span>
-
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="w-[92px] flex-shrink-0 flex items-center justify-start">
                     <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md border whitespace-nowrap ${getRoleBadgeStyle(
                         item.role,
                         item.is_super_admin
                       )}`}
                     >
                       {item.badge}
                     </span>
-                    {isSelected && <Check className="w-4 h-4 text-sky-300" />}
                   </div>
+
+                  <span className="text-xs font-bold truncate min-w-0 flex-1 text-left">
+                    {item.label}
+                  </span>
+
+                  {isSelected && <Check className="w-4 h-4 text-sky-300 flex-shrink-0" />}
                 </button>
               );
             })}
@@ -269,15 +270,15 @@ export const DevRoleSwitcher: React.FC = () => {
         ) : (
           <Lock className="w-3.5 h-3.5 text-rose-300" />
         )}
-        <span className="max-w-[160px] truncate font-bold">{activeTriggerLabel}</span>
         <span
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getRoleBadgeStyle(
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${getRoleBadgeStyle(
             user.role,
             user.role === 'ADMIN' && isSuperAdminEmail(user.email)
           )}`}
         >
           {activeTriggerBadge}
         </span>
+        <span className="max-w-[160px] truncate font-bold">{activeTriggerLabel}</span>
         {isOpen ? (
           <ChevronDown className="w-3.5 h-3.5 text-sky-200/80" />
         ) : (

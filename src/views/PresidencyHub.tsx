@@ -595,6 +595,15 @@ export const PresidencyHub: React.FC = () => {
     [executiveMetrics.quarters, selectedQuarterModal]
   );
 
+  useEffect(() => {
+    if (!selectedQuarterModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedQuarterModal(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedQuarterModal]);
+
   // Regla sagrada de aprobación: solo propuestas de líderes locales (origin === 'propuesta_lider' y status === 'PROPUESTA')
   const pendingProposalsCount = useMemo(
     () =>
@@ -1460,16 +1469,76 @@ export const PresidencyHub: React.FC = () => {
       id: baseId + idx,
     }));
 
-    // Sincronizar salida directa en cash_withdrawals y guardar gastos en Supabase primero cuando no es simulación
+    // Evitar colisiones silenciosas con retiros/movimientos existentes al usar una referencia nueva
+    if (isDirectMovement && assignedDirectRef && assignedDirectRef !== prevDirectRef) {
+      const collidesLocal = withdrawals.some(
+        (w) => w.withdrawal_ref.trim().toLowerCase() === assignedDirectRef!.trim().toLowerCase()
+      );
+      if (collidesLocal) {
+        throw new Error(
+          `Ya existe un movimiento con la referencia "${assignedDirectRef}". Usa una referencia distinta.`
+        );
+      }
+    }
+
+    // Guardar gastos en Supabase primero y luego sincronizar cash_withdrawals (orden seguro ante fallos)
     if (!isSimulating) {
-      if (prevDirectRef && prevDirectRef !== assignedDirectRef) {
-        const { error: delPrevDirErr } = await supabase
+      if (isDirectMovement && assignedDirectRef && assignedDirectRef !== prevDirectRef) {
+        const { data: collidingW, error: findCollErr } = await supabase
           .from('cash_withdrawals')
-          .delete()
-          .eq('withdrawal_ref', prevDirectRef);
-        if (delPrevDirErr) {
-          console.error('Error eliminando salida directa anterior:', delPrevDirErr);
-          throw new Error(formatSupabaseError(delPrevDirErr, 'No se pudo actualizar la salida directa anterior.'));
+          .select('id')
+          .eq('withdrawal_ref', assignedDirectRef)
+          .maybeSingle();
+        if (findCollErr) {
+          console.error('Error verificando referencia de movimiento:', findCollErr);
+          throw new Error(formatSupabaseError(findCollErr, 'No se pudo verificar la referencia del movimiento.'));
+        }
+        if (collidingW?.id) {
+          throw new Error(
+            `Ya existe un movimiento en la base de datos con la referencia "${assignedDirectRef}". Usa una referencia distinta.`
+          );
+        }
+      }
+
+      const dbPayloads = normalizedRecords.map(({ net_amount: _ignored, ...rest }) => rest);
+      const { data, error: insExpErr } = await supabase.from('expenses').insert(dbPayloads).select();
+      if (insExpErr) {
+        console.error('Error guardando gastos en Supabase:', insExpErr);
+        throw new Error(formatSupabaseError(insExpErr, 'No se pudo guardar el gasto en la base de datos.'));
+      }
+
+      const insertedIds = (data || [])
+        .map((row) => row.id)
+        .filter((id): id is number => typeof id === 'number');
+
+      if (existingIds && existingIds.length > 0) {
+        const { error: delExpErr } = await supabase.from('expenses').delete().in('id', existingIds);
+        if (delExpErr) {
+          // Intentar revertir los recién insertados para no dejar duplicados
+          if (insertedIds.length > 0) {
+            await supabase.from('expenses').delete().in('id', insertedIds);
+          }
+          console.error('Error reemplazando gastos anteriores en Supabase:', delExpErr);
+          throw new Error(
+            formatSupabaseError(delExpErr, 'No se pudieron reemplazar los registros anteriores del gasto.')
+          );
+        }
+      }
+
+      if (prevDirectRef && prevDirectRef !== assignedDirectRef) {
+        const stillUsedByOther = expenses.some(
+          (e) =>
+            !(existingIds || []).includes(e.id) &&
+            e.withdrawal_ref === prevDirectRef
+        );
+        if (!stillUsedByOther) {
+          const { error: delPrevDirErr } = await supabase
+            .from('cash_withdrawals')
+            .delete()
+            .eq('withdrawal_ref', prevDirectRef);
+          if (delPrevDirErr) {
+            console.error('Error eliminando salida directa anterior:', delPrevDirErr);
+          }
         }
       }
 
@@ -1492,40 +1561,19 @@ export const PresidencyHub: React.FC = () => {
           .eq('withdrawal_ref', assignedDirectRef)
           .maybeSingle();
 
-        if (findWErr) {
-          console.error('Error verificando salida directa:', findWErr);
-          throw new Error(formatSupabaseError(findWErr, 'No se pudo verificar el movimiento directo.'));
-        }
-
-        if (existingW?.id) {
+        if (!findWErr && existingW?.id) {
           const { error: updWErr } = await supabase
             .from('cash_withdrawals')
             .update(autoWithdrawal)
             .eq('id', existingW.id);
           if (updWErr) {
             console.error('Error actualizando salida directa:', updWErr);
-            throw new Error(formatSupabaseError(updWErr, 'No se pudo actualizar el movimiento directo.'));
           }
         } else {
           const { error: insWErr } = await supabase.from('cash_withdrawals').insert([autoWithdrawal]);
           if (insWErr) {
             console.error('Error insertando salida directa:', insWErr);
-            throw new Error(formatSupabaseError(insWErr, 'No se pudo registrar el movimiento directo.'));
           }
-        }
-      }
-
-      const dbPayloads = normalizedRecords.map(({ net_amount: _ignored, ...rest }) => rest);
-      const { data, error: insExpErr } = await supabase.from('expenses').insert(dbPayloads).select();
-      if (insExpErr) {
-        console.error('Error guardando gastos en Supabase:', insExpErr);
-        throw new Error(formatSupabaseError(insExpErr, 'No se pudo guardar el gasto en la base de datos.'));
-      }
-
-      if (existingIds && existingIds.length > 0) {
-        const { error: delExpErr } = await supabase.from('expenses').delete().in('id', existingIds);
-        if (delExpErr) {
-          console.error('Error reemplazando gastos anteriores en Supabase:', delExpErr);
         }
       }
 
@@ -1643,13 +1691,18 @@ export const PresidencyHub: React.FC = () => {
       .filter((r) => r.expense_type === 'PROYECTADO_ACTIVIDAD' && r.activity_id)
       .map((r) => r.activity_id as number);
 
-    const directRefs = deletedRows
-      .filter(
-        (r) =>
-          (r.expense_type === 'DIRECTO_TARJETA' || r.expense_type === 'TRANSFERENCIA') &&
-          r.withdrawal_ref
+    const remainingExpenses = expenses.filter((e) => !ids.includes(e.id));
+    const directRefs = Array.from(
+      new Set(
+        deletedRows
+          .filter(
+            (r) =>
+              (r.expense_type === 'DIRECTO_TARJETA' || r.expense_type === 'TRANSFERENCIA') &&
+              r.withdrawal_ref
+          )
+          .map((r) => r.withdrawal_ref as string)
       )
-      .map((r) => r.withdrawal_ref as string);
+    ).filter((ref) => !remainingExpenses.some((e) => e.withdrawal_ref === ref));
 
     if (!isSimulating) {
       const { error: delExpErr } = await supabase.from('expenses').delete().in('id', ids);
@@ -1934,7 +1987,19 @@ export const PresidencyHub: React.FC = () => {
           .delete()
           .in('id', prevIds);
         if (delErr) {
+          const insertedIds = (data || [])
+            .map((row) => row.id)
+            .filter((id): id is number => typeof id === 'number');
+          if (insertedIds.length > 0) {
+            await supabase.from('budget_incomes').delete().in('id', insertedIds);
+          }
           console.error('Error limpiando ingresos anteriores del trimestre:', delErr);
+          throw new Error(
+            formatSupabaseError(
+              delErr,
+              `No se pudieron reemplazar los ingresos anteriores de ${quarter} ${year}.`
+            )
+          );
         }
       }
 
@@ -2030,10 +2095,9 @@ export const PresidencyHub: React.FC = () => {
     }> = [];
 
     if (newWithdrawal.movement_type === 'DEPOSITO' && Number(newWithdrawal.amount) > 0) {
-      const yearPrefix = newWithdrawal.withdrawal_date.slice(0, 4);
       const renderedByRef = new Map<string, number>();
       expenses
-        .filter((e) => isExpenseApplied(e) && getExpenseEffectiveDate(e).startsWith(yearPrefix))
+        .filter((e) => isExpenseApplied(e))
         .forEach((exp) => {
           getExpenseWithdrawalAllocations(exp).forEach((a) => {
             renderedByRef.set(
@@ -2047,7 +2111,7 @@ export const PresidencyHub: React.FC = () => {
         .filter(
           (w) =>
             (!w.movement_type || w.movement_type === 'EFECTIVO') &&
-            w.withdrawal_date.startsWith(yearPrefix)
+            w.status !== 'CERRADO_EN_CERO'
         )
         .map((w) => {
           const spent = renderedByRef.get(w.withdrawal_ref) || 0;
@@ -2120,6 +2184,12 @@ export const PresidencyHub: React.FC = () => {
         const firstErr = updateResults.find((r) => r.error)?.error;
         if (firstErr) {
           console.error('Error aplicando depósito a retiros abiertos:', firstErr);
+          throw new Error(
+            formatSupabaseError(
+              firstErr,
+              'El depósito se guardó, pero hubo un error actualizando los retiros abiertos.'
+            )
+          );
         }
       }
     }
@@ -2725,29 +2795,7 @@ export const PresidencyHub: React.FC = () => {
                         )}
                       </button>
 
-                      {/* 5. Historial / Logs (exclusivo Admins) */}
-                      {userCanViewLogs && (
-                        <button
-                          type="button"
-                          data-testid="hub-admin-logs-btn"
-                          onClick={() => {
-                            setActiveTab('LOGS');
-                            setIsAdminMenuOpen(false);
-                          }}
-                          className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
-                            activeTab === 'LOGS'
-                              ? 'bg-[#072B52] text-white shadow-sm'
-                              : 'text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2.5">
-                            <History className="w-4 h-4 text-slate-600" />
-                            <span>Historial / Logs</span>
-                          </span>
-                        </button>
-                      )}
-
-                      {/* 6. Normativas (visible para Presidencia de Estaca y Administradores) */}
+                      {/* 2. Normativas (visible para Presidencia de Estaca y Administradores) */}
                       {(user.role === 'ADMIN' || user.role === 'PRESIDENCIA' || userIsSuperAdmin) && (
                         <button
                           type="button"
@@ -2769,6 +2817,28 @@ export const PresidencyHub: React.FC = () => {
                               }`}
                             />
                             <span>Normativas</span>
+                          </span>
+                        </button>
+                      )}
+
+                      {/* 3. Historial / Logs (exclusivo Admins, al final) */}
+                      {userCanViewLogs && (
+                        <button
+                          type="button"
+                          data-testid="hub-admin-logs-btn"
+                          onClick={() => {
+                            setActiveTab('LOGS');
+                            setIsAdminMenuOpen(false);
+                          }}
+                          className={`pressable w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold transition text-left ${
+                            activeTab === 'LOGS'
+                              ? 'bg-[#072B52] text-white shadow-sm'
+                              : 'text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <History className={`w-4 h-4 ${activeTab === 'LOGS' ? 'text-sky-300' : 'text-slate-600'}`} />
+                            <span>Historial / Logs</span>
                           </span>
                         </button>
                       )}
@@ -2957,24 +3027,7 @@ export const PresidencyHub: React.FC = () => {
                         )}
                       </button>
 
-                      {/* 5. Historial / Logs (exclusivo Admins) */}
-                      {userCanViewLogs && (
-                        <button
-                          type="button"
-                          data-testid="drawer-admin-logs-btn"
-                          onClick={() => selectTabAndCloseDrawer('LOGS')}
-                          className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
-                            activeTab === 'LOGS'
-                              ? 'bg-[#083563] text-white shadow-sm'
-                              : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
-                          }`}
-                        >
-                          <History className={`w-4 h-4 flex-shrink-0 ${activeTab === 'LOGS' ? 'text-sky-300' : 'text-[#083563]'}`} />
-                          <span>Historial / Logs</span>
-                        </button>
-                      )}
-
-                      {/* 6. Normativas (visible para Presidencia de Estaca y Administradores) */}
+                      {/* 2. Normativas (visible para Presidencia de Estaca y Administradores) */}
                       {(user.role === 'ADMIN' || user.role === 'PRESIDENCIA' || userIsSuperAdmin) && (
                         <button
                           type="button"
@@ -2992,6 +3045,23 @@ export const PresidencyHub: React.FC = () => {
                             }`}
                           />
                           <span>Normativas</span>
+                        </button>
+                      )}
+
+                      {/* 3. Historial / Logs (exclusivo Admins, al final) */}
+                      {userCanViewLogs && (
+                        <button
+                          type="button"
+                          data-testid="drawer-admin-logs-btn"
+                          onClick={() => selectTabAndCloseDrawer('LOGS')}
+                          className={`pressable w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-extrabold text-left transition ${
+                            activeTab === 'LOGS'
+                              ? 'bg-[#083563] text-white shadow-sm'
+                              : 'bg-sky-50/80 text-[#083563] border border-sky-200/80 hover:bg-sky-100/70'
+                          }`}
+                        >
+                          <History className={`w-4 h-4 flex-shrink-0 ${activeTab === 'LOGS' ? 'text-sky-300' : 'text-[#083563]'}`} />
+                          <span>Historial / Logs</span>
                         </button>
                       )}
                     </div>

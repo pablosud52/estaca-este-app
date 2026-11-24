@@ -156,7 +156,7 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     );
   });
 
-  test('6. Verificación de conmutador simplificado y orden canónico de 9 roles de Estaca', async ({
+  test('6. Verificación de conmutador simplificado y orden canónico de 10 roles de Estaca', async ({
     page,
   }) => {
     await page.getByTestId('dev-role-trigger').click();
@@ -164,18 +164,19 @@ test.describe('Fase 6.1 y 6.2: AuthContext, DevRoleSwitcher y Vista Móvil del L
     await expect(roleList).toBeVisible();
 
     const buttons = roleList.locator('button');
-    await expect(buttons).toHaveCount(9);
+    await expect(buttons).toHaveCount(10);
 
     const expectedLabels = [
-      'yo (super admin)',
+      'Super Admin',
+      'Admin',
       'Presidencia de Estaca',
       'Sociedad de Socorro',
       'Hombres Jóvenes',
       'Mujeres Jóvenes',
       'Primaria',
-      'JAS',
-      'AS',
-      'CFS',
+      'Jóvenes Adultos Solteros',
+      'Adultos Solteros',
+      'Centro FamilySearch',
     ];
 
     for (let i = 0; i < expectedLabels.length; i++) {

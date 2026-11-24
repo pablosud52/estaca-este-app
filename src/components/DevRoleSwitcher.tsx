@@ -1,46 +1,51 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Shield, Users, UserCheck, Lock, ChevronUp, ChevronDown, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { DEV_PROFILES } from '../data/seedData';
+import { DEV_PROFILES, isSuperAdminEmail } from '../data/seedData';
 import { OrganizationCode, UserRole } from '../types/database';
 
 export interface SimplifiedRoleItem {
   id: string;
   label: string;
-  subtitle: string;
   badge: string;
   role: UserRole;
   organization: OrganizationCode;
-  is_permanent_admin?: boolean;
+  is_super_admin?: boolean;
 }
 
 /**
  * Listado canónico y simplificado de roles para el conmutador de Super Admin.
  * Orden estricto (de arriba hacia abajo):
- * 1. yo (super admin)
- * 2. Presidencia de Estaca
- * 3. Sociedad de Socorro
- * 4. Hombres Jóvenes
- * 5. Mujeres Jóvenes
- * 6. Primaria
- * 7. JAS
- * 8. AS
- * 9. CFS
+ * 1. Super Admin
+ * 2. Admin
+ * 3. Presidencia de Estaca
+ * 4. Sociedad de Socorro
+ * 5. Hombres Jóvenes
+ * 6. Mujeres Jóvenes
+ * 7. Primaria
+ * 8. Jóvenes Adultos Solteros
+ * 9. Adultos Solteros
+ * 10. Centro FamilySearch
  */
 export const SIMPLIFIED_ROLES: SimplifiedRoleItem[] = [
   {
     id: 'admin-pablo-01',
-    label: 'yo (super admin)',
-    subtitle: 'Pablo Lamela · Secretario Financiero',
+    label: 'Super Admin',
+    badge: 'SUPER ADMIN',
+    role: 'ADMIN',
+    organization: 'TODAS',
+    is_super_admin: true,
+  },
+  {
+    id: 'admin-presidente-01',
+    label: 'Admin',
     badge: 'ADMIN',
     role: 'ADMIN',
     organization: 'TODAS',
-    is_permanent_admin: true,
   },
   {
     id: 'presidencia-consejero1-01',
     label: 'Presidencia de Estaca',
-    subtitle: 'Primer Consejero',
     badge: 'PRESIDENCIA',
     role: 'PRESIDENCIA',
     organization: 'TODAS',
@@ -48,7 +53,6 @@ export const SIMPLIFIED_ROLES: SimplifiedRoleItem[] = [
   {
     id: 'lider-ss-01',
     label: 'Sociedad de Socorro',
-    subtitle: 'Valeria Silva',
     badge: 'SS',
     role: 'LIDER',
     organization: 'SS',
@@ -56,7 +60,6 @@ export const SIMPLIFIED_ROLES: SimplifiedRoleItem[] = [
   {
     id: 'lider-hj-01',
     label: 'Hombres Jóvenes',
-    subtitle: 'Martín Rodríguez',
     badge: 'HJ',
     role: 'LIDER',
     organization: 'HJ',
@@ -64,7 +67,6 @@ export const SIMPLIFIED_ROLES: SimplifiedRoleItem[] = [
   {
     id: 'lider-mj-01',
     label: 'Mujeres Jóvenes',
-    subtitle: 'Carolina Méndez',
     badge: 'MJ',
     role: 'LIDER',
     organization: 'MJ',
@@ -72,31 +74,27 @@ export const SIMPLIFIED_ROLES: SimplifiedRoleItem[] = [
   {
     id: 'lider-primaria-01',
     label: 'Primaria',
-    subtitle: 'Lucía Fernández',
     badge: 'PRIMARIA',
     role: 'LIDER',
     organization: 'PRIMARIA',
   },
   {
     id: 'lider-jas-01',
-    label: 'JAS',
-    subtitle: 'Mateo Morales',
+    label: 'Jóvenes Adultos Solteros',
     badge: 'JAS',
     role: 'LIDER',
     organization: 'JAS',
   },
   {
     id: 'lider-as-01',
-    label: 'AS',
-    subtitle: 'Diego Pereira',
+    label: 'Adultos Solteros',
     badge: 'AS',
     role: 'LIDER',
     organization: 'AS',
   },
   {
     id: 'lider-cfs-01',
-    label: 'CFS',
-    subtitle: 'Gonzalo Silva',
+    label: 'Centro FamilySearch',
     badge: 'CFS',
     role: 'LIDER',
     organization: 'CFS',
@@ -140,15 +138,47 @@ export const DevRoleSwitcher: React.FC = () => {
     return null;
   }
 
-  const getRoleBadgeStyle = (role: string) => {
+  const activeItem = SIMPLIFIED_ROLES.find((item) => {
+    const targetProfile =
+      profiles.find((p) => p.id === item.id) ||
+      DEV_PROFILES.find((p) => p.id === item.id);
+    return targetProfile
+      ? user.email.toLowerCase() === targetProfile.email.toLowerCase()
+      : false;
+  });
+
+  const activeTriggerLabel =
+    activeItem?.label ??
+    (user.role === 'ADMIN'
+      ? isSuperAdminEmail(user.email)
+        ? 'Super Admin'
+        : 'Admin'
+      : user.role === 'PRESIDENCIA'
+      ? 'Presidencia de Estaca'
+      : user.organization);
+
+  const activeTriggerBadge =
+    activeItem?.badge ??
+    (user.role === 'ADMIN'
+      ? isSuperAdminEmail(user.email)
+        ? 'SUPER ADMIN'
+        : 'ADMIN'
+      : user.role === 'LIDER'
+      ? user.organization
+      : user.role);
+
+  const getRoleBadgeStyle = (role: UserRole, isSuperAdmin?: boolean) => {
+    if (isSuperAdmin) {
+      return 'bg-amber-400/20 text-amber-200 border-amber-300/40';
+    }
     switch (role) {
       case 'ADMIN':
-        return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+        return 'bg-sky-300/20 text-sky-100 border-sky-200/40';
       case 'PRESIDENCIA':
-        return 'bg-sky-500/20 text-sky-300 border-sky-500/40';
+        return 'bg-white/15 text-white border-white/25';
       case 'LIDER':
       default:
-        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+        return 'bg-sky-400/15 text-sky-200 border-sky-300/30';
     }
   };
 
@@ -163,20 +193,20 @@ export const DevRoleSwitcher: React.FC = () => {
       {isOpen && (
         <div
           data-testid="dev-role-menu"
-          className="mb-2.5 w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-slate-900/95 backdrop-blur-md text-white shadow-2xl border border-slate-700/80 overflow-hidden transition-all duration-200 ease-out-expo origin-bottom-right"
+          className="mb-2.5 w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-gradient-to-br from-[#083563] via-[#072B52] to-[#051E3B] backdrop-blur-md text-white shadow-2xl border border-white/15 overflow-hidden transition-all duration-200 ease-out-expo origin-bottom-right"
         >
-          <div className="px-4 py-3 bg-slate-800/90 border-b border-slate-700/80 flex items-center justify-between">
-            <span className="text-xs font-bold tracking-wider uppercase text-slate-200">
+          <div className="px-4 py-3 bg-white/5 border-b border-white/12 flex items-center justify-between">
+            <span className="text-xs font-extrabold tracking-wider uppercase text-white">
               Selector de Rol
             </span>
-            <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
-              Super Admin
+            <span className="text-[10px] font-mono bg-white/15 text-sky-200 border border-white/20 px-2 py-0.5 rounded-full font-bold">
+              Vista previa
             </span>
           </div>
 
           <div
             data-testid="dev-role-list"
-            className="max-h-96 overflow-y-auto divide-y divide-slate-800/80 p-1.5"
+            className="max-h-96 overflow-y-auto divide-y divide-white/10 p-1.5 space-y-0.5"
           >
             {SIMPLIFIED_ROLES.map((item) => {
               const targetProfile =
@@ -197,34 +227,24 @@ export const DevRoleSwitcher: React.FC = () => {
                   }}
                   className={`pressable w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between gap-2 transition ${
                     isSelected
-                      ? 'bg-emerald-950/90 border border-emerald-500/40 text-white'
-                      : 'hover:bg-slate-800/70 text-slate-300'
+                      ? 'bg-white/15 border border-sky-300/40 text-white shadow-sm'
+                      : 'border border-transparent hover:bg-white/10 text-sky-100/85'
                   }`}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold truncate">{item.label}</span>
-                      {item.is_permanent_admin && (
-                        <span
-                          title="Administrador Permanente Inmutable (Regla Sagrada #1)"
-                          className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/20 text-amber-300 rounded border border-amber-500/30"
-                        >
-                          Inmutable
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{item.subtitle}</p>
-                  </div>
+                  <span className="text-xs font-bold truncate min-w-0 flex-1">
+                    {item.label}
+                  </span>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(
-                        item.role
+                        item.role,
+                        item.is_super_admin
                       )}`}
                     >
                       {item.badge}
                     </span>
-                    {isSelected && <Check className="w-4 h-4 text-emerald-400" />}
+                    {isSelected && <Check className="w-4 h-4 text-sky-300" />}
                   </div>
                 </button>
               );
@@ -238,29 +258,30 @@ export const DevRoleSwitcher: React.FC = () => {
         type="button"
         data-testid="dev-role-trigger"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="pressable flex items-center gap-2.5 px-3.5 py-2 rounded-full bg-slate-900/95 text-white shadow-xl border border-slate-700/80 backdrop-blur-md text-xs font-semibold"
+        className="pressable flex items-center gap-2.5 px-3.5 py-2 rounded-full bg-gradient-to-r from-[#083563] via-[#072B52] to-[#051E3B] text-white shadow-xl border border-white/15 backdrop-blur-md text-xs font-semibold hover:brightness-110 transition"
       >
         {user.role === 'ADMIN' ? (
-          <Shield className="w-3.5 h-3.5 text-amber-400" />
+          <Shield className="w-3.5 h-3.5 text-sky-300" />
         ) : user.role === 'PRESIDENCIA' ? (
-          <Users className="w-3.5 h-3.5 text-sky-400" />
+          <Users className="w-3.5 h-3.5 text-sky-300" />
         ) : user.role === 'LIDER' ? (
-          <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <UserCheck className="w-3.5 h-3.5 text-sky-300" />
         ) : (
-          <Lock className="w-3.5 h-3.5 text-rose-400" />
+          <Lock className="w-3.5 h-3.5 text-rose-300" />
         )}
-        <span className="max-w-[140px] truncate">{user.full_name}</span>
+        <span className="max-w-[160px] truncate font-bold">{activeTriggerLabel}</span>
         <span
           className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getRoleBadgeStyle(
-            user.role
+            user.role,
+            user.role === 'ADMIN' && isSuperAdminEmail(user.email)
           )}`}
         >
-          {user.role === 'LIDER' ? user.organization : user.role}
+          {activeTriggerBadge}
         </span>
         {isOpen ? (
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          <ChevronDown className="w-3.5 h-3.5 text-sky-200/80" />
         ) : (
-          <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+          <ChevronUp className="w-3.5 h-3.5 text-sky-200/80" />
         )}
       </button>
     </div>

@@ -2,14 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { Building2, Calendar, LogOut, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_SUPPLIERS } from '../data/seedData';
+import { useAutoLcrSync } from '../hooks/useAutoLcrSync';
 import { supabase } from '../lib/supabase';
+import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { ActivityRecord, SupplierRecord } from '../types/database';
 import { CalendarView } from './CalendarView';
 import { LeadersDirectoryView } from './LeadersDirectoryView';
 import { SuppliersView } from './SuppliersView';
 
 export const ConsultaView: React.FC = () => {
-  const { user, signOut, realAuthEmail } = useAuth();
+  const { user, isSimulating, signOut, realAuthEmail } = useAuth();
   const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'CALENDAR' | 'SUPPLIERS'>('DIRECTORY');
   const [activities, setActivities] = useState<ActivityRecord[]>(SEED_ACTIVITIES);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
@@ -18,12 +20,39 @@ export const ConsultaView: React.FC = () => {
     let mounted = true;
     async function loadPublicData() {
       try {
-        const [{ data: actData }, { data: supData }] = await Promise.all([
-          supabase.from('activities').select('*').order('event_date', { ascending: true }),
-          supabase.from('suppliers').select('*').order('commercial_name', { ascending: true }),
-        ]);
-        if (mounted && actData && actData.length > 0) setActivities(actData as ActivityRecord[]);
-        if (mounted && supData && supData.length > 0) setSuppliers(supData as SupplierRecord[]);
+        const [{ data: actData, error: actErr }, { data: supData, error: supErr }] =
+          await Promise.all([
+            supabase.from('activities').select('*').order('event_date', { ascending: true }),
+            supabase.from('suppliers').select('*').order('commercial_name', { ascending: true }),
+          ]);
+        if (!mounted) return;
+
+        if (!supErr && supData && supData.length > 0) {
+          setSuppliers(supData as SupplierRecord[]);
+        }
+
+        const baseActivities: ActivityRecord[] =
+          !actErr && actData && actData.length > 0
+            ? (actData.map((a) => ({
+                ...a,
+                estimated_cost: Number(a.estimated_cost || 0),
+                origin:
+                  a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
+                  a.ical_uid?.startsWith('PENDIENTE_LCR') ||
+                  a.status === 'PROPUESTA'
+                    ? 'propuesta_lider'
+                    : 'lcr',
+              })) as ActivityRecord[])
+            : SEED_ACTIVITIES;
+
+        const syncResult = await syncLcrCalendarWithShield({
+          currentActivities: baseActivities,
+          isSimulating,
+          canPersistToDb: false,
+        });
+        if (mounted) {
+          setActivities(syncResult.activities);
+        }
       } catch {
         // Fallback silencioso a datos semilla
       }
@@ -32,7 +61,14 @@ export const ConsultaView: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isSimulating]);
+
+  useAutoLcrSync({
+    activities,
+    isSimulating,
+    canPersistToDb: false,
+    onSynced: setActivities,
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">

@@ -33,6 +33,8 @@ interface AuthContextValue {
   user: UserProfile;
   profiles: UserProfile[];
   directoryEntries: StakeDirectoryEntry[];
+  directoryLoadError: string | null;
+  reloadDirectory: () => Promise<void>;
   incompleteContactsCount: number;
   authStatus: AuthStatus;
   isAuthRequired: boolean;
@@ -114,8 +116,18 @@ const normalizeDirectoryEntries = (entries: StakeDirectoryEntry[]): StakeDirecto
     return normalizedCalling !== entry.calling ? { ...entry, calling: normalizedCalling } : entry;
   });
 
+const ROLE_PRIORITY: Record<UserProfile['role'], number> = {
+  ADMIN: 4,
+  PRESIDENCIA: 3,
+  LIDER: 2,
+  CONSULTA: 1,
+  NO_AUTORIZADO: 0,
+};
+
 const loadInitialDirectory = (): StakeDirectoryEntry[] => {
-  if (typeof window === 'undefined') return buildInitialDirectoryEntries();
+  if (typeof window === 'undefined') {
+    return AUTH_REQUIRED ? buildEmptyDirectoryEntries() : buildInitialDirectoryEntries();
+  }
   try {
     const raw = localStorage.getItem(DIRECTORY_STORAGE_KEY);
     if (raw) {
@@ -127,7 +139,9 @@ const loadInitialDirectory = (): StakeDirectoryEntry[] => {
   } catch {
     // Fallback a semilla
   }
-  return normalizeDirectoryEntries(buildInitialDirectoryEntries());
+  return normalizeDirectoryEntries(
+    AUTH_REQUIRED ? buildEmptyDirectoryEntries() : buildInitialDirectoryEntries()
+  );
 };
 
 const saveDirectoryLocal = (entries: StakeDirectoryEntry[]) => {
@@ -262,6 +276,7 @@ const resolveUserByEmail = (
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profiles, setProfiles] = useState<UserProfile[]>(DEV_PROFILES);
   const [directoryEntries, setDirectoryEntries] = useState<StakeDirectoryEntry[]>(loadInitialDirectory);
+  const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
   const [user, setUser] = useState<UserProfile>(() => {
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     return DEV_PROFILES.find((p) => p.id === savedId) || DEV_PROFILES.find((p) => p.id === 'lider-mj-01') || DEV_PROFILES[0];
@@ -394,13 +409,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // 3. Cargar directorio real desde Supabase (si hay sesión real o registros remotos, es fuente única de verdad)
-        if (!dirError && Array.isArray(dirData) && mounted && (dirData.length > 0 || sessionEmail || AUTH_REQUIRED)) {
+        if (dirError && mounted && (sessionEmail || AUTH_REQUIRED)) {
+          setDirectoryLoadError(
+            `No se pudo cargar el directorio desde la nube (${dirError.message}).`
+          );
+        } else if (
+          !dirError &&
+          Array.isArray(dirData) &&
+          mounted &&
+          (dirData.length > 0 || sessionEmail || AUTH_REQUIRED)
+        ) {
           const mergedDir = mergeDirectoryFromRemote(dirData as StakeDirectoryEntry[]);
+          directoryEntriesRef.current = mergedDir;
           setDirectoryEntries(mergedDir);
           saveDirectoryLocal(mergedDir);
+          setDirectoryLoadError(null);
         }
-      } catch {
-        // Fallback silencioso a perfiles/directorio locales en caso de desconexión
+      } catch (err) {
+        if (mounted && (sessionEmail || AUTH_REQUIRED)) {
+          setDirectoryLoadError(
+            err instanceof Error
+              ? `Error de conexión al cargar el directorio (${err.message}).`
+              : 'Error de conexión al cargar el directorio.'
+          );
+        }
       } finally {
         if (mounted) {
           if (sessionEmail) {
@@ -535,162 +567,375 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const syncEntryToProfiles = async (entry: StakeDirectoryEntry) => {
-    const email = entry.email?.trim().toLowerCase() || '';
-    if (!email || !isValidGmail(email)) return;
-
-    const orgDef = DIRECTORY_ORG_BY_CODE[entry.directory_org];
-    const fullName = `${entry.first_name.trim()} ${entry.last_name.trim()}`.trim() || entry.calling;
-    const isSuper = isSuperAdminEmail(email);
-    const effectiveRole = isSuper ? 'ADMIN' : entry.role;
-    const effectiveActive = isSuper ? true : entry.has_app_access;
-
-    setProfiles((prev) => {
-      const existingIdx = prev.findIndex((p) => p.email.toLowerCase() === email);
-      if (existingIdx >= 0) {
-        const next = [...prev];
-        const curr = next[existingIdx];
-        next[existingIdx] = {
-          ...curr,
-          full_name: fullName,
-          first_name: entry.first_name.trim(),
-          last_name: entry.last_name.trim(),
-          phone: entry.phone?.trim() || undefined,
-          calling: entry.calling,
-          organization: orgDef.budgetOrgCode,
-          role: effectiveRole,
-          can_approve_activities: isSuper ? true : entry.can_approve_activities,
-          is_permanent_admin: isSuper ? true : entry.is_permanent_admin,
-          is_active: effectiveActive,
-        };
-        return next;
-      }
-      return [
-        ...prev,
-        {
-          id: `user-${entry.id}`,
-          email,
-          full_name: fullName,
-          first_name: entry.first_name.trim(),
-          last_name: entry.last_name.trim(),
-          phone: entry.phone?.trim() || undefined,
-          calling: entry.calling,
-          organization: orgDef.budgetOrgCode,
-          role: effectiveRole,
-          can_approve_activities: isSuper ? true : entry.can_approve_activities,
-          is_permanent_admin: isSuper ? true : entry.is_permanent_admin,
-          is_active: effectiveActive,
-        },
-      ];
-    });
-
+  const reloadDirectory = async () => {
     try {
-      await supabase.from('users_profiles').upsert(
-        {
+      const { data: dirData, error: dirError } = await supabase
+        .from('stake_directory_entries')
+        .select('*');
+      if (dirError) {
+        setDirectoryLoadError(
+          `No se pudo cargar el directorio desde la nube (${dirError.message}).`
+        );
+        return;
+      }
+      if (Array.isArray(dirData)) {
+        const mergedDir = mergeDirectoryFromRemote(dirData as StakeDirectoryEntry[]);
+        directoryEntriesRef.current = mergedDir;
+        setDirectoryEntries(mergedDir);
+        saveDirectoryLocal(mergedDir);
+        setDirectoryLoadError(null);
+      }
+    } catch (err) {
+      setDirectoryLoadError(
+        err instanceof Error
+          ? `Error de conexión al cargar el directorio (${err.message}).`
+          : 'Error de conexión al cargar el directorio.'
+      );
+    }
+  };
+
+  const reconcileProfilesForEmails = async (
+    rawEmails: Array<string | undefined | null>,
+    entriesSnapshot: StakeDirectoryEntry[]
+  ): Promise<PersistenceResult> => {
+    const uniqueEmails = Array.from(
+      new Set(
+        rawEmails
+          .map((e) => (e || '').trim().toLowerCase())
+          .filter((e) => Boolean(e) && isValidGmail(e))
+      )
+    );
+    if (uniqueEmails.length === 0) return { ok: true };
+
+    const shouldPersistCloud = Boolean(realAuthEmailRef.current || AUTH_REQUIRED);
+    const localProfilePatches: Array<
+      | { kind: 'deactivate'; email: string }
+      | { kind: 'upsert'; profile: UserProfile }
+    > = [];
+
+    for (const email of uniqueEmails) {
+      const matching = entriesSnapshot.filter(
+        (entry) => (entry.email || '').trim().toLowerCase() === email
+      );
+
+      if (matching.length === 0) {
+        if (isSuperAdminEmail(email)) continue;
+        if (shouldPersistCloud) {
+          try {
+            const { error } = await supabase
+              .from('users_profiles')
+              .update({ is_active: false })
+              .eq('email', email);
+            if (error) {
+              return {
+                ok: false,
+                error: `No se pudo desactivar el perfil en la nube (${error.message}).`,
+              };
+            }
+          } catch (err) {
+            return {
+              ok: false,
+              error:
+                err instanceof Error
+                  ? `Error de conexión al desactivar perfil: ${err.message}`
+                  : 'Error de conexión al desactivar perfil.',
+            };
+          }
+        }
+        localProfilePatches.push({ kind: 'deactivate', email });
+        continue;
+      }
+
+      const sorted = [...matching].sort((a, b) => {
+        const accessDiff =
+          Number(b.has_app_access || b.is_permanent_admin) -
+          Number(a.has_app_access || a.is_permanent_admin);
+        if (accessDiff !== 0) return accessDiff;
+        const roleDiff = ROLE_PRIORITY[b.role] - ROLE_PRIORITY[a.role];
+        if (roleDiff !== 0) return roleDiff;
+        return (
+          Number(DIRECTORY_ORG_BY_CODE[b.directory_org].hasBudget) -
+          Number(DIRECTORY_ORG_BY_CODE[a.directory_org].hasBudget)
+        );
+      });
+
+      const primary = sorted[0];
+      const orgDef = DIRECTORY_ORG_BY_CODE[primary.directory_org];
+      const isSuper = isSuperAdminEmail(email);
+      const effectivePermanent = isSuper || matching.some((e) => e.is_permanent_admin);
+      const effectiveRole: UserProfile['role'] =
+        isSuper || effectivePermanent ? 'ADMIN' : primary.role;
+      const effectiveActive =
+        isSuper || effectivePermanent || matching.some((e) => e.has_app_access);
+      const effectiveApprove =
+        isSuper ||
+        effectiveRole === 'ADMIN' ||
+        matching.some((e) => e.can_approve_activities);
+      const effectiveOrg: OrganizationCode = isSuper ? 'TODAS' : orgDef.budgetOrgCode;
+      const fullName =
+        `${primary.first_name.trim()} ${primary.last_name.trim()}`.trim() || primary.calling;
+
+      if (shouldPersistCloud) {
+        try {
+          const { error } = await supabase.from('users_profiles').upsert(
+            {
+              email,
+              full_name: fullName,
+              first_name: primary.first_name.trim(),
+              last_name: primary.last_name.trim(),
+              phone: primary.phone?.trim() || null,
+              calling: primary.calling,
+              organization: effectiveOrg,
+              role: effectiveRole,
+              can_approve_activities: effectiveApprove,
+              is_permanent_admin: effectivePermanent,
+              is_active: effectiveActive,
+            },
+            { onConflict: 'email' }
+          );
+          if (error) {
+            return {
+              ok: false,
+              error: `No se pudo sincronizar el perfil de acceso en la nube (${error.message}).`,
+            };
+          }
+        } catch (err) {
+          return {
+            ok: false,
+            error:
+              err instanceof Error
+                ? `Error de conexión al sincronizar perfil: ${err.message}`
+                : 'Error de conexión al sincronizar perfil.',
+          };
+        }
+      }
+
+      localProfilePatches.push({
+        kind: 'upsert',
+        profile: {
+          id: `user-${primary.id}`,
           email,
           full_name: fullName,
-          first_name: entry.first_name.trim(),
-          last_name: entry.last_name.trim(),
-          phone: entry.phone?.trim() || null,
-          calling: entry.calling,
-          organization: orgDef.budgetOrgCode,
+          first_name: primary.first_name.trim(),
+          last_name: primary.last_name.trim(),
+          phone: primary.phone?.trim() || undefined,
+          calling: primary.calling,
+          organization: effectiveOrg,
           role: effectiveRole,
-          can_approve_activities: isSuper ? true : entry.can_approve_activities,
-          is_permanent_admin: isSuper ? true : entry.is_permanent_admin,
+          can_approve_activities: effectiveApprove,
+          is_permanent_admin: effectivePermanent,
           is_active: effectiveActive,
         },
-        { onConflict: 'email' }
-      );
-    } catch {
-      // Estado local ya sincronizado
+      });
     }
+
+    if (localProfilePatches.length > 0) {
+      setProfiles((prev) => {
+        let nextProfiles = [...prev];
+        for (const patch of localProfilePatches) {
+          if (patch.kind === 'deactivate') {
+            nextProfiles = nextProfiles.map((p) =>
+              p.email.toLowerCase() === patch.email ? { ...p, is_active: false } : p
+            );
+          } else {
+            const existingIdx = nextProfiles.findIndex(
+              (p) => p.email.toLowerCase() === patch.profile.email
+            );
+            if (existingIdx >= 0) {
+              nextProfiles[existingIdx] = {
+                ...nextProfiles[existingIdx],
+                ...patch.profile,
+                id: nextProfiles[existingIdx].id,
+              };
+            } else {
+              nextProfiles.push(patch.profile);
+            }
+          }
+        }
+        return nextProfiles;
+      });
+    }
+
+    return { ok: true };
   };
 
   const updateDirectoryEntry = async (
     id: string,
     updates: Partial<StakeDirectoryEntry>
   ): Promise<PersistenceResult> => {
-    const currentEntries = directoryEntriesRef.current;
-    let updatedTarget: StakeDirectoryEntry | null = null;
-    const next = currentEntries.map((entry) => {
-      if (entry.id !== id) return entry;
-      const nextEmail =
-        updates.email !== undefined ? updates.email.trim().toLowerCase() : entry.email;
-      const isSuper = isSuperAdminEmail(nextEmail) || isSuperAdminEmail(entry.email);
-      const isPermAdmin = isSuper
+    const prevEntries = directoryEntriesRef.current;
+    const prevTarget = prevEntries.find((entry) => entry.id === id);
+    if (!prevTarget) {
+      return { ok: false, error: 'Registro no encontrado en el directorio.' };
+    }
+
+    const nextEmail =
+      updates.email !== undefined
+        ? updates.email.trim().toLowerCase()
+        : (prevTarget.email || '').trim().toLowerCase();
+    const isSuper = isSuperAdminEmail(nextEmail);
+    const wasSuperOnFinanceSlot =
+      prevTarget.slot_key === 'pres-secretario-financiero' &&
+      isSuperAdminEmail(prevTarget.email) &&
+      !isSuper;
+    const isPermAdmin = isSuper
+      ? true
+      : wasSuperOnFinanceSlot
+        ? false
+        : updates.is_permanent_admin ?? prevTarget.is_permanent_admin;
+    const autoAccessForPermAdmin = Boolean(isPermAdmin && nextEmail);
+
+    const updatedTarget: StakeDirectoryEntry = {
+      ...prevTarget,
+      ...updates,
+      email: nextEmail,
+      role:
+        isSuper || isPermAdmin
+          ? 'ADMIN'
+          : wasSuperOnFinanceSlot
+            ? updates.role ?? (prevTarget.role === 'ADMIN' ? 'PRESIDENCIA' : prevTarget.role)
+            : updates.role ?? prevTarget.role,
+      is_permanent_admin: isPermAdmin,
+      can_approve_activities: isSuper
         ? true
-        : updates.is_permanent_admin ?? entry.is_permanent_admin;
-      const autoAccessForPermAdmin = Boolean(isPermAdmin && nextEmail);
-      const merged: StakeDirectoryEntry = {
-        ...entry,
-        ...updates,
-        email: nextEmail,
-        role: isSuper || isPermAdmin ? 'ADMIN' : updates.role ?? entry.role,
-        is_permanent_admin: isPermAdmin,
-        can_approve_activities: isSuper
+        : updates.can_approve_activities ?? prevTarget.can_approve_activities,
+      has_app_access:
+        isSuper || autoAccessForPermAdmin
           ? true
-          : updates.can_approve_activities ?? entry.can_approve_activities,
-        has_app_access:
-          isSuper || autoAccessForPermAdmin
-            ? true
-            : updates.has_app_access ?? entry.has_app_access,
-      };
-      updatedTarget = merged;
-      return merged;
+          : nextEmail
+            ? updates.has_app_access ?? prevTarget.has_app_access
+            : false,
+    };
+
+    const isChangingLink = Object.prototype.hasOwnProperty.call(updates, 'linked_entry_id');
+    const contactFieldUpdated =
+      !isChangingLink &&
+      (updates.first_name !== undefined ||
+        updates.last_name !== undefined ||
+        updates.phone !== undefined ||
+        updates.email !== undefined);
+
+    const linkedPeerIds = new Set<string>();
+    if (contactFieldUpdated) {
+      const groupRootId = updatedTarget.linked_entry_id || updatedTarget.id;
+      for (const entry of prevEntries) {
+        if (entry.id === updatedTarget.id) continue;
+        if (
+          entry.id === updatedTarget.linked_entry_id ||
+          entry.linked_entry_id === updatedTarget.id ||
+          (updatedTarget.linked_entry_id && entry.linked_entry_id === groupRootId)
+        ) {
+          linkedPeerIds.add(entry.id);
+        }
+      }
+    }
+
+    const changedRows: StakeDirectoryEntry[] = [];
+    const prevChangedRows: StakeDirectoryEntry[] = [];
+    const affectedEmails = new Set<string>();
+    if (prevTarget.email) affectedEmails.add(prevTarget.email);
+    if (updatedTarget.email) affectedEmails.add(updatedTarget.email);
+
+    const next = prevEntries.map((entry) => {
+      if (entry.id === id) {
+        prevChangedRows.push(entry);
+        changedRows.push(updatedTarget);
+        return updatedTarget;
+      }
+      if (linkedPeerIds.has(entry.id)) {
+        const peerEmail =
+          updates.email !== undefined
+            ? nextEmail
+            : (entry.email || '').trim().toLowerCase();
+        const peerIsSuper = isSuperAdminEmail(peerEmail);
+        const peerIsPerm = peerIsSuper ? true : entry.is_permanent_admin;
+        const syncedPeer: StakeDirectoryEntry = {
+          ...entry,
+          first_name:
+            updates.first_name !== undefined ? updatedTarget.first_name : entry.first_name,
+          last_name:
+            updates.last_name !== undefined ? updatedTarget.last_name : entry.last_name,
+          phone: updates.phone !== undefined ? updatedTarget.phone : entry.phone,
+          email: peerEmail,
+          has_app_access:
+            peerIsSuper || (peerIsPerm && Boolean(peerEmail))
+              ? true
+              : peerEmail
+                ? entry.has_app_access
+                : false,
+        };
+        if (entry.email) affectedEmails.add(entry.email);
+        if (syncedPeer.email) affectedEmails.add(syncedPeer.email);
+        prevChangedRows.push(entry);
+        changedRows.push(syncedPeer);
+        return syncedPeer;
+      }
+      return entry;
     });
 
-    if (!updatedTarget) {
-      return { ok: false, error: 'Registro no encontrado en el directorio.' };
+    const shouldPersistCloud = Boolean(realAuthEmailRef.current || AUTH_REQUIRED);
+    if (shouldPersistCloud) {
+      try {
+        const { error } = await supabase
+          .from('stake_directory_entries')
+          .upsert(changedRows.map(toDbDirectoryRow), { onConflict: 'id' });
+        if (error) {
+          return {
+            ok: false,
+            error: `No se pudo guardar en la base de datos (${error.message}).`,
+          };
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          error:
+            err instanceof Error
+              ? `Error de conexión con la base de datos: ${err.message}`
+              : 'Error de conexión con la base de datos.',
+        };
+      }
+
+      const profileRes = await reconcileProfilesForEmails(Array.from(affectedEmails), next);
+      if (!profileRes.ok) {
+        // Rollback best-effort en stake_directory_entries y users_profiles para mantener consistencia
+        try {
+          await supabase
+            .from('stake_directory_entries')
+            .upsert(prevChangedRows.map(toDbDirectoryRow), { onConflict: 'id' });
+          await reconcileProfilesForEmails(Array.from(affectedEmails), prevEntries);
+        } catch {
+          // Best-effort rollback
+        }
+        return profileRes;
+      }
+    } else {
+      await reconcileProfilesForEmails(Array.from(affectedEmails), next);
     }
 
     directoryEntriesRef.current = next;
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
 
-    const updatedEntry = updatedTarget as StakeDirectoryEntry;
     const personLabel =
-      `${updatedEntry.first_name || ''} ${updatedEntry.last_name || ''}`.trim() ||
-      updatedEntry.calling;
+      `${updatedTarget.first_name || ''} ${updatedTarget.last_name || ''}`.trim() ||
+      updatedTarget.calling;
     if (updates.has_app_access !== undefined && Object.keys(updates).length === 1) {
       void recordAuditLog({
         actor: user,
         actionType: 'UPDATE',
         section: 'DIRECTORIO',
-        summary: `${updates.has_app_access ? 'Activó' : 'Desactivó'} Acceso App de ${personLabel} (${updatedEntry.calling})`,
+        summary: `${updates.has_app_access ? 'Activó' : 'Desactivó'} Acceso App de ${personLabel} (${updatedTarget.calling})`,
       });
     } else {
       void recordAuditLog({
         actor: user,
         actionType: 'UPDATE',
         section: 'DIRECTORIO',
-        summary: `Actualizó datos de ${updatedEntry.calling}: ${personLabel}`,
+        summary: `Actualizó datos de ${updatedTarget.calling}: ${personLabel}`,
       });
     }
 
-    await syncEntryToProfiles(updatedTarget);
-    if (!realAuthEmailRef.current && !AUTH_REQUIRED) {
-      return { ok: true };
-    }
-    try {
-      const { error } = await supabase
-        .from('stake_directory_entries')
-        .upsert(toDbDirectoryRow(updatedTarget), { onConflict: 'id' });
-      if (error) {
-        return {
-          ok: false,
-          error: `No se pudo guardar en la base de datos (${error.message}).`,
-        };
-      }
-      return { ok: true };
-    } catch (err) {
-      return {
-        ok: false,
-        error:
-          err instanceof Error
-            ? `Error de conexión con la base de datos: ${err.message}`
-            : 'Error de conexión con la base de datos.',
-      };
-    }
+    return { ok: true };
   };
 
   const addExtraDirectoryEntry = async (
@@ -700,7 +945,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     data: Pick<StakeDirectoryEntry, 'first_name' | 'last_name' | 'phone' | 'email' | 'has_app_access'>
   ): Promise<PersistenceResult> => {
     const orgDef = DIRECTORY_ORG_BY_CODE[org];
-    const currentExtras = directoryEntriesRef.current.filter(
+    const currentEntries = directoryEntriesRef.current;
+    const currentExtras = currentEntries.filter(
       (e) => e.directory_org === org && !e.is_fixed_slot
     );
     if (currentExtras.length >= orgDef.maxExtras) {
@@ -718,10 +964,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { ok: false, error: 'Para activar Acceso App debes ingresar un correo @gmail.com.' };
     }
 
+    const existingSlotKeys = new Set(currentEntries.map((e) => e.slot_key));
+    let slotIndex = 1;
+    while (existingSlotKeys.has(`${org.toLowerCase()}-extra-${slotIndex}`)) {
+      slotIndex += 1;
+    }
+
     const created: StakeDirectoryEntry = {
-      id: `dir-${org.toLowerCase()}-extra-${Date.now()}`,
+      id: `dir-${org.toLowerCase()}-extra-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       directory_org: org,
-      slot_key: `${org.toLowerCase()}-extra-${currentExtras.length + 1}`,
+      slot_key: `${org.toLowerCase()}-extra-${slotIndex}`,
       calling: callingLabel.trim(),
       is_fixed_slot: false,
       extra_role_type: extraRoleType,
@@ -735,7 +987,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       is_permanent_admin: false,
     };
 
-    const next = [...directoryEntriesRef.current, created];
+    const next = [...currentEntries, created];
+    const shouldPersistCloud = Boolean(realAuthEmailRef.current || AUTH_REQUIRED);
+
+    if (shouldPersistCloud) {
+      try {
+        const { error } = await supabase
+          .from('stake_directory_entries')
+          .upsert(toDbDirectoryRow(created), { onConflict: 'id' });
+        if (error) {
+          return {
+            ok: false,
+            error: `No se pudo guardar en la nube (${error.message}).`,
+          };
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          error:
+            err instanceof Error
+              ? `Error de conexión con la base de datos: ${err.message}`
+              : 'Error de conexión con la base de datos.',
+        };
+      }
+
+      const profileRes = await reconcileProfilesForEmails([created.email], next);
+      if (!profileRes.ok) {
+        try {
+          await supabase.from('stake_directory_entries').delete().eq('id', created.id);
+        } catch {
+          // Best-effort rollback
+        }
+        return profileRes;
+      }
+    } else {
+      await reconcileProfilesForEmails([created.email], next);
+    }
+
     directoryEntriesRef.current = next;
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
@@ -747,37 +1035,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       summary: `Agregó llamamiento adicional: ${created.calling} (${created.first_name} ${created.last_name})`,
     });
 
-    await syncEntryToProfiles(created);
-    if (!realAuthEmailRef.current && !AUTH_REQUIRED) {
-      return { ok: true };
-    }
-    try {
-      const { error } = await supabase
-        .from('stake_directory_entries')
-        .upsert(toDbDirectoryRow(created), { onConflict: 'id' });
-      if (error) {
-        return {
-          ok: false,
-          error: `Se guardó localmente pero falló la nube: ${error.message}`,
-        };
-      }
-      return { ok: true };
-    } catch (err) {
-      return {
-        ok: false,
-        error:
-          err instanceof Error
-            ? `Error de conexión con la base de datos: ${err.message}`
-            : 'Error de conexión con la base de datos.',
-      };
-    }
+    return { ok: true };
   };
 
   const removeExtraDirectoryEntry = async (id: string): Promise<PersistenceResult> => {
-    const target = directoryEntriesRef.current.find((e) => e.id === id && !e.is_fixed_slot);
+    const prevEntries = directoryEntriesRef.current;
+    const target = prevEntries.find((e) => e.id === id && !e.is_fixed_slot);
     if (!target) return { ok: false, error: 'Integrante adicional no encontrado.' };
 
-    const next = directoryEntriesRef.current.filter((e) => e.id !== id);
+    const next = prevEntries
+      .filter((e) => e.id !== id)
+      .map((e) => (e.linked_entry_id === id ? { ...e, linked_entry_id: undefined } : e));
+
+    const shouldPersistCloud = Boolean(realAuthEmailRef.current || AUTH_REQUIRED);
+    if (shouldPersistCloud) {
+      try {
+        const { error } = await supabase.from('stake_directory_entries').delete().eq('id', id);
+        if (error) {
+          return { ok: false, error: `No se pudo eliminar en la nube: ${error.message}` };
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          error:
+            err instanceof Error
+              ? `Error de conexión con la base de datos: ${err.message}`
+              : 'Error de conexión con la base de datos.',
+        };
+      }
+
+      const profileRes = await reconcileProfilesForEmails([target.email], next);
+      if (!profileRes.ok) {
+        try {
+          await supabase
+            .from('stake_directory_entries')
+            .upsert(toDbDirectoryRow(target), { onConflict: 'id' });
+        } catch {
+          // Best-effort rollback
+        }
+        return profileRes;
+      }
+    } else {
+      await reconcileProfilesForEmails([target.email], next);
+    }
+
     directoryEntriesRef.current = next;
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
@@ -789,32 +1090,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       summary: `Quitó llamamiento adicional: ${target.calling} (${target.first_name} ${target.last_name})`,
     });
 
-    if (target.email) {
-      setProfiles((prev) =>
-        prev.map((p) =>
-          p.email.toLowerCase() === target.email?.toLowerCase() ? { ...p, is_active: false } : p
-        )
-      );
-    }
-
-    if (!realAuthEmailRef.current && !AUTH_REQUIRED) {
-      return { ok: true };
-    }
-    try {
-      const { error } = await supabase.from('stake_directory_entries').delete().eq('id', id);
-      if (error) {
-        return { ok: false, error: `No se pudo eliminar en la nube: ${error.message}` };
-      }
-      return { ok: true };
-    } catch (err) {
-      return {
-        ok: false,
-        error:
-          err instanceof Error
-            ? `Error de conexión con la base de datos: ${err.message}`
-            : 'Error de conexión con la base de datos.',
-      };
-    }
+    return { ok: true };
   };
 
   const toggleDirectoryAppAccess = async (id: string): Promise<PersistenceResult> => {
@@ -843,14 +1119,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     targetEntryId: string,
     sourceEntryId: string
   ): Promise<PersistenceResult> => {
+    if (targetEntryId === sourceEntryId) {
+      return { ok: false, error: 'No puedes vincular un puesto consigo mismo.' };
+    }
     const source = directoryEntriesRef.current.find((e) => e.id === sourceEntryId);
     if (!source) return { ok: false, error: 'Persona de origen no encontrada.' };
+    const canonicalRootId =
+      source.linked_entry_id && source.linked_entry_id !== targetEntryId
+        ? source.linked_entry_id
+        : source.id;
     return await updateDirectoryEntry(targetEntryId, {
       first_name: source.first_name,
       last_name: source.last_name,
       phone: source.phone || '',
       email: source.email || '',
-      linked_entry_id: source.id,
+      linked_entry_id: canonicalRootId,
     });
   };
 
@@ -858,23 +1141,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     id: string,
     options?: { clearCounselors?: boolean }
   ): Promise<{ clearedLinkedCallings: string[]; clearedCounselors: string[]; error?: string }> => {
-    const target = directoryEntries.find((e) => e.id === id);
+    const prevEntries = directoryEntriesRef.current;
+    const target = prevEntries.find((e) => e.id === id);
     if (!target) return { clearedLinkedCallings: [], clearedCounselors: [] };
 
     const idsToClear = new Set<string>([id]);
     const clearedLinkedCallings: string[] = [];
     const clearedCounselors: string[] = [];
-    const emailsToDeactivate = new Set<string>();
+    const affectedEmails = new Set<string>();
 
-    // Si se limpia un miembro del Sumo Consejo, limpiar también cualquier puesto vinculado a él
-    if (target.directory_org === 'SUMO_CONSEJO') {
-      for (const entry of directoryEntries) {
-        if (entry.linked_entry_id === target.id) {
-          idsToClear.add(entry.id);
-          clearedLinkedCallings.push(
-            `${DIRECTORY_ORG_BY_CODE[entry.directory_org].shortLabel} · ${entry.calling}`
-          );
-        }
+    // Si se limpia cualquier puesto origen, limpiar también cualquier puesto vinculado a él
+    for (const entry of prevEntries) {
+      if (entry.linked_entry_id === target.id && !idsToClear.has(entry.id)) {
+        idsToClear.add(entry.id);
+        clearedLinkedCallings.push(
+          `${DIRECTORY_ORG_BY_CODE[entry.directory_org].shortLabel} · ${entry.calling}`
+        );
       }
     }
 
@@ -882,13 +1164,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const shouldClearCounselors = options?.clearCounselors ?? true;
     if (shouldClearCounselors) {
       for (const clearId of Array.from(idsToClear)) {
-        const clearedEntry = directoryEntries.find((e) => e.id === clearId);
+        const clearedEntry = prevEntries.find((e) => e.id === clearId);
         if (!clearedEntry) continue;
         const counselorKeys = PRESIDENCY_COUNSELOR_SLOTS[clearedEntry.slot_key];
         if (counselorKeys) {
           for (const cKey of counselorKeys) {
-            const counselorEntry = directoryEntries.find((e) => e.slot_key === cKey);
-            if (counselorEntry) {
+            const counselorEntry = prevEntries.find((e) => e.slot_key === cKey);
+            if (counselorEntry && !idsToClear.has(counselorEntry.id)) {
               idsToClear.add(counselorEntry.id);
               clearedCounselors.push(counselorEntry.calling);
             }
@@ -898,11 +1180,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const updatedRows: StakeDirectoryEntry[] = [];
-    const next = directoryEntriesRef.current.map((entry) => {
+    const prevRows: StakeDirectoryEntry[] = [];
+    const next = prevEntries.map((entry) => {
       if (!idsToClear.has(entry.id)) return entry;
-      if (entry.email && !isSuperAdminEmail(entry.email)) {
-        emailsToDeactivate.add(entry.email.toLowerCase());
+      if (entry.email) {
+        affectedEmails.add(entry.email.toLowerCase());
       }
+      prevRows.push(entry);
       const cleared: StakeDirectoryEntry = {
         ...entry,
         first_name: '',
@@ -918,49 +1202,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedRows.push(cleared);
       return cleared;
     });
-    directoryEntriesRef.current = next;
-    setDirectoryEntries(next);
-    saveDirectoryLocal(next);
 
-    void recordAuditLog({
-      actor: user,
-      actionType: 'UPDATE',
-      section: 'DIRECTORIO',
-      summary: `Liberó consejeros de Presidencia (${clearedCounselors.join(', ')})`,
-    });
-
-    if (emailsToDeactivate.size > 0) {
-      setProfiles((prev) =>
-        prev.map((p) =>
-          emailsToDeactivate.has(p.email.toLowerCase()) ? { ...p, is_active: false } : p
-        )
-      );
-      try {
-        for (const em of emailsToDeactivate) {
-          await supabase.from('users_profiles').update({ is_active: false }).eq('email', em);
-        }
-      } catch {
-        // Fallback local
-      }
-    }
-
-    let cloudError: string | undefined;
-    if (realAuthEmailRef.current || AUTH_REQUIRED) {
+    const shouldPersistCloud = Boolean(realAuthEmailRef.current || AUTH_REQUIRED);
+    if (shouldPersistCloud) {
       try {
         if (updatedRows.length > 0) {
           const { error } = await supabase
             .from('stake_directory_entries')
             .upsert(updatedRows.map(toDbDirectoryRow), { onConflict: 'id' });
           if (error) {
-            cloudError = error.message;
+            return {
+              clearedLinkedCallings: [],
+              clearedCounselors: [],
+              error: `No se pudo vaciar en la nube (${error.message}).`,
+            };
           }
         }
       } catch (err) {
-        cloudError = err instanceof Error ? err.message : 'Error de conexión';
+        return {
+          clearedLinkedCallings: [],
+          clearedCounselors: [],
+          error: err instanceof Error ? err.message : 'Error de conexión',
+        };
       }
+
+      const profileRes = await reconcileProfilesForEmails(Array.from(affectedEmails), next);
+      if (!profileRes.ok) {
+        try {
+          if (prevRows.length > 0) {
+            await supabase
+              .from('stake_directory_entries')
+              .upsert(prevRows.map(toDbDirectoryRow), { onConflict: 'id' });
+          }
+          await reconcileProfilesForEmails(Array.from(affectedEmails), prevEntries);
+        } catch {
+          // Best-effort rollback
+        }
+        return {
+          clearedLinkedCallings: [],
+          clearedCounselors: [],
+          error: profileRes.error,
+        };
+      }
+    } else {
+      await reconcileProfilesForEmails(Array.from(affectedEmails), next);
     }
 
-    return { clearedLinkedCallings, clearedCounselors, error: cloudError };
+    directoryEntriesRef.current = next;
+    setDirectoryEntries(next);
+    saveDirectoryLocal(next);
+
+    const auditParts: string[] = [];
+    if (clearedCounselors.length > 0) {
+      auditParts.push(`consejeros: ${clearedCounselors.join(', ')}`);
+    }
+    if (clearedLinkedCallings.length > 0) {
+      auditParts.push(`vínculos: ${clearedLinkedCallings.join(', ')}`);
+    }
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'DIRECTORIO',
+      summary:
+        auditParts.length > 0
+          ? `Vació puesto ${target.calling} (${auditParts.join(' · ')})`
+          : `Vació puesto ${target.calling}`,
+    });
+
+    return { clearedLinkedCallings, clearedCounselors };
   };
 
   const releasePresidencyCounselors = async (
@@ -969,16 +1278,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const counselorKeys = PRESIDENCY_COUNSELOR_SLOTS[presidentSlotKey];
     if (!counselorKeys || counselorKeys.length === 0) return { clearedCounselors: [] };
 
+    const prevEntries = directoryEntriesRef.current;
     const clearedCounselors: string[] = [];
-    const emailsToDeactivate = new Set<string>();
+    const affectedEmails = new Set<string>();
     const updatedRows: StakeDirectoryEntry[] = [];
+    const prevRows: StakeDirectoryEntry[] = [];
 
-    const next = directoryEntriesRef.current.map((entry) => {
+    const next = prevEntries.map((entry) => {
       if (!counselorKeys.includes(entry.slot_key)) return entry;
-      if (entry.email && !isSuperAdminEmail(entry.email)) {
-        emailsToDeactivate.add(entry.email.toLowerCase());
+      if (entry.email) {
+        affectedEmails.add(entry.email.toLowerCase());
       }
       clearedCounselors.push(entry.calling);
+      prevRows.push(entry);
       const cleared: StakeDirectoryEntry = {
         ...entry,
         first_name: '',
@@ -991,6 +1303,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedRows.push(cleared);
       return cleared;
     });
+
+    const shouldPersistCloud = Boolean(realAuthEmailRef.current || AUTH_REQUIRED);
+    if (shouldPersistCloud) {
+      try {
+        if (updatedRows.length > 0) {
+          const { error } = await supabase
+            .from('stake_directory_entries')
+            .upsert(updatedRows.map(toDbDirectoryRow), { onConflict: 'id' });
+          if (error) {
+            return {
+              clearedCounselors: [],
+              error: `No se pudieron liberar los consejeros en la nube (${error.message}).`,
+            };
+          }
+        }
+      } catch (err) {
+        return {
+          clearedCounselors: [],
+          error: err instanceof Error ? err.message : 'Error de conexión',
+        };
+      }
+
+      const profileRes = await reconcileProfilesForEmails(Array.from(affectedEmails), next);
+      if (!profileRes.ok) {
+        try {
+          if (prevRows.length > 0) {
+            await supabase
+              .from('stake_directory_entries')
+              .upsert(prevRows.map(toDbDirectoryRow), { onConflict: 'id' });
+          }
+          await reconcileProfilesForEmails(Array.from(affectedEmails), prevEntries);
+        } catch {
+          // Best-effort rollback
+        }
+        return {
+          clearedCounselors: [],
+          error: profileRes.error,
+        };
+      }
+    } else {
+      await reconcileProfilesForEmails(Array.from(affectedEmails), next);
+    }
+
     directoryEntriesRef.current = next;
     setDirectoryEntries(next);
     saveDirectoryLocal(next);
@@ -1002,38 +1357,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       summary: `Liberó consejeros de Presidencia (${clearedCounselors.join(', ')})`,
     });
 
-    if (emailsToDeactivate.size > 0) {
-      setProfiles((prev) =>
-        prev.map((p) =>
-          emailsToDeactivate.has(p.email.toLowerCase()) ? { ...p, is_active: false } : p
-        )
-      );
-      try {
-        for (const em of emailsToDeactivate) {
-          await supabase.from('users_profiles').update({ is_active: false }).eq('email', em);
-        }
-      } catch {
-        // Fallback local
-      }
-    }
-
-    let cloudError: string | undefined;
-    if (realAuthEmailRef.current || AUTH_REQUIRED) {
-      try {
-        if (updatedRows.length > 0) {
-          const { error } = await supabase
-            .from('stake_directory_entries')
-            .upsert(updatedRows.map(toDbDirectoryRow), { onConflict: 'id' });
-          if (error) {
-            cloudError = error.message;
-          }
-        }
-      } catch (err) {
-        cloudError = err instanceof Error ? err.message : 'Error de conexión';
-      }
-    }
-
-    return { clearedCounselors, error: cloudError };
+    return { clearedCounselors };
   };
 
   const incompleteContactsCount = React.useMemo(
@@ -1069,6 +1393,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         profiles,
         directoryEntries,
+        directoryLoadError,
+        reloadDirectory,
         incompleteContactsCount,
         authStatus,
         isAuthRequired: AUTH_REQUIRED,

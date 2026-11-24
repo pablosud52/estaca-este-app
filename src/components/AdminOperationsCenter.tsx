@@ -20,7 +20,7 @@ import {
   Wallet,
   Zap,
 } from 'lucide-react';
-import { matchesDateRange } from '../lib/calendarHelpers';
+import { isHistoricalImportedActivity, matchesDateRange } from '../lib/calendarHelpers';
 import {
   formatCurrency,
   formatDate,
@@ -375,9 +375,8 @@ export const AdminOperationsCenter: React.FC<AdminOperationsCenterProps> = ({
     const virtualCalendarMovements: GroupedExpenseMovement[] = activities
       .filter(
         (act) =>
-          act.status !== 'RECHAZADA' &&
-          act.status !== 'CANCELADA' &&
-          !act.ical_uid?.startsWith('ACT-2026-') &&
+          act.status === 'APROBADA' &&
+          !isHistoricalImportedActivity(act) &&
           Boolean(act.event_date) &&
           act.event_date.startsWith(yearStr) &&
           Number(act.estimated_cost || 0) > 0 &&

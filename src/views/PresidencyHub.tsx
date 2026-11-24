@@ -39,6 +39,7 @@ import {
   getExpenseEffectiveDate,
   getExpenseWithdrawalAllocations,
   getQuarterFromDate,
+  getTodayLocalIso,
   isExpenseApplied,
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
@@ -60,6 +61,7 @@ import { ProposeActivityModal } from '../components/ProposeActivityModal';
 import { ActivityEditPayload } from '../components/ActivityEditModal';
 import {
   findMatchingLcrEvent,
+  isHistoricalImportedActivity,
   isLcrLinkedActivity,
   mergeLocalWithLcrActivity,
 } from '../lib/calendarHelpers';
@@ -67,6 +69,7 @@ import {
   isActivityPendingLcr,
   syncLcrCalendarWithShield,
 } from '../services/lcrSyncService';
+import { useAutoLcrSync } from '../hooks/useAutoLcrSync';
 import { AdminOperationsCenter } from '../components/AdminOperationsCenter';
 import { FinancialInfoSection } from '../components/FinancialInfoSection';
 import { computeYearIncomeSummary } from '../lib/budgetUtils';
@@ -196,6 +199,8 @@ export const PresidencyHub: React.FC = () => {
     ...SEED_ACTIVITIES,
     ...loadSessionProposals(),
   ]);
+  // Evita que la carga inicial asíncrona pise actividades creadas antes de que termine la sincronización
+  const locallyCreatedActivityIdsRef = useRef<Set<number>>(new Set());
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [withdrawals, setWithdrawals] = useState<CashWithdrawalRecord[]>(SEED_CASH_WITHDRAWALS);
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
@@ -292,17 +297,32 @@ export const PresidencyHub: React.FC = () => {
           // Usar únicamente los registros reales de Supabase (sin inyectar SEED_ACTIVITIES)
           const syncResult = await syncLcrCalendarWithShield({
             currentActivities: remoteActivities,
+            isSimulating,
+            canPersistToDb: canApproveCalendar(user),
           });
 
           if (!active) return;
 
           setActivities((prev) => {
             const sessionProps = isSimulating ? loadSessionProposals() : [];
-            const localProposals = [...(isSimulating ? prev : []), ...sessionProps].filter(
+            const inFlightCreated = prev.filter(
               (p) =>
-                p.origin === 'propuesta_lider' &&
+                locallyCreatedActivityIdsRef.current.has(p.id) &&
                 !syncResult.activities.some(
-                  (m) => m.title === p.title && m.event_date === p.event_date
+                  (m) =>
+                    m.id === p.id ||
+                    (p.ical_uid && m.ical_uid === p.ical_uid) ||
+                    (m.title === p.title && m.event_date === p.event_date)
+                )
+            );
+            const localProposals = [...(isSimulating ? prev : []), ...sessionProps, ...inFlightCreated].filter(
+              (p) =>
+                (p.origin === 'propuesta_lider' || locallyCreatedActivityIdsRef.current.has(p.id)) &&
+                !syncResult.activities.some(
+                  (m) =>
+                    m.id === p.id ||
+                    (p.ical_uid && m.ical_uid === p.ical_uid) ||
+                    (m.title === p.title && m.event_date === p.event_date)
                 )
             );
             const uniqueLocal = Array.from(
@@ -318,6 +338,8 @@ export const PresidencyHub: React.FC = () => {
           // Sincronización silenciosa sobre SEED_ACTIVITIES si no hay tabla remota
           const syncResult = await syncLcrCalendarWithShield({
             currentActivities: SEED_ACTIVITIES,
+            isSimulating,
+            canPersistToDb: canApproveCalendar(user),
           });
           if (active) {
             setActivities((prev) => {
@@ -378,7 +400,31 @@ export const PresidencyHub: React.FC = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isSimulating]);
+
+  useAutoLcrSync({
+    activities,
+    isSimulating,
+    canPersistToDb: canApproveCalendar(user),
+    onSynced: (syncedActivities) => {
+      setActivities((prev) => {
+        const preservedLocal = prev.filter(
+          (p) =>
+            locallyCreatedActivityIdsRef.current.has(p.id) &&
+            !syncedActivities.some(
+              (m) =>
+                m.id === p.id ||
+                (p.ical_uid && m.ical_uid === p.ical_uid) ||
+                (m.title === p.title && m.event_date === p.event_date)
+            )
+        );
+        if (preservedLocal.length === 0) return syncedActivities;
+        return [...syncedActivities, ...preservedLocal].sort((a, b) =>
+          a.event_date.localeCompare(b.event_date)
+        );
+      });
+    },
+  });
 
   // Cálculos Globales y por Organización exactos según Ejemplo_DB_Finanzas.xlsx para el año seleccionado
   const executiveMetrics = useMemo(() => {
@@ -690,11 +736,11 @@ export const PresidencyHub: React.FC = () => {
       );
     });
 
-    // 2. Actividades del calendario con presupuesto estimado que aún no tienen gasto proyectado ni gasto real cerrado
+    // 2. Actividades aprobadas del calendario con presupuesto estimado que aún no tienen gasto proyectado ni gasto real cerrado
     activities.forEach((act) => {
-      if (act.status === 'RECHAZADA' || act.status === 'CANCELADA') return;
-      // Excluir actividades históricas importadas del Excel Ene-Oct 2026 (ya rendidas en gastos reales)
-      if (act.ical_uid?.startsWith('ACT-2026-')) return;
+      if (act.status !== 'APROBADA') return;
+      // Excluir actividades históricas importadas de planillas Excel (ACT-YYYY-..., ya rendidas en gastos reales)
+      if (isHistoricalImportedActivity(act)) return;
       if (!act.event_date || !act.event_date.startsWith(yearStr)) return;
       const isOverdueOpen = selectedYear === currentYear && act.event_date <= todayStr;
       if (!isOverdueOpen && getQuarterFromDate(act.event_date) !== targetQuarter) return;
@@ -735,10 +781,16 @@ export const PresidencyHub: React.FC = () => {
     };
   }, [expenses, activities, selectedYear, executiveMetrics.consolidatedAvailable]);
 
-  // Sincronización automática: si se reprograma una actividad en el calendario, actualiza la fecha de sus gastos proyectados enlazados
+  // Sincronización automática: si una actividad en el calendario cambia de fecha, título u organización,
+  // actualiza sus gastos proyectados enlazados (manteniendo coherencia entre Calendario y Finanzas)
   useEffect(() => {
     const actMap = new Map(activities.map((a) => [a.id, a]));
-    const toUpdate: Array<{ id: number; newDate: string }> = [];
+    const toUpdate: Array<{
+      id: number;
+      newDate: string;
+      newConcept: string;
+      newOrg: OrganizationCode;
+    }> = [];
     expenses.forEach((exp) => {
       if (
         exp.expense_type === 'PROYECTADO_ACTIVIDAD' &&
@@ -746,28 +798,63 @@ export const PresidencyHub: React.FC = () => {
         actMap.has(exp.activity_id)
       ) {
         const act = actMap.get(exp.activity_id)!;
-        if (act.event_date && exp.activity_date !== act.event_date) {
-          toUpdate.push({ id: exp.id, newDate: act.event_date });
+        const nextDate = act.event_date || exp.activity_date || exp.expense_date;
+        const nextOrg: OrganizationCode = ALL_HUB_ORGS.includes(act.organization)
+          ? act.organization
+          : 'ESTACA';
+        const expectedConcept = act.title;
+        const matchesExistingTitle =
+          exp.concept === expectedConcept ||
+          exp.concept === `Reserva actividad: ${expectedConcept}`;
+        const nextConcept = matchesExistingTitle ? exp.concept : expectedConcept;
+
+        if (
+          (act.event_date && (exp.activity_date !== nextDate || exp.expense_date !== nextDate)) ||
+          !matchesExistingTitle ||
+          exp.organization !== nextOrg
+        ) {
+          toUpdate.push({
+            id: exp.id,
+            newDate: nextDate,
+            newConcept: nextConcept,
+            newOrg: nextOrg,
+          });
         }
       }
     });
     if (toUpdate.length === 0) return;
 
-    const updateMap = new Map(toUpdate.map((u) => [u.id, u.newDate]));
+    const updateMap = new Map(toUpdate.map((u) => [u.id, u]));
     setExpenses((prev) =>
-      prev.map((e) =>
-        updateMap.has(e.id)
-          ? { ...e, activity_date: updateMap.get(e.id)!, expense_date: updateMap.get(e.id)! }
-          : e
-      )
+      prev.map((e) => {
+        const u = updateMap.get(e.id);
+        return u
+          ? {
+              ...e,
+              activity_date: u.newDate,
+              expense_date: u.newDate,
+              concept: u.newConcept,
+              organization: u.newOrg,
+            }
+          : e;
+      })
     );
     if (!isSimulating) {
-      toUpdate.forEach(({ id, newDate }) => {
+      toUpdate.forEach(({ id, newDate, newConcept, newOrg }) => {
         supabase
           .from('expenses')
-          .update({ activity_date: newDate, expense_date: newDate })
+          .update({
+            activity_date: newDate,
+            expense_date: newDate,
+            concept: newConcept,
+            organization: newOrg,
+          })
           .eq('id', id)
-          .then(() => {});
+          .then(({ error }) => {
+            if (error) {
+              console.error(`Error sincronizando gasto proyectado #${id} con calendario:`, error);
+            }
+          });
       });
     }
   }, [activities, expenses, isSimulating]);
@@ -832,15 +919,21 @@ export const PresidencyHub: React.FC = () => {
 
   const handleRejectActivity = async (id: number, reason?: string) => {
     const targetAct = activities.find((a) => a.id === id);
+    const trimmedReason = reason?.trim();
+    const baseDesc = (targetAct?.description || '').trim();
+    const nextDescription = trimmedReason
+      ? baseDesc.includes(`[Motivo: ${trimmedReason}]`)
+        ? baseDesc
+        : `${baseDesc} [Motivo: ${trimmedReason}]`.trim()
+      : targetAct?.description ?? null;
+
     setActivities((prev) => {
       const updated = prev.map((a) =>
         a.id === id
           ? {
               ...a,
               status: 'RECHAZADA' as const,
-              description: reason
-                ? `${a.description || ''} [Motivo: ${reason}]`.trim()
-                : a.description,
+              description: nextDescription,
             }
           : a
       );
@@ -849,72 +942,26 @@ export const PresidencyHub: React.FC = () => {
     });
     if (!isSimulating) {
       try {
-        await supabase.from('activities').update({ status: 'RECHAZADA' }).eq('id', id);
-      } catch {
-        // Estado local ya actualizado
+        const { error } = await supabase
+          .from('activities')
+          .update({
+            status: 'RECHAZADA',
+            description: nextDescription,
+          })
+          .eq('id', id);
+        if (error) {
+          console.error('Error guardando rechazo de actividad en Supabase:', error);
+        }
+      } catch (err) {
+        console.error('Error de red guardando rechazo de actividad:', err);
       }
     }
     void recordAuditLog({
       actor: user,
       actionType: 'REJECT',
       section: 'CALENDARIO',
-      summary: `Rechazó actividad: ${targetAct?.title || `#${id}`}${reason ? ` (${reason})` : ''}`,
+      summary: `Rechazó actividad: ${targetAct?.title || `#${id}`}${trimmedReason ? ` (${trimmedReason})` : ''}`,
     });
-  };
-
-  const handleEditAndApproveActivity = async (
-    id: number,
-    updates: {
-      title: string;
-      event_date: string;
-      start_time: string;
-      location: string;
-      description: string;
-      estimated_cost: number;
-    }
-  ) => {
-    const targetAct = activities.find((a) => a.id === id);
-    setActivities((prev) => {
-      const updated = prev.map((a) =>
-        a.id === id
-          ? {
-              ...a,
-              ...updates,
-              has_budget: updates.estimated_cost > 0,
-              status: 'APROBADA' as const,
-            }
-          : a
-      );
-      saveSessionProposals(updated);
-      return updated;
-    });
-    if (!isSimulating) {
-      try {
-        await supabase
-          .from('activities')
-          .update({
-            title: updates.title,
-            event_date: updates.event_date,
-            start_time: updates.start_time,
-            location: updates.location,
-            description: updates.description,
-            estimated_cost: updates.estimated_cost,
-            has_budget: updates.estimated_cost > 0,
-            status: 'APROBADA',
-          })
-          .eq('id', id);
-      } catch {
-        // Estado local ya actualizado
-      }
-    }
-    if (targetAct && updates.estimated_cost > 0) {
-      await createProjectedForActivity({
-        ...targetAct,
-        ...updates,
-        has_budget: true,
-        status: 'APROBADA',
-      });
-    }
   };
 
   // Handlers del Calendario unificado (Presidencia, Secretarios y Admin)
@@ -967,20 +1014,44 @@ export const PresidencyHub: React.FC = () => {
           })
           .eq('ical_uid', lcrAct.ical_uid);
 
-        // 2. Reapuntar cualquier gasto vinculado al ID real de LCR
+        // 2. Reapuntar cualquier gasto vinculado al ID real de LCR (actualizando fechas de proyectados)
         if (pendingActivityId > 0 && pendingActivityId < 2_000_000_000) {
           await supabase
             .from('expenses')
-            .update({ activity_id: lcrAct.id })
-            .eq('activity_id', pendingActivityId);
+            .update({
+              activity_id: lcrAct.id,
+              activity_date: mergedRecord.event_date,
+              expense_date: mergedRecord.event_date,
+            })
+            .eq('activity_id', pendingActivityId)
+            .eq('expense_type', 'PROYECTADO_ACTIVIDAD');
+
+          await supabase
+            .from('expenses')
+            .update({
+              activity_id: lcrAct.id,
+              activity_date: mergedRecord.event_date,
+            })
+            .eq('activity_id', pendingActivityId)
+            .neq('expense_type', 'PROYECTADO_ACTIVIDAD');
 
           // 3. Eliminar la fila temporal pendiente en Supabase
           await supabase.from('activities').delete().eq('id', pendingActivityId);
         }
-      } catch {
-        // Estado local ya actualizado
+      } catch (err) {
+        console.error('Error vinculando actividad con LCR en Supabase:', err);
       }
     }
+
+    // Sincronizar y deduplicar posibles reservas proyectadas entre el evento temporal y el evento LCR
+    await syncProjectedExpenseForActivity(lcrAct.id, mergedRecord, pendingActivityId);
+
+    void recordAuditLog({
+      actor: user,
+      actionType: 'UPDATE',
+      section: 'CALENDARIO',
+      summary: `Vinculó actividad "${pendingAct.title}" con evento oficial de LCR "${lcrAct.title}"`,
+    });
   };
 
   const handleMarkNoLcrRequired = async (activityId: number) => {
@@ -1005,11 +1076,31 @@ export const PresidencyHub: React.FC = () => {
       saveSessionProposals(next);
       return next;
     });
+    setExpenses((prev) =>
+      prev.filter(
+        (e) => !(e.activity_id === activityId && e.expense_type === 'PROYECTADO_ACTIVIDAD')
+      )
+    );
+
     if (!isSimulating && activityId > 0 && activityId < 2_000_000_000) {
       try {
-        await supabase.from('activities').delete().eq('id', activityId);
-      } catch {
-        // Estado local ya actualizado
+        const { error: delProjErr } = await supabase
+          .from('expenses')
+          .delete()
+          .eq('activity_id', activityId)
+          .eq('expense_type', 'PROYECTADO_ACTIVIDAD');
+        if (delProjErr) {
+          console.error('Error eliminando proyectados vinculados en Supabase:', delProjErr);
+        }
+        const { error: delActErr } = await supabase
+          .from('activities')
+          .delete()
+          .eq('id', activityId);
+        if (delActErr) {
+          console.error('Error eliminando actividad en Supabase:', delActErr);
+        }
+      } catch (err) {
+        console.error('Error eliminando actividad o sus proyectados en Supabase:', err);
       }
     }
   };
@@ -1022,22 +1113,33 @@ export const PresidencyHub: React.FC = () => {
       saveSessionProposals(next);
       return next;
     });
+    setExpenses((prev) =>
+      prev.filter(
+        (e) => !(e.activity_id === activityId && e.expense_type === 'PROYECTADO_ACTIVIDAD')
+      )
+    );
+
     if (!isSimulating && activityId > 0 && activityId < 2_000_000_000) {
       try {
-        await supabase.from('activities').update({ status: 'CANCELADA' }).eq('id', activityId);
-      } catch {
-        // Estado local ya actualizado
+        const { error: delProjErr } = await supabase
+          .from('expenses')
+          .delete()
+          .eq('activity_id', activityId)
+          .eq('expense_type', 'PROYECTADO_ACTIVIDAD');
+        if (delProjErr) {
+          console.error('Error limpiando proyectados al cancelar actividad:', delProjErr);
+        }
+        const { error: updActErr } = await supabase
+          .from('activities')
+          .update({ status: 'CANCELADA' })
+          .eq('id', activityId);
+        if (updActErr) {
+          console.error('Error cancelando actividad en Supabase:', updActErr);
+        }
+      } catch (err) {
+        console.error('Error cancelando actividad o limpiando proyectados en Supabase:', err);
       }
     }
-  };
-
-  const handleManualCalendarSync = async () => {
-    const result = await syncLcrCalendarWithShield({
-      currentActivities: activities,
-      attemptLiveFetch: true,
-      bypassDbShield: true,
-    });
-    setActivities(result.activities);
   };
 
   const handleUpdateApprovedActivity = async (
@@ -1046,6 +1148,7 @@ export const PresidencyHub: React.FC = () => {
   ): Promise<{ autoLinked?: boolean; linkedTitle?: string } | void> => {
     const existingAct = activities.find((a) => a.id === id);
     if (!existingAct) return;
+    const previousActivities = activities;
 
     const updatedLocal: ActivityRecord = {
       ...existingAct,
@@ -1074,14 +1177,6 @@ export const PresidencyHub: React.FC = () => {
         id: matchingLcr.id,
       };
 
-      setActivities((prev) => {
-        const next = prev
-          .filter((a) => a.id !== id)
-          .map((a) => (a.id === matchingLcr.id ? mergedRecord : a));
-        saveSessionProposals(next);
-        return next;
-      });
-
       if (!isSimulating) {
         const { error } = await supabase
           .from('activities')
@@ -1097,16 +1192,65 @@ export const PresidencyHub: React.FC = () => {
         }
 
         if (id > 0 && id < 2_000_000_000) {
-          await supabase
+          const { error: projErr } = await supabase
             .from('expenses')
-            .update({ activity_id: matchingLcr.id })
-            .eq('activity_id', id);
-          await supabase.from('activities').delete().eq('id', id);
+            .update({
+              activity_id: matchingLcr.id,
+              activity_date: mergedRecord.event_date,
+              expense_date: mergedRecord.event_date,
+            })
+            .eq('activity_id', id)
+            .eq('expense_type', 'PROYECTADO_ACTIVIDAD');
+          if (projErr) {
+            console.error('Error reapuntando proyectado en auto-vinculación:', projErr);
+          }
+
+          const { error: realErr } = await supabase
+            .from('expenses')
+            .update({
+              activity_id: matchingLcr.id,
+              activity_date: mergedRecord.event_date,
+            })
+            .eq('activity_id', id)
+            .neq('expense_type', 'PROYECTADO_ACTIVIDAD');
+          if (realErr) {
+            console.error('Error reapuntando gastos reales en auto-vinculación:', realErr);
+          }
+
+          const { error: delTempErr } = await supabase.from('activities').delete().eq('id', id);
+          if (delTempErr) {
+            console.error('Error eliminando actividad temporal tras auto-vinculación:', delTempErr);
+          }
         }
       }
 
-      // Sincronizar reserva presupuestaria con los datos finales fusionados
-      await syncProjectedExpenseForActivity(matchingLcr.id, mergedRecord);
+      setActivities((prev) => {
+        const next = prev
+          .filter((a) => a.id !== id)
+          .map((a) => (a.id === matchingLcr.id ? mergedRecord : a));
+        saveSessionProposals(next);
+        return next;
+      });
+
+      // Reapuntar gastos/reservas en el estado local de React antes de sincronizar proyectados
+      setExpenses((prev) =>
+        prev.map((e) =>
+          e.activity_id === id
+            ? {
+                ...e,
+                activity_id: matchingLcr.id,
+                activity_date: mergedRecord.event_date,
+                expense_date:
+                  e.expense_type === 'PROYECTADO_ACTIVIDAD'
+                    ? mergedRecord.event_date
+                    : e.expense_date,
+              }
+            : e
+        )
+      );
+
+      // Sincronizar reserva presupuestaria con los datos finales fusionados (pasando el ID anterior para no duplicar)
+      await syncProjectedExpenseForActivity(matchingLcr.id, mergedRecord, id);
       return { autoLinked: true, linkedTitle: mergedRecord.title };
     }
 
@@ -1139,6 +1283,9 @@ export const PresidencyHub: React.FC = () => {
 
       const { error } = await query;
       if (error) {
+        // Revertir actualización optimista si Supabase rechazó el cambio
+        setActivities(previousActivities);
+        saveSessionProposals(previousActivities);
         throw new Error('No se pudieron guardar los cambios en el servidor.');
       }
     }
@@ -1148,11 +1295,34 @@ export const PresidencyHub: React.FC = () => {
 
   const syncProjectedExpenseForActivity = async (
     id: number,
-    updatedAct: ActivityRecord
+    updatedAct: ActivityRecord,
+    repointedFromId?: number
   ) => {
-    const existingProjected = expenses.find(
-      (e) => e.activity_id === id && e.expense_type === 'PROYECTADO_ACTIVIDAD'
+    const matchingProjected = expenses.filter(
+      (e) =>
+        (e.activity_id === id || (repointedFromId != null && e.activity_id === repointedFromId)) &&
+        e.expense_type === 'PROYECTADO_ACTIVIDAD'
     );
+    // Priorizar el proyectado ya asociado al ID destino y eliminar cualquier duplicado sobrante
+    const existingProjected =
+      matchingProjected.find((e) => e.activity_id === id) || matchingProjected[0];
+    const duplicateProjectedIds = matchingProjected
+      .filter((e) => existingProjected && e.id !== existingProjected.id)
+      .map((e) => e.id);
+
+    if (duplicateProjectedIds.length > 0) {
+      setExpenses((prev) => prev.filter((e) => !duplicateProjectedIds.includes(e.id)));
+      if (!isSimulating) {
+        const { error: delDupErr } = await supabase
+          .from('expenses')
+          .delete()
+          .in('id', duplicateProjectedIds);
+        if (delDupErr) {
+          console.error('Error eliminando proyectados duplicados al vincular LCR:', delDupErr);
+        }
+      }
+    }
+
     if (existingProjected) {
       if (updatedAct.estimated_cost <= 0) {
         setExpenses((prev) => prev.filter((e) => e.id !== existingProjected.id));
@@ -1165,14 +1335,18 @@ export const PresidencyHub: React.FC = () => {
         }
       } else {
         const nextConcept = `Reserva actividad: ${updatedAct.title}`;
+        const nextOrg: OrganizationCode = ALL_HUB_ORGS.includes(updatedAct.organization)
+          ? updatedAct.organization
+          : 'ESTACA';
         setExpenses((prev) =>
           prev.map((e) =>
             e.id === existingProjected.id
               ? {
                   ...e,
+                  activity_id: id,
                   activity_date: updatedAct.event_date,
                   expense_date: updatedAct.event_date,
-                  organization: updatedAct.organization,
+                  organization: nextOrg,
                   concept: nextConcept,
                   gross_amount: updatedAct.estimated_cost,
                   net_amount: updatedAct.estimated_cost,
@@ -1185,9 +1359,10 @@ export const PresidencyHub: React.FC = () => {
             await supabase
               .from('expenses')
               .update({
+                activity_id: id,
                 activity_date: updatedAct.event_date,
                 expense_date: updatedAct.event_date,
-                organization: updatedAct.organization,
+                organization: nextOrg,
                 concept: nextConcept,
                 gross_amount: updatedAct.estimated_cost,
                 net_amount: updatedAct.estimated_cost,
@@ -1201,6 +1376,7 @@ export const PresidencyHub: React.FC = () => {
     } else if (updatedAct.estimated_cost > 0 && updatedAct.status === 'APROBADA') {
       await createProjectedForActivity({
         ...updatedAct,
+        id,
         has_budget: true,
         status: 'APROBADA',
       });
@@ -1239,6 +1415,7 @@ export const PresidencyHub: React.FC = () => {
       status: 'APROBADA',
     };
 
+    locallyCreatedActivityIdsRef.current.add(tempId);
     setActivities((prev) => {
       const updated = [...prev, createdRecord].sort((a, b) =>
         a.event_date.localeCompare(b.event_date)
@@ -1270,11 +1447,14 @@ export const PresidencyHub: React.FC = () => {
 
       if (error) {
         console.error('Error guardando actividad directa en Supabase:', error);
+        locallyCreatedActivityIdsRef.current.delete(tempId);
         setActivities((prev) => prev.filter((a) => a.id !== tempId));
         throw new Error(formatSupabaseError(error, 'No se pudo guardar la actividad en la base de datos.'));
       }
 
       if (inserted && typeof inserted.id === 'number') {
+        locallyCreatedActivityIdsRef.current.delete(tempId);
+        locallyCreatedActivityIdsRef.current.add(inserted.id);
         createdRecord = { ...createdRecord, id: inserted.id };
         setActivities((prev) =>
           prev.map((a) => (a.id === tempId ? { ...a, id: inserted.id } : a))
@@ -1424,15 +1604,17 @@ export const PresidencyHub: React.FC = () => {
     existingIds?: number[]
   ) => {
     const baseId = Date.now();
-    const first = records[0];
+    const appliedRecords = records.filter((r) => isExpenseApplied(r));
+    const first = appliedRecords[0] || records[0];
+    // Sumar únicamente los registros aplicados (excluir remanentes PROYECTADO_ACTIVIDAD de pagos parciales)
     const totalGross = Number(
-      records.reduce((acc, r) => acc + Number(r.gross_amount), 0).toFixed(2)
+      appliedRecords.reduce((acc, r) => acc + Number(r.gross_amount), 0).toFixed(2)
     );
 
     // Detectar si requiere salida directa auto-cerrada en cash_withdrawals (DIRECTO_TARJETA o TRANSFERENCIA formal)
     const isDirectMovement =
       first &&
-      first.is_applied !== false &&
+      isExpenseApplied(first) &&
       (first.expense_type === 'DIRECTO_TARJETA' || first.expense_type === 'TRANSFERENCIA');
 
     const prevRecords = existingIds?.length
@@ -1454,7 +1636,7 @@ export const PresidencyHub: React.FC = () => {
         prevDirectRef ||
         `${first.expense_type === 'TRANSFERENCIA' ? 'TRF' : 'DIR'}-${baseId}`;
       normalizedRecords = records.map((r) =>
-        r.is_applied !== false
+        isExpenseApplied(r)
           ? {
               ...r,
               withdrawal_ref: assignedDirectRef,
@@ -1480,6 +1662,23 @@ export const PresidencyHub: React.FC = () => {
         );
       }
     }
+
+    // Si se guarda un gasto real vinculado a una actividad que ya tenía un PROYECTADO_ACTIVIDAD abierto,
+    // cerrar automáticamente ese proyectado previo para evitar doble descuento en el saldo libre estimado.
+    const autoClosedProjectedIds: number[] =
+      appliedRecords.length > 0
+        ? expenses
+            .filter(
+              (e) =>
+                e.expense_type === 'PROYECTADO_ACTIVIDAD' &&
+                e.activity_id != null &&
+                appliedRecords.some((r) => r.activity_id === e.activity_id)
+            )
+            .map((e) => e.id)
+        : [];
+    const idsToDeleteAfterInsert = Array.from(
+      new Set([...(existingIds || []), ...autoClosedProjectedIds])
+    );
 
     // Guardar gastos en Supabase primero y luego sincronizar cash_withdrawals (orden seguro ante fallos)
     if (!isSimulating) {
@@ -1511,8 +1710,11 @@ export const PresidencyHub: React.FC = () => {
         .map((row) => row.id)
         .filter((id): id is number => typeof id === 'number');
 
-      if (existingIds && existingIds.length > 0) {
-        const { error: delExpErr } = await supabase.from('expenses').delete().in('id', existingIds);
+      if (idsToDeleteAfterInsert.length > 0) {
+        const { error: delExpErr } = await supabase
+          .from('expenses')
+          .delete()
+          .in('id', idsToDeleteAfterInsert);
         if (delExpErr) {
           // Intentar revertir los recién insertados para no dejar duplicados
           if (insertedIds.length > 0) {
@@ -1588,16 +1790,18 @@ export const PresidencyHub: React.FC = () => {
           : localRecords;
 
       setExpenses((prev) => {
-        const remaining = existingIds?.length
-          ? prev.filter((e) => !existingIds.includes(e.id))
-          : prev;
+        const remaining =
+          idsToDeleteAfterInsert.length > 0
+            ? prev.filter((e) => !idsToDeleteAfterInsert.includes(e.id))
+            : prev;
         return [...syncedRecords, ...remaining];
       });
     } else {
       setExpenses((prev) => {
-        const remaining = existingIds?.length
-          ? prev.filter((e) => !existingIds.includes(e.id))
-          : prev;
+        const remaining =
+          idsToDeleteAfterInsert.length > 0
+            ? prev.filter((e) => !idsToDeleteAfterInsert.includes(e.id))
+            : prev;
         return [...localRecords, ...remaining];
       });
     }
@@ -1631,13 +1835,16 @@ export const PresidencyHub: React.FC = () => {
       });
     }
     if (normalizedRecords.length > 0) {
-      const total = normalizedRecords.reduce((acc, r) => acc + Number(r.gross_amount || 0), 0);
+      const logTotal =
+        appliedRecords.length > 0
+          ? totalGross
+          : normalizedRecords.reduce((acc, r) => acc + Number(r.gross_amount || 0), 0);
       const isEdit = Boolean(existingIds && existingIds.length > 0);
       void recordAuditLog({
         actor: user,
         actionType: isEdit ? 'UPDATE' : 'CREATE',
         section: 'FINANZAS',
-        summary: `${isEdit ? 'Editó' : 'Registró'} gasto "${normalizedRecords[0].concept}" por ${formatCurrency(total)}`,
+        summary: `${isEdit ? 'Editó' : 'Registró'} gasto "${first.concept}" por ${formatCurrency(logTotal)}`,
       });
     }
   };
@@ -3396,7 +3603,7 @@ export const PresidencyHub: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-4">
                 {executiveMetrics.orgStats.map((stat) => {
                   const isExpanded = Boolean(expandedOrgs[stat.organization]);
-                  const todayIso = new Date().toISOString().slice(0, 10);
+                  const todayIso = getTodayLocalIso();
                   const nextAct = activities
                     .filter(
                       (a) =>

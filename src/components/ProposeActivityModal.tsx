@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, CalendarPlus, Clock, DollarSign, CheckCircle2 } from 'lucide-react';
 import { OrganizationCode } from '../types/database';
-import { ORGANIZATION_LABELS } from '../lib/formatters';
+import { getTodayLocalIso, ORGANIZATION_LABELS } from '../lib/formatters';
 import { EventLocationSelect } from './EventLocationSelect';
 
 interface ProposeActivityModalProps {
@@ -33,7 +33,6 @@ const DIRECT_CREATE_ORGS: OrganizationCode[] = [
   'JAS',
   'AS',
   'CFS',
-  'CHURCHWIDE',
 ];
 
 export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
@@ -47,7 +46,7 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
   const isDirectCreate = mode === 'DIRECT_CREATE';
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [title, setTitle] = useState('');
-  const [eventDate, setEventDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [eventDate, setEventDate] = useState(() => getTodayLocalIso());
   const [startTime, setStartTime] = useState('19:00');
   const [endTime, setEndTime] = useState('');
   const [location, setLocation] = useState('');
@@ -66,13 +65,18 @@ export const ProposeActivityModal: React.FC<ProposeActivityModalProps> = ({
     if (!dialog) return;
 
     if (isOpen) {
+      setEventDate(getTodayLocalIso());
+      setSelectedOrg(
+        userOrg === 'TODAS' || userOrg === 'CHURCHWIDE' ? 'ESTACA' : userOrg
+      );
+      setErrorMsg(null);
       if (!dialog.open) {
         dialog.showModal();
       }
     } else if (dialog.open) {
       dialog.close();
     }
-  }, [isOpen]);
+  }, [isOpen, userOrg]);
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
     if ('closedBy' in HTMLDialogElement.prototype) return;

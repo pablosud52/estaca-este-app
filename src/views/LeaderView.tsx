@@ -18,8 +18,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
-import { isSharedYouthActivity } from '../lib/activityFilters';
+import { isPrivateStakeMeeting, isSharedYouthActivity } from '../lib/activityFilters';
+import { isHistoricalImportedActivity } from '../lib/calendarHelpers';
+import { canApproveCalendar } from '../lib/permissions';
 import {
+  canViewActivityBudget,
   consolidateLeaderExpenses,
   formatCurrency,
   formatDate,
@@ -41,6 +44,7 @@ import {
   SupplierRecord,
 } from '../types/database';
 import { ProposeActivityModal } from '../components/ProposeActivityModal';
+import { useAutoLcrSync } from '../hooks/useAutoLcrSync';
 import {
   isActivityPendingLcr,
   syncLcrCalendarWithShield,
@@ -76,6 +80,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   onYearChange,
 }) => {
   const { user, isSimulating, signOut, realAuthEmail } = useAuth();
+  const canPersistLcr = canApproveCalendar(user);
   const currentYear = new Date().getFullYear();
   const [internalYear, setInternalYear] = useState<number>(currentYear);
   const activeYear = selectedYear ?? internalYear;
@@ -210,6 +215,8 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           // Usar únicamente los registros reales de Supabase (sin inyectar SEED_ACTIVITIES)
           const syncResult = await syncLcrCalendarWithShield({
             currentActivities: remoteActivities,
+            isSimulating,
+            canPersistToDb: canPersistLcr,
           });
 
           if (!active) return;
@@ -234,6 +241,8 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
           // Sincronización silenciosa con el Doble Escudo LCR al montar la app (sobre SEED_ACTIVITIES)
           const syncResult = await syncLcrCalendarWithShield({
             currentActivities: SEED_ACTIVITIES,
+            isSimulating,
+            canPersistToDb: canPersistLcr,
           });
           if (active) {
             setActivities((prev) => {
@@ -263,7 +272,14 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [isSimulating, canPersistLcr]);
+
+  useAutoLcrSync({
+    activities,
+    isSimulating,
+    canPersistToDb: canPersistLcr,
+    onSynced: setActivities,
+  });
 
   // Saldo disponible de Seminario (Fondo conjunto para HJ y MJ, no incluido en el presupuesto individual)
   const seminarioAvailable = useMemo(() => {
@@ -430,11 +446,11 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       if (amount > 0) reservedTotal += amount;
     });
 
-    // 2. Actividades del calendario con presupuesto de esta organización aún sin cerrar
+    // 2. Actividades aprobadas del calendario con presupuesto de esta organización aún sin cerrar
     activities.forEach((act) => {
       if (act.organization !== baseOrg) return;
-      if (act.status === 'RECHAZADA' || act.status === 'CANCELADA') return;
-      if (act.ical_uid?.startsWith('ACT-2026-')) return;
+      if (act.status !== 'APROBADA') return;
+      if (isHistoricalImportedActivity(act)) return;
       if (!act.event_date || !act.event_date.startsWith(yearStr)) return;
       const isOverdueOpen = activeYear === currentYear && act.event_date <= todayStr;
       if (!isOverdueOpen && getQuarterFromDate(act.event_date) !== targetQuarter) return;
@@ -480,12 +496,14 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
 
   // Próxima Actividad Programada (de la organización o general de Estaca)
   const nextUpcomingActivity = useMemo(() => {
+    const canSeePrivateStake = user.role === 'ADMIN' || user.role === 'PRESIDENCIA';
     const orgActs = activities
       .filter(
         (a) =>
           (isOwnOrgOrYouthJointActivity(a) || a.organization === 'ESTACA') &&
           a.status !== 'RECHAZADA' &&
           a.status !== 'CANCELADA' &&
+          (canSeePrivateStake || !isPrivateStakeMeeting(a)) &&
           a.event_date.startsWith(String(activeYear))
       )
       .sort((a, b) => a.event_date.localeCompare(b.event_date));
@@ -496,7 +514,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     );
     const nextAny = orgActs.find((a) => a.event_date >= referenceToday);
     return nextOwn || nextAny || orgActs[orgActs.length - 1] || null;
-  }, [activities, baseOrg, canUseSeminario, activeYear]);
+  }, [activities, baseOrg, canUseSeminario, activeYear, user.role, referenceToday]);
 
   const handleCreateProposal = async (proposal: {
     title: string;
@@ -550,8 +568,8 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       return updated;
     });
 
-    // Solo persistir en Supabase cuando no es simulación de desarrollo ni prueba automatizada con sufijo numérico
-    if (!isSimulating && !/\d{4}$/.test(proposal.title.trim())) {
+    // Persistir en Supabase siempre que no esté en modo simulación de desarrollo
+    if (!isSimulating) {
       try {
         const { data: inserted, error } = await supabase
           .from('activities')
@@ -1313,24 +1331,26 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 </span>
               </div>
 
-              <div className="mt-3 pt-2.5 border-t border-slate-200/80 flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-500">Costo estimado:</span>
-                {nextUpcomingActivity.estimated_cost > 0 ? (
-                  <span
-                    data-testid="next-activity-cost"
-                    className="font-extrabold text-emerald-800 tabular-nums bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200"
-                  >
-                    💰 {formatCurrency(nextUpcomingActivity.estimated_cost)}
-                  </span>
-                ) : (
-                  <span
-                    data-testid="next-activity-cost"
-                    className="font-medium text-slate-500 italic"
-                  >
-                    Sin costo presupuestado
-                  </span>
-                )}
-              </div>
+              {canViewActivityBudget(user.role, baseOrg, nextUpcomingActivity.organization) && (
+                <div className="mt-3 pt-2.5 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-500">Costo estimado:</span>
+                  {nextUpcomingActivity.estimated_cost > 0 ? (
+                    <span
+                      data-testid="next-activity-cost"
+                      className="font-extrabold text-emerald-800 tabular-nums bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200"
+                    >
+                      💰 {formatCurrency(nextUpcomingActivity.estimated_cost)}
+                    </span>
+                  ) : (
+                    <span
+                      data-testid="next-activity-cost"
+                      className="font-medium text-slate-500 italic"
+                    >
+                      Sin costo presupuestado
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 text-center text-xs text-slate-500">

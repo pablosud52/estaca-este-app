@@ -81,6 +81,10 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
       ID_Gasto: e.id,
       Referencia: e.ref_number || 'DIRECTO',
       Fecha: formatDate(e.expense_date),
+      Fecha_Actividad: e.activity_date ? formatDate(e.activity_date) : formatDate(e.expense_date),
+      ID_Actividad: e.activity_id ?? '',
+      Tipo_Gasto: e.expense_type || 'EFECTIVO',
+      Aplicado: e.is_applied === false ? 'NO' : 'SI',
       Organizacion: e.organization,
       Proveedor: e.supplier_name,
       Proposito_Actividad: e.concept,
@@ -109,13 +113,17 @@ export const ExcelSyncPanel: React.FC<ExcelSyncPanelProps> = ({
     // 4. Hoja ACTIVIDADES_CALENDARIO
     const activityRows = activities.map((a) => ({
       ID_Actividad: a.id,
+      UID_LCR: a.ical_uid || '',
       Fecha: formatDate(a.event_date),
-      Hora: a.start_time || '19:00',
+      Hora: a.start_time || '',
+      Hora_Fin: a.end_time || '',
       Nombre_Actividad: a.title,
       Lugar: a.location,
       Organizacion: a.organization,
       Presupuesto_Estimado: formatCurrency(a.estimated_cost, false),
       Estado: a.status,
+      Descripcion_LCR: a.description || '',
+      Notas_App: a.app_notes || '',
     }));
     XLSX.utils.book_append_sheet(
       wb,

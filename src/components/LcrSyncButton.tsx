@@ -62,13 +62,14 @@ export function formatRemainingCooldown(seconds: number): string {
 }
 
 interface LcrSyncButtonProps {
-  onSync: () => Promise<void | { source?: string }>;
+  onSync: () => Promise<void | { source?: string; persistError?: string | null }>;
   className?: string;
 }
 
 export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className = '' }) => {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [usedFallback, setUsedFallback] = useState<boolean>(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(() => {
     const st = loadButtonState();
     const diff = Math.ceil((st.cooldownUntil - Date.now()) / 1000);
@@ -102,34 +103,49 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
 
     setIsSyncing(true);
     setUsedFallback(false);
+    setSyncError(null);
+    let failed = false;
+
     try {
       // Pequeña pausa visual mínima para que el usuario perciba el estado "Sincronizando..."
       const [syncRes] = await Promise.all([
         onSync(),
         new Promise((resolve) => setTimeout(resolve, 350)),
       ]);
-      if (syncRes && typeof syncRes === 'object' && syncRes.source === 'lcr_fallback_ical') {
-        setUsedFallback(true);
+      if (syncRes && typeof syncRes === 'object') {
+        if (syncRes.source === 'lcr_fallback_ical') {
+          setUsedFallback(true);
+        }
+        if (syncRes.persistError) {
+          failed = true;
+          setSyncError('Se leyó LCR pero falló el guardado en el servidor. Intenta nuevamente.');
+        }
       }
+    } catch (err) {
+      failed = true;
+      console.error('Error al sincronizar calendario con LCR:', err);
+      setSyncError('No se pudo sincronizar con LCR. Intenta nuevamente.');
     } finally {
-      const prev = loadButtonState();
-      const now = Date.now();
-      const shouldResetCycle =
-        prev.lastClickTimestamp > 0 && now - prev.lastClickTimestamp >= INACTIVITY_RESET_MS;
-      const nextCount = shouldResetCycle ? 1 : prev.clickCount + 1;
+      if (!failed) {
+        const prev = loadButtonState();
+        const now = Date.now();
+        const shouldResetCycle =
+          prev.lastClickTimestamp > 0 && now - prev.lastClickTimestamp >= INACTIVITY_RESET_MS;
+        const nextCount = shouldResetCycle ? 1 : prev.clickCount + 1;
 
-      // Primeras 3 pulsaciones: 30s | A partir de la 4ª pulsación consecutiva: 10 minutos (600s)
-      const cooldownDurationSec = nextCount >= 4 ? COOLDOWN_LONG_SEC : COOLDOWN_SHORT_SEC;
-      const cooldownUntil = now + cooldownDurationSec * 1000;
+        // Primeras 3 pulsaciones: 30s | A partir de la 4ª pulsación consecutiva: 10 minutos (600s)
+        const cooldownDurationSec = nextCount >= 4 ? COOLDOWN_LONG_SEC : COOLDOWN_SHORT_SEC;
+        const cooldownUntil = now + cooldownDurationSec * 1000;
 
-      const newState: PersistedButtonState = {
-        clickCount: nextCount,
-        lastClickTimestamp: now,
-        cooldownUntil,
-      };
-      saveButtonState(newState);
-      setConsecutiveClicks(nextCount);
-      setRemainingSeconds(cooldownDurationSec);
+        const newState: PersistedButtonState = {
+          clickCount: nextCount,
+          lastClickTimestamp: now,
+          cooldownUntil,
+        };
+        saveButtonState(newState);
+        setConsecutiveClicks(nextCount);
+        setRemainingSeconds(cooldownDurationSec);
+      }
       setIsSyncing(false);
     }
   };
@@ -141,7 +157,9 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
       <button
         type="button"
         data-testid="lcr-sync-button"
-        data-sync-state={isSyncing ? 'SYNCING' : isInCooldown ? 'COOLDOWN' : 'IDLE'}
+        data-sync-state={
+          isSyncing ? 'SYNCING' : syncError ? 'ERROR' : isInCooldown ? 'COOLDOWN' : 'IDLE'
+        }
         data-click-count={consecutiveClicks}
         disabled={isSyncing || isInCooldown}
         onClick={handleManualClick}
@@ -149,6 +167,8 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
         className={`pressable inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
           isSyncing
             ? 'bg-[#072B52] text-white cursor-wait opacity-90'
+            : syncError
+            ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
             : isInCooldown
             ? 'bg-slate-100 text-slate-600 border border-slate-200 cursor-not-allowed'
             : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/90'
@@ -161,6 +181,11 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
               className="w-3.5 h-3.5 animate-spin text-slate-300"
             />
             <span>Sincronizando...</span>
+          </>
+        ) : syncError ? (
+          <>
+            <RefreshCw className="w-3.5 h-3.5 text-rose-600" />
+            <span>Reintentar sync</span>
           </>
         ) : isInCooldown ? (
           usedFallback ? (
@@ -199,7 +224,15 @@ export const LcrSyncButton: React.FC<LcrSyncButtonProps> = ({ onSync, className 
           </span>
         </p>
       )}
-      {usedFallback && !isSyncing && (
+      {syncError && !isSyncing && (
+        <p
+          data-testid="lcr-sync-error-warning"
+          className="mt-1 text-[11px] font-semibold text-rose-700"
+        >
+          {syncError}
+        </p>
+      )}
+      {usedFallback && !syncError && !isSyncing && (
         <p
           data-testid="lcr-sync-fallback-warning"
           className="mt-1 text-[11px] font-semibold text-amber-700"

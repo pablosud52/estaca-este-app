@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES } from '../data/seedData';
-import { isSharedYouthActivity } from '../lib/activityFilters';
+import { isPrivateStakeMeeting, isSharedYouthActivity } from '../lib/activityFilters';
 import {
   isGlobalChurchwideEvent,
   isLcrLinkedActivity,
@@ -33,6 +33,7 @@ import {
   canViewActivityBudget,
   formatCurrency,
   formatDate,
+  getTodayLocalIso,
   isExpenseApplied,
   ORGANIZATION_LABELS,
   ORGANIZATION_SHORT_LABELS,
@@ -143,7 +144,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onDeleteActivity,
   onCancelActivity,
 }) => {
-  const { user } = useAuth();
+  const { user, isSimulating } = useAuth();
   const [localActivities, setLocalActivities] = useState<ActivityRecord[]>(
     () => activitiesProp || SEED_ACTIVITIES
   );
@@ -253,6 +254,8 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       currentActivities: localActivities,
       attemptLiveFetch: true,
       bypassDbShield: true,
+      isSimulating,
+      canPersistToDb: canManage,
     });
     setLocalActivities(result.activities);
     if (onActivitiesUpdate) {
@@ -277,7 +280,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     });
   };
 
-  const referenceToday = new Date().toISOString().slice(0, 10);
+  const referenceToday = getTodayLocalIso();
 
   const baseUserOrg: OrganizationCode =
     user.organization === 'TODAS' ? 'ESTACA' : user.organization;
@@ -370,17 +373,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
         // Reuniones reservadas (Sumo Consejo, Presidencia de Estaca) solo visibles para Presidencia y Admin
         if (user.role !== 'ADMIN' && user.role !== 'PRESIDENCIA') {
-          const text = `${act.title} ${act.description || ''}`.toUpperCase();
-          const isStakeCouncil = text.includes('CONSEJO DE ESTACA');
-          const isPrivateStakeMeeting =
-            !isStakeCouncil &&
-            (text.includes('SUMO CONSEJO') ||
-              text.includes('HIGH COUNCIL') ||
-              text.includes('PRESIDENCIA DE ESTACA') ||
-              text.includes('STAKE PRESIDENCY') ||
-              text.includes('REUNIÓN DE PRESIDENCIA') ||
-              text.includes('REUNION DE PRESIDENCIA'));
-          if (isPrivateStakeMeeting) return false;
+          if (isPrivateStakeMeeting(act)) return false;
         }
 
         // Filtros rápidos de estado (solo en Modo Gestión o alerta Pendientes LCR)

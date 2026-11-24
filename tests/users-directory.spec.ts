@@ -4,14 +4,12 @@ async function openUsersPanel(page: Page) {
   const mobileToggle = page.getByTestId('mobile-menu-toggle');
   if (await mobileToggle.isVisible()) {
     await mobileToggle.click();
-    await page.getByTestId('drawer-admin-users-btn').click();
+    await page.getByTestId('drawer-nav-directory').click();
   } else {
-    const adminTrigger = page.getByTestId('hub-admin-menu-trigger');
-    if (await adminTrigger.isVisible()) {
-      await adminTrigger.click();
-    }
-    await page.getByTestId('hub-admin-users-btn').click();
+    await page.getByTestId('hub-nav-directory').click();
   }
+  await expect(page.getByTestId('leaders-directory-view')).toBeVisible();
+  await page.getByTestId('directory-manage-toggle').click();
   await expect(page.getByTestId('user-management-panel')).toBeVisible();
 }
 
@@ -95,7 +93,7 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     await page.getByTestId('save-edit-mj-consejera-1').click();
     await expect(row).toContainText('solo se permiten cuentas @gmail.com');
 
-    // Guardar válido sin Gmail para disparar badge de incompleto y alerta parpadeante en Hub
+    // Guardar válido sin Gmail para disparar badge de incompleto y alerta en botón Directorio
     await row.getByPlaceholder('nombre@gmail.com').fill('');
     await page.getByTestId('save-edit-mj-consejera-1').click();
     await expect(page.getByTestId('org-incomplete-badge-MJ')).toContainText('1 incompleto');
@@ -106,15 +104,13 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
       await page.getByTestId('drawer-nav-dashboard').click();
       await expect(page.getByTestId('mobile-menu-alert-dot')).toBeVisible();
       await page.getByTestId('mobile-menu-toggle').click();
-      await expect(page.getByTestId('drawer-directory-alert-dot')).toBeVisible();
-      await page.getByTestId('drawer-admin-users-btn').click();
+      await page.getByTestId('drawer-nav-directory').click();
     } else {
       await page.getByTestId('hub-nav-dashboard').click();
-      await expect(page.getByTestId('admin-menu-alert-dot')).toBeVisible();
-      await page.getByTestId('hub-admin-menu-trigger').click();
-      await expect(page.getByTestId('admin-directory-alert-dot')).toBeVisible();
-      await page.getByTestId('hub-admin-users-btn').click();
+      await page.getByTestId('hub-nav-directory').click();
     }
+    await expect(page.getByTestId('directory-manage-incomplete-badge')).toBeVisible();
+    await page.getByTestId('directory-manage-toggle').click();
     await expect(page.getByTestId('user-management-panel')).toBeVisible();
   });
 
@@ -205,5 +201,52 @@ test.describe('Fase 6.5 — Gestión de Usuarios y Directorio de Líderes', () =
     await expect(page.getByTestId('leaders-directory-view')).toContainText('099 123 456');
     await expect(pabloCopyBtn).toBeVisible();
     await expect(pabloWaBtn).toHaveAttribute('href', 'https://wa.me/59899123456');
+
+    // Volver a Todas y verificar búsqueda insensible a acentos y por sigla corta
+    await page.getByTestId('directory-quick-chip-PRESIDENCIA').click();
+    const searchInput = page.getByLabel('Buscar en directorio');
+    await searchInput.fill('Lucia');
+    await expect(page.getByTestId('leaders-directory-view')).toContainText('Lucía');
+    await searchInput.fill('MMJJ');
+    await expect(page.getByTestId('directory-org-card-MJ')).toBeVisible();
+    await searchInput.fill('');
+  });
+
+  test('5. Confirmación al eliminar extra, slot_key único al recrear y validación sin nombre/apellido', async ({
+    page,
+  }) => {
+    await openUsersPanel(page);
+    await page.getByTestId('org-accordion-toggle-MJ').click();
+
+    // Validación: no permitir guardar celular/correo sin nombre ni apellido
+    await page.getByTestId('edit-btn-mj-consejera-2').click();
+    const row = page.getByTestId('directory-row-mj-consejera-2');
+    await row.getByPlaceholder('099123456').fill('099555444');
+    await page.getByTestId('save-edit-mj-consejera-2').click();
+    await expect(row).toContainText('Ingresa al menos el Nombre o Apellido');
+    await page.getByRole('button', { name: 'Cancelar' }).click();
+
+    // Agregar 2 extras, eliminar el 1ero con modal de confirmación y agregar otro sin colisión
+    const mjCard = page.getByTestId('org-card-MJ');
+    for (let i = 1; i <= 2; i++) {
+      await page.getByTestId('add-extra-btn-MJ').click();
+      await mjCard.getByPlaceholder('Nombre', { exact: true }).fill(`Extra${i}`);
+      await mjCard.getByPlaceholder('Apellido', { exact: true }).fill('Prueba');
+      await mjCard.getByRole('button', { name: 'Agregar', exact: true }).click();
+    }
+
+    await page.getByTestId('delete-extra-btn-mj-extra-1').click();
+    await expect(page.getByTestId('confirm-delete-extra-modal')).toBeVisible();
+    await page.getByTestId('confirm-delete-extra-btn').click();
+    await expect(page.getByTestId('directory-row-mj-extra-1')).toHaveCount(0);
+    await expect(page.getByTestId('directory-row-mj-extra-2')).toBeVisible();
+
+    // Volver a agregar extra: debe reutilizar mj-extra-1 sin colisionar con mj-extra-2
+    await page.getByTestId('add-extra-btn-MJ').click();
+    await mjCard.getByPlaceholder('Nombre', { exact: true }).fill('Extra3');
+    await mjCard.getByPlaceholder('Apellido', { exact: true }).fill('Nuevo');
+    await mjCard.getByRole('button', { name: 'Agregar', exact: true }).click();
+    await expect(page.getByTestId('directory-row-mj-extra-1')).toBeVisible();
+    await expect(page.getByTestId('directory-row-mj-extra-2')).toBeVisible();
   });
 });

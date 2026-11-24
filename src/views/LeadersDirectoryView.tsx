@@ -14,7 +14,7 @@ import {
 import { isEntryPersonLoaded, useAuth } from '../context/AuthContext';
 import { UserManagementPanel } from '../components/UserManagementPanel';
 import { DIRECTORY_ORG_BY_CODE, STAKE_ORG_STRUCTURE } from '../data/stakeOrgStructure';
-import { formatUruguayanMobile, toWhatsAppUrl } from '../lib/formatters';
+import { formatUruguayanMobile, normalizeUruguayanMobile, toWhatsAppUrl } from '../lib/formatters';
 import { DirectoryOrgCode, StakeDirectoryEntry } from '../types/database';
 
 const ORG_DOT_CLASSES: Record<DirectoryOrgCode, string> = {
@@ -32,13 +32,19 @@ const ORG_DOT_CLASSES: Record<DirectoryOrgCode, string> = {
   MUSICA: 'bg-slate-900',
 };
 
+const normalizeSearchText = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
 const toTelHref = (rawPhone?: string): string | null => {
-  const digits = (rawPhone || '').replace(/\D/g, '');
-  if (!digits) return null;
-  if (digits.startsWith('09') && digits.length === 9) {
-    return `tel:+598${digits.slice(1)}`;
+  const norm = normalizeUruguayanMobile(rawPhone);
+  if (!norm) return null;
+  if (/^09\d{7}$/.test(norm)) {
+    return `tel:+598${norm.slice(1)}`;
   }
-  return `tel:${digits}`;
+  return `tel:${norm}`;
 };
 
 const sortOrgEntries = (orgCode: DirectoryOrgCode, entries: StakeDirectoryEntry[]) => {
@@ -61,7 +67,7 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
   initialManageMode = false,
   initialFilterIncomplete = false,
 }) => {
-  const { directoryEntries, incompleteContactsCount } = useAuth();
+  const { directoryEntries, directoryLoadError, reloadDirectory, incompleteContactsCount } = useAuth();
   const [isManageMode, setIsManageMode] = useState<boolean>(
     () => Boolean(canManage && (initialManageMode || initialFilterIncomplete))
   );
@@ -79,7 +85,16 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
   const [expandedOrgs, setExpandedOrgs] = useState<Partial<Record<DirectoryOrgCode, boolean>>>({});
   const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
   const orgMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOrgMenuOpen) return;
@@ -99,7 +114,7 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
     };
   }, [isOrgMenuOpen]);
 
-  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const normalizedSearch = normalizeSearchText(searchTerm.trim());
 
   const toggleOrgAccordion = (code: DirectoryOrgCode) => {
     setExpandedOrgs((prev) => ({
@@ -170,7 +185,13 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
     try {
       await navigator.clipboard.writeText(formatted);
       setCopiedId(entryId);
-      setTimeout(() => setCopiedId(null), 2000);
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+      copiedTimerRef.current = window.setTimeout(() => {
+        setCopiedId(null);
+        copiedTimerRef.current = null;
+      }, 2000);
     } catch {
       // Silencioso si el navegador bloquea portapapeles
     }
@@ -211,17 +232,19 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
           if (e.directory_org !== orgDef.code) return false;
           if (!isEntryPersonLoaded(e)) return false;
           if (!normalizedSearch) return true;
-          const haystack = [
-            e.first_name,
-            e.last_name,
-            e.calling,
-            e.assigned_unit,
-            e.assigned_org_notes,
-            orgDef.label,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
+          const haystack = normalizeSearchText(
+            [
+              e.first_name,
+              e.last_name,
+              e.calling,
+              e.assigned_unit,
+              e.assigned_org_notes,
+              orgDef.label,
+              orgDef.shortLabel,
+            ]
+              .filter(Boolean)
+              .join(' ')
+          );
           return haystack.includes(normalizedSearch);
         });
 
@@ -496,6 +519,24 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Aviso de error de carga en la nube */}
+      {directoryLoadError && (
+        <div
+          role="alert"
+          data-testid="directory-load-error"
+          className="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold"
+        >
+          <span>{directoryLoadError}</span>
+          <button
+            type="button"
+            onClick={() => void reloadDirectory()}
+            className="px-3 py-1 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-[11px] font-extrabold transition"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Lista de acordeones por organización (desplazamiento natural de la página) */}
       {visibleOrgBlocks.length === 0 ? (

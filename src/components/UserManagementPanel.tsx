@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -68,6 +68,8 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
   const {
     user: currentUser,
     directoryEntries,
+    directoryLoadError,
+    reloadDirectory,
     incompleteContactsCount,
     updateDirectoryEntry,
     addExtraDirectoryEntry,
@@ -92,19 +94,25 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     }
   );
   const [onlyIncomplete, setOnlyIncomplete] = useState<boolean>(initialFilterIncomplete);
+  const directoryEntriesSnapshotRef = useRef(directoryEntries);
+  directoryEntriesSnapshotRef.current = directoryEntries;
 
   useEffect(() => {
     setOnlyIncomplete(initialFilterIncomplete);
     if (initialFilterIncomplete) {
       const next: Partial<Record<DirectoryOrgCode, boolean>> = {};
       for (const org of STAKE_ORG_STRUCTURE) {
-        if (directoryEntries.some((e) => e.directory_org === org.code && isEntryIncomplete(e))) {
+        if (
+          directoryEntriesSnapshotRef.current.some(
+            (e) => e.directory_org === org.code && isEntryIncomplete(e)
+          )
+        ) {
           next[org.code] = true;
         }
       }
       setExpandedOrgs(next);
     }
-  }, [initialFilterIncomplete, directoryEntries]);
+  }, [initialFilterIncomplete]);
 
   useEffect(() => {
     if (incompleteContactsCount === 0 && onlyIncomplete) {
@@ -113,6 +121,16 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
   }, [incompleteContactsCount, onlyIncomplete]);
 
   const [toastMsg, setToastMsg] = useState<{ text: string; isError?: boolean } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   // Edición inline de un puesto
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -127,6 +145,9 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
 
   // Modal de confirmación de relevo de Presidente/a
   const [presidentModal, setPresidentModal] = useState<PendingPresidentModal | null>(null);
+
+  // Modal de confirmación para eliminar integrante adicional
+  const [pendingDeleteExtra, setPendingDeleteExtra] = useState<StakeDirectoryEntry | null>(null);
 
   // Modal de información de Seguridad de administradores
   const [isSecurityInfoOpen, setIsSecurityInfoOpen] = useState<boolean>(false);
@@ -147,7 +168,13 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
 
   const triggerToast = (text: string, isError = false) => {
     setToastMsg({ text, isError });
-    setTimeout(() => setToastMsg(null), 4500);
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMsg(null);
+      toastTimerRef.current = null;
+    }, 4500);
   };
 
   const toggleOrgAccordion = (code: DirectoryOrgCode) => {
@@ -177,9 +204,9 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
     [directoryEntries, linkingEntryId]
   );
 
-  const getLinkedTargetsForSumo = (sumoEntryId: string): string[] =>
+  const getLinkedTargetsForEntry = (entryId: string): string[] =>
     directoryEntries
-      .filter((e) => e.linked_entry_id === sumoEntryId)
+      .filter((e) => e.linked_entry_id === entryId)
       .map((e) => `${DIRECTORY_ORG_BY_CODE[e.directory_org].shortLabel} · ${e.calling}`);
 
   const startEditing = (entry: StakeDirectoryEntry) => {
@@ -222,31 +249,40 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
   const commitStandardSave = async (
     entry: StakeDirectoryEntry,
     cleanPhone: string,
-    cleanEmail: string
+    cleanEmail: string,
+    extraUpdates?: Partial<StakeDirectoryEntry>
   ): Promise<boolean> => {
-    const res = await updateDirectoryEntry(entry.id, {
-      first_name: draftFirstName.trim(),
-      last_name: draftLastName.trim(),
-      phone: cleanPhone,
-      email: cleanEmail,
-      assigned_unit: entry.directory_org === 'SUMO_CONSEJO' ? draftUnit.trim() : entry.assigned_unit,
-      assigned_org_notes:
-        entry.directory_org === 'SUMO_CONSEJO' ? draftNotes.trim() : entry.assigned_org_notes,
-      has_app_access: cleanEmail ? entry.has_app_access : false,
-    });
+    setIsSaving(true);
+    try {
+      const res = await updateDirectoryEntry(entry.id, {
+        first_name: draftFirstName.trim(),
+        last_name: draftLastName.trim(),
+        phone: cleanPhone,
+        email: cleanEmail,
+        assigned_unit:
+          entry.directory_org === 'SUMO_CONSEJO' ? draftUnit.trim() : entry.assigned_unit,
+        assigned_org_notes:
+          entry.directory_org === 'SUMO_CONSEJO' ? draftNotes.trim() : entry.assigned_org_notes,
+        has_app_access: cleanEmail ? entry.has_app_access : false,
+        ...extraUpdates,
+      });
 
-    if (!res.ok) {
-      triggerToast(res.error || 'No se pudo guardar en la base de datos.', true);
-      return false;
+      if (!res.ok) {
+        triggerToast(res.error || 'No se pudo guardar en la base de datos.', true);
+        return false;
+      }
+
+      setEditingId(null);
+      setDraftCleared(false);
+      setDraftError(null);
+      return true;
+    } finally {
+      setIsSaving(false);
     }
-
-    setEditingId(null);
-    setDraftCleared(false);
-    setDraftError(null);
-    return true;
   };
 
   const handleSaveEdit = async (entry: StakeDirectoryEntry) => {
+    if (isSaving) return;
     const cleanPhone = draftPhone.trim();
     const cleanEmail = draftEmail.trim().toLowerCase();
     const isSelf =
@@ -277,6 +313,13 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
       !cleanEmail &&
       (entry.directory_org !== 'SUMO_CONSEJO' || (!draftUnit.trim() && !draftNotes.trim()));
 
+    if (!isNowEmpty && !draftFirstName.trim() && !draftLastName.trim()) {
+      setDraftError(
+        'Ingresa al menos el Nombre o Apellido (o vacía todos los campos para dejar el puesto vacante).'
+      );
+      return;
+    }
+
     const wasLoaded = isEntryPersonLoaded(entry);
     const hasCounselors = Boolean(PRESIDENCY_COUNSELOR_SLOTS[entry.slot_key]);
 
@@ -292,23 +335,28 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
         return;
       }
 
-      const { clearedLinkedCallings, error: cloudError } = await clearDirectoryEntryWithCascade(
-        entry.id,
-        {
-          clearCounselors: true,
+      setIsSaving(true);
+      try {
+        const { clearedLinkedCallings, error: cloudError } = await clearDirectoryEntryWithCascade(
+          entry.id,
+          {
+            clearCounselors: true,
+          }
+        );
+        if (cloudError) {
+          triggerToast(`No se pudo vaciar el puesto en la nube: ${cloudError}`, true);
+          return;
         }
-      );
-      setEditingId(null);
-      setDraftCleared(false);
-      if (cloudError) {
-        triggerToast(`Guardado localmente, pero falló la nube: ${cloudError}`, true);
-        return;
+        setEditingId(null);
+        setDraftCleared(false);
+        triggerToast(
+          clearedLinkedCallings.length > 0
+            ? `Puesto vaciado junto con su vínculo (${clearedLinkedCallings.join(', ')}).`
+            : `Puesto ${entry.calling} vaciado.`
+        );
+      } finally {
+        setIsSaving(false);
       }
-      triggerToast(
-        clearedLinkedCallings.length > 0
-          ? `Puesto vaciado junto con su vínculo (${clearedLinkedCallings.join(', ')}).`
-          : `Puesto ${entry.calling} vaciado.`
-      );
       return;
     }
 
@@ -331,28 +379,41 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
   };
 
   const handleToggleAccess = async (entry: StakeDirectoryEntry) => {
-    const res = await toggleDirectoryAppAccess(entry.id);
-    if (!res.ok && res.error) {
-      triggerToast(res.error, true);
-      return;
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const res = await toggleDirectoryAppAccess(entry.id);
+      if (!res.ok) {
+        triggerToast(res.error || 'No se pudo actualizar el acceso.', true);
+        return;
+      }
+      triggerToast(
+        entry.has_app_access
+          ? `Acceso App desactivado para ${entry.first_name || entry.calling} (se conservan sus datos).`
+          : `Acceso App activado para ${entry.first_name || entry.calling}.`
+      );
+    } finally {
+      setIsSaving(false);
     }
-    triggerToast(
-      entry.has_app_access
-        ? `Acceso App desactivado para ${entry.first_name || entry.calling} (se conservan sus datos).`
-        : `Acceso App activado para ${entry.first_name || entry.calling}.`
-    );
   };
 
-  const handlePresidencyRoleChange = async (entry: StakeDirectoryEntry, nextRole: UserRole) => {
-    if (entry.is_permanent_admin || isSuperAdminEmail(entry.email)) {
-      triggerToast('Un administrador permanente es inmutable.', true);
-      return;
+  const handleConfirmDeleteExtra = async () => {
+    if (!pendingDeleteExtra || isSaving) return;
+    const target = pendingDeleteExtra;
+    setIsSaving(true);
+    try {
+      const res = await removeExtraDirectoryEntry(target.id);
+      if (!res.ok) {
+        triggerToast(res.error || 'No se pudo eliminar el integrante adicional.', true);
+        return;
+      }
+      setPendingDeleteExtra(null);
+      triggerToast(
+        `Integrante eliminado: ${`${target.first_name} ${target.last_name}`.trim() || target.calling}.`
+      );
+    } finally {
+      setIsSaving(false);
     }
-    await updateDirectoryEntry(entry.id, {
-      role: nextRole,
-      can_approve_activities: nextRole === 'ADMIN' ? true : entry.can_approve_activities,
-    });
-    triggerToast('Rol actualizado.');
   };
 
   const openAddExtraForm = (org: DirectoryOrgCode) => {
@@ -369,6 +430,7 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
 
   const handleCreateExtra = async (e: React.FormEvent, org: DirectoryOrgCode) => {
     e.preventDefault();
+    if (isSaving) return;
     setExtraError(null);
 
     if (!extraFirstName.trim() || !extraLastName.trim()) {
@@ -407,21 +469,26 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
       return;
     }
 
-    const res = await addExtraDirectoryEntry(org, extraRoleType, callingLabel, {
-      first_name: extraFirstName.trim(),
-      last_name: extraLastName.trim(),
-      phone: cleanPhone,
-      email: cleanEmail,
-      has_app_access: extraAppAccess,
-    });
+    setIsSaving(true);
+    try {
+      const res = await addExtraDirectoryEntry(org, extraRoleType, callingLabel, {
+        first_name: extraFirstName.trim(),
+        last_name: extraLastName.trim(),
+        phone: cleanPhone,
+        email: cleanEmail,
+        has_app_access: extraAppAccess,
+      });
 
-    if (!res.ok) {
-      setExtraError(res.error || 'No se pudo agregar el integrante.');
-      return;
+      if (!res.ok) {
+        setExtraError(res.error || 'No se pudo agregar el integrante.');
+        return;
+      }
+
+      setAddingOrg(null);
+      triggerToast(`${extraFirstName.trim()} ${extraLastName.trim()} agregado como ${callingLabel}.`);
+    } finally {
+      setIsSaving(false);
     }
-
-    setAddingOrg(null);
-    triggerToast(`${extraFirstName.trim()} ${extraLastName.trim()} agregado como ${callingLabel}.`);
   };
 
   return (
@@ -454,6 +521,24 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
           </button>
         )}
       </div>
+
+      {/* Aviso de error de carga en la nube */}
+      {directoryLoadError && (
+        <div
+          role="alert"
+          data-testid="directory-load-error"
+          className="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold"
+        >
+          <span>{directoryLoadError}</span>
+          <button
+            type="button"
+            onClick={() => void reloadDirectory()}
+            className="px-3 py-1 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-[11px] font-extrabold transition"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {/* Aviso parpadeante de datos incompletos (solo visible cuando faltan datos) */}
       {incompleteContactsCount > 0 && (
@@ -553,6 +638,60 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
         </div>
       )}
 
+      {/* Modal de Confirmación para eliminar integrante adicional */}
+      {pendingDeleteExtra && (
+        <div
+          data-testid="confirm-delete-extra-modal"
+          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !isSaving && setPendingDeleteExtra(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  Eliminar integrante adicional
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  ¿Seguro que deseas eliminar a{' '}
+                  <span className="font-bold text-slate-900">
+                    {`${pendingDeleteExtra.first_name} ${pendingDeleteExtra.last_name}`.trim() ||
+                      pendingDeleteExtra.calling}
+                  </span>{' '}
+                  ({pendingDeleteExtra.calling})? Si tenía acceso a la app y no ocupa otro puesto
+                  activo, su acceso será desactivado.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => setPendingDeleteExtra(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                data-testid="confirm-delete-extra-btn"
+                disabled={isSaving}
+                onClick={() => void handleConfirmDeleteExtra()}
+                className="px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-extrabold disabled:opacity-50"
+              >
+                {isSaving ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Relevo de Presidente/a (Corrección vs Nuevo Presidente / Vaciar) */}
       {presidentModal && (
         <div
@@ -591,61 +730,84 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                 <button
                   type="button"
                   data-testid="confirm-clear-president-btn"
+                  disabled={isSaving}
                   onClick={async () => {
+                    if (isSaving) return;
                     const { entry } = presidentModal;
-                    setPresidentModal(null);
-                    const { clearedCounselors, error: cloudError } =
-                      await clearDirectoryEntryWithCascade(entry.id, {
-                        clearCounselors: true,
-                      });
-                    setEditingId(null);
-                    setDraftCleared(false);
-                    if (cloudError) {
-                      triggerToast(`Guardado localmente, pero falló la nube: ${cloudError}`, true);
-                      return;
+                    setIsSaving(true);
+                    try {
+                      const { clearedCounselors, error: cloudError } =
+                        await clearDirectoryEntryWithCascade(entry.id, {
+                          clearCounselors: true,
+                        });
+                      if (cloudError) {
+                        triggerToast(`No se pudo vaciar en la nube: ${cloudError}`, true);
+                        return;
+                      }
+                      setPresidentModal(null);
+                      setEditingId(null);
+                      setDraftCleared(false);
+                      triggerToast(
+                        `Presidente/a vaciado junto con: ${clearedCounselors.join(', ')}.`
+                      );
+                    } finally {
+                      setIsSaving(false);
                     }
-                    triggerToast(
-                      `Presidente/a vaciado junto con: ${clearedCounselors.join(', ')}.`
-                    );
                   }}
-                  className="px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-extrabold"
+                  className="px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-extrabold disabled:opacity-50"
                 >
-                  Confirmar vaciado en cascada
+                  {isSaving ? 'Vaciando...' : 'Confirmar vaciado en cascada'}
                 </button>
               ) : (
                 <>
                   <button
                     type="button"
                     data-testid="president-correction-only-btn"
+                    disabled={isSaving}
                     onClick={async () => {
+                      if (isSaving) return;
                       const { entry, cleanPhone, cleanEmail } = presidentModal;
+                      const saved = await commitStandardSave(entry, cleanPhone, cleanEmail);
+                      if (!saved) return;
                       setPresidentModal(null);
-                      await commitStandardSave(entry, cleanPhone, cleanEmail);
                       triggerToast('Corrección guardada (consejeros sin cambios).');
                     }}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold"
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold disabled:opacity-50"
                   >
                     Solo corrección de datos
                   </button>
                   <button
                     type="button"
                     data-testid="president-new-release-btn"
+                    disabled={isSaving}
                     onClick={async () => {
+                      if (isSaving) return;
                       const { entry, cleanPhone, cleanEmail } = presidentModal;
-                      setPresidentModal(null);
-                      const saved = await commitStandardSave(entry, cleanPhone, cleanEmail);
+                      // Un relevo de Presidente es una persona nueva: romper cualquier linked_entry_id previo
+                      const saved = await commitStandardSave(entry, cleanPhone, cleanEmail, {
+                        linked_entry_id: undefined,
+                      });
                       if (!saved) return;
-                      const { clearedCounselors, error: cloudError } =
-                        await releasePresidencyCounselors(entry.slot_key);
-                      if (cloudError) {
-                        triggerToast(`Guardado localmente, pero falló la nube: ${cloudError}`, true);
-                        return;
+                      setIsSaving(true);
+                      try {
+                        const { clearedCounselors, error: cloudError } =
+                          await releasePresidencyCounselors(entry.slot_key);
+                        if (cloudError) {
+                          triggerToast(
+                            `Se guardó el Presidente/a, pero falló liberar consejeros: ${cloudError}`,
+                            true
+                          );
+                          return;
+                        }
+                        setPresidentModal(null);
+                        triggerToast(
+                          `Nuevo Presidente/a guardado. Se vaciaron: ${clearedCounselors.join(', ')}.`
+                        );
+                      } finally {
+                        setIsSaving(false);
                       }
-                      triggerToast(
-                        `Nuevo Presidente/a guardado. Se vaciaron: ${clearedCounselors.join(', ')}.`
-                      );
                     }}
-                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold"
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold disabled:opacity-50"
                   >
                     Nuevo Presidente/a (relevo)
                   </button>
@@ -680,12 +842,23 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
               <button
                 key={person.id}
                 type="button"
+                disabled={isSaving}
                 onClick={async () => {
-                  await linkDirectoryPerson(linkingEntryId, person.id);
-                  setLinkingEntryId(null);
-                  triggerToast(`Persona vinculada: ${person.first_name} ${person.last_name}.`);
+                  if (isSaving) return;
+                  setIsSaving(true);
+                  try {
+                    const res = await linkDirectoryPerson(linkingEntryId, person.id);
+                    if (!res.ok) {
+                      triggerToast(res.error || 'No se pudo vincular la persona.', true);
+                      return;
+                    }
+                    setLinkingEntryId(null);
+                    triggerToast(`Persona vinculada: ${person.first_name} ${person.last_name}.`);
+                  } finally {
+                    setIsSaving(false);
+                  }
                 }}
-                className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition"
+                className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 transition disabled:opacity-50"
               >
                 <p className="text-xs font-bold text-slate-900">
                   {person.first_name} {person.last_name}
@@ -787,10 +960,7 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                           entry.email?.toLowerCase() === currentUser.email.toLowerCase());
                       const roleBadge = ROLE_BADGES[entry.role];
                       const canClear = canClearEntryFields(entry);
-                      const linkedTargets =
-                        entry.directory_org === 'SUMO_CONSEJO'
-                          ? getLinkedTargetsForSumo(entry.id)
-                          : [];
+                      const linkedTargets = getLinkedTargetsForEntry(entry.id);
 
                       return (
                         <div
@@ -943,11 +1113,12 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                 <button
                                   type="button"
                                   data-testid={`save-edit-${entry.slot_key}`}
-                                  onClick={() => handleSaveEdit(entry)}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
+                                  disabled={isSaving}
+                                  onClick={() => void handleSaveEdit(entry)}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900 disabled:opacity-50"
                                 >
                                   <Check className="w-3.5 h-3.5" />
-                                  <span>Guardar</span>
+                                  <span>{isSaving ? 'Guardando...' : 'Guardar'}</span>
                                 </button>
                               </div>
                             </div>
@@ -1026,14 +1197,14 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                 <button
                                   type="button"
                                   data-testid={`toggle-access-${entry.slot_key}`}
-                                  disabled={isSelfOrPerm}
-                                  onClick={() => handleToggleAccess(entry)}
+                                  disabled={isSelfOrPerm || isSaving}
+                                  onClick={() => void handleToggleAccess(entry)}
                                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold border transition ${
                                     isSelfOrPerm
                                       ? 'bg-slate-100 text-slate-600 border-slate-200 cursor-not-allowed'
                                       : entry.has_app_access
-                                        ? 'bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-800'
-                                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                                        ? 'bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-800 disabled:opacity-50'
+                                        : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100 disabled:opacity-50'
                                   }`}
                                 >
                                   {isSelfOrPerm ? (
@@ -1072,9 +1243,11 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                                 {!entry.is_fixed_slot && (
                                   <button
                                     type="button"
-                                    onClick={() => removeExtraDirectoryEntry(entry.id)}
+                                    data-testid={`delete-extra-btn-${entry.slot_key}`}
+                                    disabled={isSaving}
+                                    onClick={() => setPendingDeleteExtra(entry)}
                                     title="Eliminar integrante adicional"
-                                    className="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                    className="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -1220,9 +1393,10 @@ export const UserManagementPanel: React.FC<UserManagementPanelProps> = ({
                               </button>
                               <button
                                 type="submit"
-                                className="px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900"
+                                disabled={isSaving}
+                                className="px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white text-xs font-extrabold hover:bg-emerald-900 disabled:opacity-50"
                               >
-                                Agregar
+                                {isSaving ? 'Agregando...' : 'Agregar'}
                               </button>
                             </div>
                           </div>

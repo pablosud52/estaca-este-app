@@ -1,4 +1,4 @@
-import ICAL, { type IcalTime } from 'ical.js';
+import type { IcalTime } from 'ical.js';
 import { SEED_ACTIVITIES } from '../data/seedData';
 import { isMeetupActivityText, isSeminarioActivityText } from '../lib/activityFilters';
 import { isSeedOrHistoricalUid, normalizeActivityTitle } from '../lib/calendarHelpers';
@@ -146,7 +146,10 @@ function normalizeTimeForDiff(value?: string | null): string | null {
  * - Para horarios flotantes sin zona (sin `Z` ni `TZID`) conserva el reloj local tal cual.
  * - Para horarios UTC (`Z`) o con `TZID` explícito convierte el instante real a `America/Montevideo`.
  */
-function extractMontevideoDateAndTime(icalTime: IcalTime): {
+function extractMontevideoDateAndTime(
+  icalTime: IcalTime,
+  localTimezone: unknown
+): {
   date: string;
   time: string | null;
 } {
@@ -158,7 +161,7 @@ function extractMontevideoDateAndTime(icalTime: IcalTime): {
   }
 
   const zone = icalTime.zone;
-  const isFloating = !zone || zone === ICAL.Timezone.localTimezone || zone.tzid === 'floating';
+  const isFloating = !zone || zone === localTimezone || zone.tzid === 'floating';
   if (isFloating) {
     const y = String(icalTime.year).padStart(4, '0');
     const m = String(icalTime.month).padStart(2, '0');
@@ -229,8 +232,10 @@ export function inferOrganizationFromText(title: string, description?: string | 
  * - Expande eventos recurrentes (`RRULE`) en una ventana útil (año anterior a año siguiente),
  *   respetando excepciones (`RECURRENCE-ID`).
  */
-export function parseIcalFeedWithIcalJs(rawIcs: string): ParsedIcalEvent[] {
+export async function parseIcalFeedWithIcalJs(rawIcs: string): Promise<ParsedIcalEvent[]> {
   try {
+    const { default: ICAL } = await import('ical.js');
+    const localTz = ICAL.Timezone.localTimezone;
     const jCalData = ICAL.parse(rawIcs);
     const vcalendar = new ICAL.Component(jCalData);
 
@@ -258,7 +263,7 @@ export function parseIcalFeedWithIcalJs(rawIcs: string): ParsedIcalEvent[] {
       const ev = new ICAL.Event(veventComp);
       const uid = String(ev.uid || '').trim();
       if (uid && ev.isRecurrenceException() && ev.recurrenceId) {
-        const { date } = extractMontevideoDateAndTime(ev.recurrenceId);
+        const { date } = extractMontevideoDateAndTime(ev.recurrenceId, localTz);
         const set = exceptionDatesByUid.get(uid) || new Set<string>();
         set.add(date);
         exceptionDatesByUid.set(uid, set);
@@ -280,7 +285,7 @@ export function parseIcalFeedWithIcalJs(rawIcs: string): ParsedIcalEvent[] {
       const inferredOrg = inferOrganizationFromText(title, description);
 
       if (event.isRecurring() && !event.isRecurrenceException()) {
-        const masterStart = extractMontevideoDateAndTime(event.startDate);
+        const masterStart = extractMontevideoDateAndTime(event.startDate, localTz);
         const excludedDates = exceptionDatesByUid.get(baseUid);
         const iter = event.iterator();
         let next: IcalTime | null;
@@ -293,7 +298,7 @@ export function parseIcalFeedWithIcalJs(rawIcs: string): ParsedIcalEvent[] {
           emittedCount < MAX_RRULE_OCCURRENCES
         ) {
           iterations += 1;
-          const occStart = extractMontevideoDateAndTime(next);
+          const occStart = extractMontevideoDateAndTime(next, localTz);
           if (occStart.date > windowEndDate) break;
           if (occStart.date < windowStartDate) continue;
           if (excludedDates && excludedDates.has(occStart.date)) continue;
@@ -303,11 +308,11 @@ export function parseIcalFeedWithIcalJs(rawIcs: string): ParsedIcalEvent[] {
           try {
             const details = event.getOccurrenceDetails(next);
             if (details?.endDate && !details.endDate.isDate) {
-              end_time = extractMontevideoDateAndTime(details.endDate).time;
+              end_time = extractMontevideoDateAndTime(details.endDate, localTz).time;
             }
           } catch {
             if (event.endDate && !event.endDate.isDate) {
-              end_time = extractMontevideoDateAndTime(event.endDate).time;
+              end_time = extractMontevideoDateAndTime(event.endDate, localTz).time;
             }
           }
 
@@ -327,16 +332,16 @@ export function parseIcalFeedWithIcalJs(rawIcs: string): ParsedIcalEvent[] {
           });
         }
       } else {
-        const start = extractMontevideoDateAndTime(event.startDate);
+        const start = extractMontevideoDateAndTime(event.startDate, localTz);
         const end_time =
           event.endDate && !event.endDate.isDate
-            ? extractMontevideoDateAndTime(event.endDate).time
+            ? extractMontevideoDateAndTime(event.endDate, localTz).time
             : null;
 
         let uid = baseUid;
         if (event.isRecurrenceException()) {
           const recDate = event.recurrenceId
-            ? extractMontevideoDateAndTime(event.recurrenceId).date
+            ? extractMontevideoDateAndTime(event.recurrenceId, localTz).date
             : start.date;
           uid = `${baseUid}__${recDate}`;
         }
@@ -888,6 +893,8 @@ async function persistLcrEventsToSupabase(
   }
 }
 
+let inFlightBackgroundLcrSync: Promise<LcrSyncResult> | null = null;
+
 /**
  * Sincronización inteligente con Doble Escudo:
  * 1. Revisa `last_synced_at` en Supabase. Si han pasado menos de 10 minutos (y no se fuerza
@@ -896,6 +903,8 @@ async function persistLcrEventsToSupabase(
  *    parsea con `ical.js` (RFC 5545), deduplica por `ical_uid` sin duplicar reprogramaciones,
  *    persiste los eventos nuevos/actualizados en Supabase (siempre que NO esté en modo simulación)
  *    y registra el nuevo `last_synced_at` solo si la persistencia fue exitosa.
+ * 3. Deduplicación single-flight: si ya existe una sincronización en segundo plano en vuelo,
+ *    reutiliza esa promesa en lugar de disparar peticiones duplicadas.
  */
 export async function syncLcrCalendarWithShield(options?: {
   currentActivities?: ActivityRecord[];
@@ -904,6 +913,11 @@ export async function syncLcrCalendarWithShield(options?: {
   isSimulating?: boolean;
   canPersistToDb?: boolean;
 }): Promise<LcrSyncResult> {
+  if (!options?.bypassDbShield && inFlightBackgroundLcrSync) {
+    return inFlightBackgroundLcrSync;
+  }
+
+  const runSync = async (): Promise<LcrSyncResult> => {
   const nowMs = Date.now();
   const isSimulating = Boolean(options?.isSimulating);
   const canPersistToDb = options?.canPersistToDb ?? false;
@@ -970,7 +984,9 @@ export async function syncLcrCalendarWithShield(options?: {
   // Si falló la lectura en vivo y ya tenemos eventos reales de LCR en Supabase, NO inyectar el respaldo hardcoded
   const hasRealLcrInBase = baseActivities.some((a) => (a.ical_uid || '').includes('@'));
   const parsedEvents =
-    source === 'lcr_live_ical' || !hasRealLcrInBase ? parseIcalFeedWithIcalJs(rawIcs) : [];
+    source === 'lcr_live_ical' || !hasRealLcrInBase
+      ? await parseIcalFeedWithIcalJs(rawIcs)
+      : [];
   const { merged, upsertedCount } =
     parsedEvents.length > 0
       ? deduplicateAndMergeIcalEvents(baseActivities, parsedEvents)
@@ -1037,6 +1053,19 @@ export async function syncLcrCalendarWithShield(options?: {
     source,
     persistError,
   };
+  };
+
+  if (options?.bypassDbShield) {
+    return runSync();
+  }
+
+  const promise = runSync().finally(() => {
+    if (inFlightBackgroundLcrSync === promise) {
+      inFlightBackgroundLcrSync = null;
+    }
+  });
+  inFlightBackgroundLcrSync = promise;
+  return promise;
 }
 
 /**

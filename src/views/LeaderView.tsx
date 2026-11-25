@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   ChevronDown,
@@ -17,7 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES } from '../data/seedData';
+import { SEED_ACTIVITIES, SEED_BUDGET_ALLOCATIONS, SEED_EXPENSES, SEED_SUPPLIERS } from '../data/seedData';
 import { isPrivateStakeMeeting, isSharedYouthActivity } from '../lib/activityFilters';
 import { isHistoricalImportedActivity } from '../lib/calendarHelpers';
 import { canApproveCalendar } from '../lib/permissions';
@@ -43,16 +43,31 @@ import {
   QuarterSummary,
   SupplierRecord,
 } from '../types/database';
-import { ProposeActivityModal } from '../components/ProposeActivityModal';
 import { useAutoLcrSync } from '../hooks/useAutoLcrSync';
 import {
   isActivityPendingLcr,
   syncLcrCalendarWithShield,
 } from '../services/lcrSyncService';
-import { CalendarView } from './CalendarView';
-import { SuppliersView } from './SuppliersView';
-import { LeadersDirectoryView } from './LeadersDirectoryView';
-import { SEED_SUPPLIERS } from '../data/seedData';
+
+const ProposeActivityModal = lazy(() =>
+  import('../components/ProposeActivityModal').then((m) => ({ default: m.ProposeActivityModal }))
+);
+const CalendarView = lazy(() =>
+  import('./CalendarView').then((m) => ({ default: m.CalendarView }))
+);
+const SuppliersView = lazy(() =>
+  import('./SuppliersView').then((m) => ({ default: m.SuppliersView }))
+);
+const LeadersDirectoryView = lazy(() =>
+  import('./LeadersDirectoryView').then((m) => ({ default: m.LeadersDirectoryView }))
+);
+
+const LeaderSectionLoader: React.FC = () => (
+  <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-500">
+    <div className="w-7 h-7 rounded-full border-4 border-sky-200 border-t-[#083563] animate-spin" />
+    <p className="text-xs font-bold">Cargando sección...</p>
+  </div>
+);
 
 interface LeaderViewProps {
   /** Si Presidencia o Admin inspecciona una organización en modo espejo */
@@ -60,6 +75,13 @@ interface LeaderViewProps {
   onBackToHub?: () => void;
   selectedYear?: number;
   onYearChange?: (year: number) => void;
+  /** Datos ya cargados desde PresidencyHub para abrir Modo Espejo al instante sin re-consultar */
+  sharedBudgets?: BudgetAllocation[];
+  sharedExpenses?: ExpenseRecord[];
+  sharedActivities?: ActivityRecord[];
+  sharedSuppliers?: SupplierRecord[];
+  /** Propaga mutaciones de actividades de vuelta a PresidencyHub en Modo Espejo */
+  onSharedActivitiesChange?: React.Dispatch<React.SetStateAction<ActivityRecord[]>>;
 }
 
 const SESSION_PROPOSALS_KEY = 'estaca_session_proposals_v1';
@@ -78,8 +100,14 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   onBackToHub,
   selectedYear,
   onYearChange,
+  sharedBudgets,
+  sharedExpenses,
+  sharedActivities,
+  sharedSuppliers,
+  onSharedActivitiesChange,
 }) => {
   const { user, isSimulating, signOut, realAuthEmail } = useAuth();
+  const hasSharedData = Boolean(sharedBudgets && sharedExpenses && sharedActivities);
   const canPersistLcr = canApproveCalendar(user);
   const currentYear = new Date().getFullYear();
   const [internalYear, setInternalYear] = useState<number>(currentYear);
@@ -108,13 +136,52 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
   // Regla Especial de Seminario (ADR-003): Exclusivo para Hombres Jóvenes (HJ) y Mujeres Jóvenes (MJ)
   const canUseSeminario = baseOrg === 'MJ' || baseOrg === 'HJ';
 
-  const [budgets, setBudgets] = useState<BudgetAllocation[]>(SEED_BUDGET_ALLOCATIONS);
-  const [expenses, setExpenses] = useState<ExpenseRecord[]>(SEED_EXPENSES);
-  const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
-  const [activities, setActivities] = useState<ActivityRecord[]>(() => [
-    ...SEED_ACTIVITIES,
-    ...loadSessionProposals(),
-  ]);
+  const [budgets, setBudgets] = useState<BudgetAllocation[]>(() =>
+    sharedBudgets ?? (isSimulating ? SEED_BUDGET_ALLOCATIONS : [])
+  );
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>(() =>
+    sharedExpenses ?? (isSimulating ? SEED_EXPENSES : [])
+  );
+  const [suppliers, setSuppliers] = useState<SupplierRecord[]>(() =>
+    sharedSuppliers ?? (isSimulating ? SEED_SUPPLIERS : [])
+  );
+  const [activities, setActivities] = useState<ActivityRecord[]>(() =>
+    sharedActivities ?? (isSimulating ? [...SEED_ACTIVITIES, ...loadSessionProposals()] : [])
+  );
+  const [isFinancialLoading, setIsFinancialLoading] = useState<boolean>(
+    () => !isSimulating && !hasSharedData
+  );
+  const [hasLoadedFinancialData, setHasLoadedFinancialData] = useState<boolean>(
+    () => isSimulating || hasSharedData
+  );
+  const hasLoadedFinancialDataRef = useRef<boolean>(hasLoadedFinancialData);
+  hasLoadedFinancialDataRef.current = hasLoadedFinancialData;
+  const [financialLoadError, setFinancialLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState<number>(0);
+
+  const updateActivities = useCallback(
+    (updater: React.SetStateAction<ActivityRecord[]>) => {
+      setActivities(updater);
+      if (onSharedActivitiesChange) {
+        onSharedActivitiesChange(updater);
+      }
+    },
+    [onSharedActivitiesChange]
+  );
+
+  // Sincronizar si llegan actualizaciones desde PresidencyHub en Modo Espejo
+  useEffect(() => {
+    if (sharedBudgets) setBudgets(sharedBudgets);
+  }, [sharedBudgets]);
+  useEffect(() => {
+    if (sharedExpenses) setExpenses(sharedExpenses);
+  }, [sharedExpenses]);
+  useEffect(() => {
+    if (sharedActivities) setActivities(sharedActivities);
+  }, [sharedActivities]);
+  useEffect(() => {
+    if (sharedSuppliers) setSuppliers(sharedSuppliers);
+  }, [sharedSuppliers]);
 
   // Estado de secciones colapsables (desplegables) — cerradas por defecto para mantener pantalla limpia
   const [isExpensesOpen, setIsExpensesOpen] = useState<boolean>(false);
@@ -152,22 +219,147 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   }, [baseOrg, activeTab]);
 
-  // Sincronización con Supabase en tiempo real con fallback resiliente a SEED
+  // Sincronización en 2 fases con Supabase (omitida en Modo Espejo porque PresidencyHub ya provee datos vivos)
   useEffect(() => {
+    if (hasSharedData) return;
     let active = true;
 
+    const mergeActivitiesWithSession = (
+      prev: ActivityRecord[],
+      incoming: ActivityRecord[]
+    ): ActivityRecord[] => {
+      const sessionProps = isSimulating ? loadSessionProposals() : [];
+      const localProposals = [...(isSimulating ? prev : []), ...sessionProps].filter(
+        (p) =>
+          p.origin === 'propuesta_lider' &&
+          !incoming.some((m) => m.title === p.title && m.event_date === p.event_date)
+      );
+      const uniqueLocal = Array.from(
+        new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
+      );
+      return [...incoming, ...uniqueLocal].sort((a, b) =>
+        a.event_date.localeCompare(b.event_date)
+      );
+    };
+
     async function fetchSupabaseData() {
+      if (!isSimulating) {
+        if (!hasLoadedFinancialDataRef.current) {
+          setBudgets([]);
+          setExpenses([]);
+          setActivities([]);
+          setSuppliers([]);
+        }
+        setIsFinancialLoading(true);
+        setFinancialLoadError(null);
+      } else {
+        setHasLoadedFinancialData(true);
+        setIsFinancialLoading(false);
+        setFinancialLoadError(null);
+      }
+
+      // Fase 2 (no crítica): proveedores en paralelo sin bloquear el saldo del líder
+      const suppliersPromise = supabase
+        .from('suppliers')
+        .select('*')
+        .order('commercial_name', { ascending: true });
+
       try {
-        const [budgetRes, expenseRes, activityRes, supplierRes] = await Promise.all([
+        // Fase 1 (crítica): solo las 3 tablas necesarias para el cálculo financiero del líder
+        const [budgetRes, expenseRes, activityRes] = await Promise.all([
           supabase.from('budget_allocations').select('*'),
           supabase.from('expenses').select('*').order('expense_date', { ascending: false }),
           supabase.from('activities').select('*').order('event_date', { ascending: true }),
-          supabase.from('suppliers').select('*').order('commercial_name', { ascending: true }),
         ]);
 
         if (!active) return;
 
-        if (!supplierRes.error && supplierRes.data && supplierRes.data.length > 0) {
+        const criticalError = budgetRes.error || expenseRes.error || activityRes.error;
+        if (criticalError && !isSimulating) {
+          setFinancialLoadError(
+            `No se pudieron cargar los datos financieros (${criticalError.message}).`
+          );
+          setIsFinancialLoading(false);
+          return;
+        }
+
+        const nextBudgets: BudgetAllocation[] | null =
+          !budgetRes.error && Array.isArray(budgetRes.data) && (!isSimulating || budgetRes.data.length > 0)
+            ? (budgetRes.data.map((b) => ({
+                ...b,
+                t1_assigned: Number(b.t1_assigned),
+                t2_assigned: Number(b.t2_assigned),
+                t3_assigned: Number(b.t3_assigned),
+                t4_assigned: Number(b.t4_assigned),
+                total_assigned: Number(b.total_assigned),
+              })) as BudgetAllocation[])
+            : null;
+
+        const nextExpenses: ExpenseRecord[] | null =
+          !expenseRes.error && Array.isArray(expenseRes.data) && (!isSimulating || expenseRes.data.length > 0)
+            ? (expenseRes.data.map((e) => ({
+                ...e,
+                gross_amount: Number(e.gross_amount),
+                external_reimbursement: Number(e.external_reimbursement),
+                net_amount: Number(e.net_amount),
+              })) as ExpenseRecord[])
+            : null;
+
+        const hasRemoteActivities =
+          !activityRes.error && Array.isArray(activityRes.data) && activityRes.data.length > 0;
+        const remoteActivities: ActivityRecord[] = hasRemoteActivities
+          ? (activityRes.data.map((a) => ({
+              ...a,
+              estimated_cost: Number(a.estimated_cost || 0),
+              origin:
+                a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
+                a.ical_uid?.startsWith('PENDIENTE_LCR') ||
+                a.status === 'PROPUESTA'
+                  ? 'propuesta_lider'
+                  : 'lcr',
+            })) as ActivityRecord[])
+          : !isSimulating
+          ? []
+          : SEED_ACTIVITIES;
+
+        // Actualización atómica en un único render
+        if (nextBudgets !== null) setBudgets(nextBudgets);
+        if (nextExpenses !== null) setExpenses(nextExpenses);
+        setActivities((prev) => mergeActivitiesWithSession(prev, remoteActivities));
+        setHasLoadedFinancialData(true);
+        setFinancialLoadError(null);
+        setIsFinancialLoading(false);
+
+        // Sincronización con feed iCal de LCR en segundo plano (sin demorar el saldo)
+        void syncLcrCalendarWithShield({
+          currentActivities: remoteActivities,
+          isSimulating,
+          canPersistToDb: canPersistLcr,
+        })
+          .then((syncResult) => {
+            if (!active) return;
+            if (syncResult.skippedByDbShield && hasRemoteActivities) return;
+            setActivities((prev) => mergeActivitiesWithSession(prev, syncResult.activities));
+          })
+          .catch(() => {
+            // Ya tenemos las actividades reales de Supabase
+          });
+      } catch (err) {
+        if (!active) return;
+        if (!isSimulating) {
+          setFinancialLoadError(
+            err instanceof Error
+              ? `Error de conexión al cargar los datos financieros (${err.message}).`
+              : 'Error de conexión al cargar los datos financieros.'
+          );
+        }
+        setIsFinancialLoading(false);
+      }
+
+      try {
+        const supplierRes = await suppliersPromise;
+        if (!active) return;
+        if (!supplierRes.error && Array.isArray(supplierRes.data) && (!isSimulating || supplierRes.data.length > 0)) {
           setSuppliers(
             supplierRes.data.map((s) => ({
               ...s,
@@ -175,110 +367,40 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
             })) as SupplierRecord[]
           );
         }
-
-        if (!budgetRes.error && budgetRes.data && budgetRes.data.length > 0) {
-          setBudgets(
-            budgetRes.data.map((b) => ({
-              ...b,
-              t1_assigned: Number(b.t1_assigned),
-              t2_assigned: Number(b.t2_assigned),
-              t3_assigned: Number(b.t3_assigned),
-              t4_assigned: Number(b.t4_assigned),
-              total_assigned: Number(b.total_assigned),
-            })) as BudgetAllocation[]
-          );
-        }
-
-        if (!expenseRes.error && expenseRes.data && expenseRes.data.length > 0) {
-          setExpenses(
-            expenseRes.data.map((e) => ({
-              ...e,
-              gross_amount: Number(e.gross_amount),
-              external_reimbursement: Number(e.external_reimbursement),
-              net_amount: Number(e.net_amount),
-            })) as ExpenseRecord[]
-          );
-        }
-
-        if (!activityRes.error && activityRes.data && activityRes.data.length > 0) {
-          const remoteActivities = activityRes.data.map((a) => ({
-            ...a,
-            estimated_cost: Number(a.estimated_cost || 0),
-            origin:
-              a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
-              a.ical_uid?.startsWith('PENDIENTE_LCR') ||
-              a.status === 'PROPUESTA'
-                ? 'propuesta_lider'
-                : 'lcr',
-          })) as ActivityRecord[];
-
-          // Usar únicamente los registros reales de Supabase (sin inyectar SEED_ACTIVITIES)
-          const syncResult = await syncLcrCalendarWithShield({
-            currentActivities: remoteActivities,
-            isSimulating,
-            canPersistToDb: canPersistLcr,
-          });
-
-          if (!active) return;
-
-          setActivities((prev) => {
-            const sessionProps = loadSessionProposals();
-            const localProposals = [...prev, ...sessionProps].filter(
-              (p) =>
-                p.origin === 'propuesta_lider' &&
-                !syncResult.activities.some(
-                  (m) => m.title === p.title && m.event_date === p.event_date
-                )
-            );
-            const uniqueLocal = Array.from(
-              new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
-            );
-            return [...syncResult.activities, ...uniqueLocal].sort((a, b) =>
-              a.event_date.localeCompare(b.event_date)
-            );
-          });
-        } else {
-          // Sincronización silenciosa con el Doble Escudo LCR al montar la app (sobre SEED_ACTIVITIES)
-          const syncResult = await syncLcrCalendarWithShield({
-            currentActivities: SEED_ACTIVITIES,
-            isSimulating,
-            canPersistToDb: canPersistLcr,
-          });
-          if (active) {
-            setActivities((prev) => {
-              const sessionProps = loadSessionProposals();
-              const localProposals = [...prev, ...sessionProps].filter(
-                (p) =>
-                  p.origin === 'propuesta_lider' &&
-                  !syncResult.activities.some(
-                    (m) => m.title === p.title && m.event_date === p.event_date
-                  )
-              );
-              const uniqueLocal = Array.from(
-                new Map(localProposals.map((p) => [`${p.title}-${p.event_date}`, p])).values()
-              );
-              return [...syncResult.activities, ...uniqueLocal].sort((a, b) =>
-                a.event_date.localeCompare(b.event_date)
-              );
-            });
-          }
-        }
       } catch {
-        // Mantiene datos semilla auditados en caso de estar offline
+        // Silencioso para proveedores
       }
     }
 
-    fetchSupabaseData();
+    void fetchSupabaseData();
     return () => {
       active = false;
     };
-  }, [isSimulating, canPersistLcr]);
+  }, [isSimulating, canPersistLcr, hasSharedData, reloadTick]);
 
   useAutoLcrSync({
     activities,
     isSimulating,
     canPersistToDb: canPersistLcr,
-    onSynced: setActivities,
+    enabled: !hasSharedData && !isFinancialLoading && hasLoadedFinancialData,
+    onSynced: (syncedActivities) => {
+      setActivities((prev) => {
+        const preservedProposals = prev.filter(
+          (p) =>
+            p.origin === 'propuesta_lider' &&
+            !syncedActivities.some(
+              (m) =>
+                m.id === p.id ||
+                (p.ical_uid && m.ical_uid === p.ical_uid) ||
+                (m.title === p.title && m.event_date === p.event_date)
+            )
+        );
+        if (preservedProposals.length === 0) return syncedActivities;
+        return [...syncedActivities, ...preservedProposals].sort((a, b) =>
+          a.event_date.localeCompare(b.event_date)
+        );
+      });
+    },
   });
 
   // Saldo disponible de Seminario (Fondo conjunto para HJ y MJ, no incluido en el presupuesto individual)
@@ -544,7 +666,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
     };
 
     // Actualización optimista inmediata con deduplicación por título y fecha
-    setActivities((prev) => {
+    updateActivities((prev) => {
       const withoutDup = prev.filter(
         (item) => !(item.title === newRecord.title && item.event_date === newRecord.event_date)
       );
@@ -599,7 +721,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
         }
 
         if (inserted && typeof inserted.id === 'number') {
-          setActivities((prev) =>
+          updateActivities((prev) =>
             prev.map((item) => (item.id === tempId ? { ...item, id: inserted.id } : item))
           );
         }
@@ -927,31 +1049,79 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       {/* ==================== CONTENIDO MÓVIL DEL LÍDER ==================== */}
       {activeTab === 'CALENDAR' ? (
         <main className="max-w-4xl w-full mx-auto px-4 pt-2 pb-2 flex-1">
-          <CalendarView
-            selectedYear={activeYear}
-            activitiesProp={activities}
-            onActivitiesUpdate={setActivities}
-            onBack={() => setActiveTab('SUMMARY')}
-            onProposeActivity={() => setIsProposeOpen(true)}
-            onlyPendingLcr={calendarOnlyPendingLcr}
-            onClearPendingLcrFilter={() => setCalendarOnlyPendingLcr(false)}
-            embedded
-          />
+          <Suspense fallback={<LeaderSectionLoader />}>
+            <CalendarView
+              selectedYear={activeYear}
+              activitiesProp={activities}
+              onActivitiesUpdate={updateActivities}
+              onBack={() => setActiveTab('SUMMARY')}
+              onProposeActivity={() => setIsProposeOpen(true)}
+              onlyPendingLcr={calendarOnlyPendingLcr}
+              onClearPendingLcrFilter={() => setCalendarOnlyPendingLcr(false)}
+              embedded
+            />
+          </Suspense>
         </main>
       ) : activeTab === 'SUPPLIERS' ? (
         <main className="max-w-4xl w-full mx-auto px-4 pt-2 pb-2 flex-1">
-          <SuppliersView
-            suppliers={suppliers}
-            onBack={() => setActiveTab('SUMMARY')}
-            embedded
-          />
+          <Suspense fallback={<LeaderSectionLoader />}>
+            <SuppliersView
+              suppliers={suppliers}
+              onBack={() => setActiveTab('SUMMARY')}
+              embedded
+            />
+          </Suspense>
         </main>
       ) : activeTab === 'DIRECTORY' ? (
         <main className="max-w-4xl w-full mx-auto px-4 pt-2 pb-2 flex-1">
-          <LeadersDirectoryView />
+          <Suspense fallback={<LeaderSectionLoader />}>
+            <LeadersDirectoryView />
+          </Suspense>
         </main>
+      ) : financialLoadError && !hasLoadedFinancialData ? (
+      <main className="max-w-lg w-full mx-auto px-4 pt-6 flex-1">
+        <section
+          role="alert"
+          data-testid="leader-financial-load-error"
+          className="rounded-3xl bg-white border border-rose-200 shadow-sm p-6 text-center space-y-4"
+        >
+          <div className="mx-auto w-11 h-11 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center justify-center font-extrabold text-base">
+            !
+          </div>
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-extrabold text-slate-900">
+              No se pudo calcular el saldo disponible
+            </h2>
+            <p className="text-xs font-medium text-slate-600">
+              {financialLoadError} Para evitar mostrar montos inexactos, el resumen permanece oculto hasta restablecer la conexión.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReloadTick((n) => n + 1)}
+            className="pressable inline-flex items-center justify-center px-4 py-2 rounded-xl bg-[#072B52] hover:bg-[#083563] text-white text-xs font-extrabold transition shadow-sm"
+          >
+            Reintentar carga
+          </button>
+        </section>
+      </main>
       ) : (
       <main className="max-w-lg w-full mx-auto px-4 pt-4 space-y-4 flex-1">
+        {financialLoadError && (
+          <div
+            role="alert"
+            className="rounded-2xl bg-rose-50 border border-rose-200 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-rose-800"
+          >
+            <span>{financialLoadError}</span>
+            <button
+              type="button"
+              onClick={() => setReloadTick((n) => n + 1)}
+              className="pressable px-3 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-extrabold transition"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
         {/* Toast / Confirmación de Propuesta */}
         {toastMessage && (
           <div
@@ -987,9 +1157,32 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
         {/* 1. TARJETA MAESTRA DE PRESUPUESTO (Liviana y sobria, igual que Presidencia) */}
         <section
           aria-label="Saldo libre estimado y presupuesto"
+          aria-busy={isFinancialLoading}
           data-testid="balance-card"
           className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#083563] via-[#072B52] to-[#051E3B] p-5 sm:p-6 text-white shadow-xl border border-white/10"
         >
+          {isFinancialLoading ? (
+            <div className="space-y-4 py-1 animate-pulse">
+              <div className="flex items-center gap-2 text-xs font-bold text-sky-200">
+                <span className="w-4 h-4 rounded-full border-2 border-sky-300/40 border-t-sky-200 animate-spin inline-block" />
+                <span>Calculando saldo disponible...</span>
+              </div>
+              <div className="pb-3.5 border-b border-white/12">
+                <div className="h-9 w-48 rounded-xl bg-white/15" />
+                <div className="h-3.5 w-32 rounded bg-white/10 mt-2" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="h-6 w-28 rounded-lg bg-white/15" />
+                  <div className="h-3 w-24 rounded bg-white/10 mt-1.5" />
+                </div>
+                <div>
+                  <div className="h-6 w-28 rounded-lg bg-white/15" />
+                  <div className="h-3 w-24 rounded bg-white/10 mt-1.5" />
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="divide-y divide-white/12">
             {/* Protagonista: Saldo libre estimado */}
             <div className="pb-3.5">
@@ -1051,6 +1244,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               </div>
             </div>
           </div>
+          )}
         </section>
 
         {/* Franja discreta de Fondo Seminario (exclusiva para Hombres Jóvenes y Mujeres Jóvenes) */}
@@ -1064,7 +1258,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
               <p className="text-[11px] text-slate-500">Fondo conjunto (aparte de este presupuesto)</p>
             </div>
             <p className="text-sm font-extrabold text-slate-900 tabular-nums whitespace-nowrap">
-              {formatCurrency(seminarioAvailable)}
+              {isFinancialLoading ? '—' : formatCurrency(seminarioAvailable)}
             </p>
           </div>
         )}
@@ -1087,7 +1281,7 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
                 >
                   Gastado:{' '}
                   <span data-testid="total-spent-amount" className="font-bold text-slate-700">
-                    {formatCurrency(financialSummary.totalSpent)}
+                    {isFinancialLoading ? '—' : formatCurrency(financialSummary.totalSpent)}
                   </span>
                 </span>
                 <ChevronDown
@@ -1362,13 +1556,17 @@ export const LeaderView: React.FC<LeaderViewProps> = ({
       )}
 
       {/* Modal Nativo <dialog> para Proponer Actividad */}
-      <ProposeActivityModal
-        isOpen={isProposeOpen}
-        onClose={() => setIsProposeOpen(false)}
-        userOrg={baseOrg}
-        canUseSeminario={canUseSeminario}
-        onSubmitProposal={handleCreateProposal}
-      />
+      {isProposeOpen && (
+        <Suspense fallback={null}>
+          <ProposeActivityModal
+            isOpen={isProposeOpen}
+            onClose={() => setIsProposeOpen(false)}
+            userOrg={baseOrg}
+            canUseSeminario={canUseSeminario}
+            onSubmitProposal={handleCreateProposal}
+          />
+        </Suspense>
+      )}
     </div>
   );
 };

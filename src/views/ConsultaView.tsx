@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { Building2, Calendar, LogOut, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SEED_ACTIVITIES, SEED_SUPPLIERS } from '../data/seedData';
@@ -6,19 +6,41 @@ import { useAutoLcrSync } from '../hooks/useAutoLcrSync';
 import { supabase } from '../lib/supabase';
 import { syncLcrCalendarWithShield } from '../services/lcrSyncService';
 import { ActivityRecord, SupplierRecord } from '../types/database';
-import { CalendarView } from './CalendarView';
-import { LeadersDirectoryView } from './LeadersDirectoryView';
-import { SuppliersView } from './SuppliersView';
+
+const CalendarView = lazy(() =>
+  import('./CalendarView').then((m) => ({ default: m.CalendarView }))
+);
+const LeadersDirectoryView = lazy(() =>
+  import('./LeadersDirectoryView').then((m) => ({ default: m.LeadersDirectoryView }))
+);
+const SuppliersView = lazy(() =>
+  import('./SuppliersView').then((m) => ({ default: m.SuppliersView }))
+);
+
+const ConsultaSectionLoader: React.FC = () => (
+  <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-500">
+    <div className="w-7 h-7 rounded-full border-4 border-sky-200 border-t-[#083563] animate-spin" />
+    <p className="text-xs font-bold">Cargando sección...</p>
+  </div>
+);
 
 export const ConsultaView: React.FC = () => {
   const { user, isSimulating, signOut, realAuthEmail } = useAuth();
   const [activeTab, setActiveTab] = useState<'DIRECTORY' | 'CALENDAR' | 'SUPPLIERS'>('DIRECTORY');
-  const [activities, setActivities] = useState<ActivityRecord[]>(SEED_ACTIVITIES);
-  const [suppliers, setSuppliers] = useState<SupplierRecord[]>(SEED_SUPPLIERS);
+  const [activities, setActivities] = useState<ActivityRecord[]>(() =>
+    isSimulating ? SEED_ACTIVITIES : []
+  );
+  const [suppliers, setSuppliers] = useState<SupplierRecord[]>(() =>
+    isSimulating ? SEED_SUPPLIERS : []
+  );
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(() => !isSimulating);
 
   useEffect(() => {
     let mounted = true;
     async function loadPublicData() {
+      if (!isSimulating) {
+        setIsLoadingData(true);
+      }
       try {
         const [{ data: actData, error: actErr }, { data: supData, error: supErr }] =
           await Promise.all([
@@ -27,37 +49,56 @@ export const ConsultaView: React.FC = () => {
           ]);
         if (!mounted) return;
 
-        if (!supErr && supData && supData.length > 0) {
+        if (!supErr && Array.isArray(supData) && (!isSimulating || supData.length > 0)) {
           setSuppliers(supData as SupplierRecord[]);
         }
 
-        const baseActivities: ActivityRecord[] =
-          !actErr && actData && actData.length > 0
-            ? (actData.map((a) => ({
-                ...a,
-                estimated_cost: Number(a.estimated_cost || 0),
-                origin:
-                  a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
-                  a.ical_uid?.startsWith('PENDIENTE_LCR') ||
-                  a.status === 'PROPUESTA'
-                    ? 'propuesta_lider'
-                    : 'lcr',
-              })) as ActivityRecord[])
-            : SEED_ACTIVITIES;
+        const hasRemoteActivities = !actErr && Array.isArray(actData) && actData.length > 0;
+        const baseActivities: ActivityRecord[] = hasRemoteActivities
+          ? (actData.map((a) => ({
+              ...a,
+              estimated_cost: Number(a.estimated_cost || 0),
+              origin:
+                a.ical_uid?.startsWith('PROPUESTA_LIDER') ||
+                a.ical_uid?.startsWith('PENDIENTE_LCR') ||
+                a.status === 'PROPUESTA'
+                  ? 'propuesta_lider'
+                  : 'lcr',
+            })) as ActivityRecord[])
+          : !isSimulating
+          ? []
+          : SEED_ACTIVITIES;
 
-        const syncResult = await syncLcrCalendarWithShield({
-          currentActivities: baseActivities,
-          isSimulating,
-          canPersistToDb: false,
-        });
-        if (mounted) {
-          setActivities(syncResult.activities);
+        // Mostrar de inmediato las actividades reales de Supabase sin bloquear por iCal de LCR
+        setActivities(baseActivities);
+        setIsLoadingData(false);
+
+        if (!actErr || isSimulating) {
+          void syncLcrCalendarWithShield({
+            currentActivities: baseActivities,
+            isSimulating,
+            canPersistToDb: false,
+          })
+            .then((syncResult) => {
+              if (!mounted) return;
+              if (syncResult.skippedByDbShield && hasRemoteActivities) return;
+              setActivities(syncResult.activities);
+            })
+            .catch(() => {
+              // Ya tenemos las actividades reales de Supabase
+            });
         }
       } catch {
-        // Fallback silencioso a datos semilla
+        if (mounted) {
+          if (!isSimulating) {
+            setActivities([]);
+            setSuppliers([]);
+          }
+          setIsLoadingData(false);
+        }
       }
     }
-    loadPublicData();
+    void loadPublicData();
     return () => {
       mounted = false;
     };
@@ -67,6 +108,7 @@ export const ConsultaView: React.FC = () => {
     activities,
     isSimulating,
     canPersistToDb: false,
+    enabled: !isLoadingData,
     onSynced: setActivities,
   });
 
@@ -135,22 +177,24 @@ export const ConsultaView: React.FC = () => {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6">
-        {activeTab === 'DIRECTORY' && <LeadersDirectoryView />}
-        {activeTab === 'CALENDAR' && (
-          <CalendarView
-            selectedYear={new Date().getFullYear()}
-            activitiesProp={activities}
-            onActivitiesUpdate={setActivities}
-            embedded
-          />
-        )}
-        {activeTab === 'SUPPLIERS' && (
-          <SuppliersView
-            suppliers={suppliers}
-            onBack={() => setActiveTab('DIRECTORY')}
-            embedded
-          />
-        )}
+        <Suspense fallback={<ConsultaSectionLoader />}>
+          {activeTab === 'DIRECTORY' && <LeadersDirectoryView />}
+          {activeTab === 'CALENDAR' && (
+            <CalendarView
+              selectedYear={new Date().getFullYear()}
+              activitiesProp={activities}
+              onActivitiesUpdate={setActivities}
+              embedded
+            />
+          )}
+          {activeTab === 'SUPPLIERS' && (
+            <SuppliersView
+              suppliers={suppliers}
+              onBack={() => setActiveTab('DIRECTORY')}
+              embedded
+            />
+          )}
+        </Suspense>
       </main>
     </div>
   );

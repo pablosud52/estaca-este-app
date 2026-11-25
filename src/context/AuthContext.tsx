@@ -34,6 +34,7 @@ interface AuthContextValue {
   profiles: UserProfile[];
   directoryEntries: StakeDirectoryEntry[];
   directoryLoadError: string | null;
+  isDirectoryLoading: boolean;
   reloadDirectory: () => Promise<void>;
   incompleteContactsCount: number;
   authStatus: AuthStatus;
@@ -277,6 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profiles, setProfiles] = useState<UserProfile[]>(DEV_PROFILES);
   const [directoryEntries, setDirectoryEntries] = useState<StakeDirectoryEntry[]>(loadInitialDirectory);
   const [directoryLoadError, setDirectoryLoadError] = useState<string | null>(null);
+  const [isDirectoryLoading, setIsDirectoryLoading] = useState<boolean>(false);
   const [user, setUser] = useState<UserProfile>(() => {
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
     return DEV_PROFILES.find((p) => p.id === savedId) || DEV_PROFILES.find((p) => p.id === 'lider-mj-01') || DEV_PROFILES[0];
@@ -331,21 +333,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRealAuthEmail(sessionEmail);
         }
 
-        // 2. Sincronizar perfiles desde Supabase y asegurar correo oficial pablosud52@gmail.com
-        const [{ data, error }, { data: dirData, error: dirError }] = await Promise.all([
-          supabase
-            .from('users_profiles')
-            .select('*')
-            .order('full_name', { ascending: true }),
-          supabase.from('stake_directory_entries').select('*'),
-        ]);
+        // 2. Disparar directorio en paralelo SOLO si hay sesión o no se requiere auth (evita query innecesaria en Login)
+        const shouldFetchDirectory = Boolean(sessionEmail || !AUTH_REQUIRED);
+        if (mounted && shouldFetchDirectory) {
+          setIsDirectoryLoading(true);
+        }
+        const directoryPromise = shouldFetchDirectory
+          ? supabase.from('stake_directory_entries').select('*')
+          : null;
+
+        // Sincronizar perfiles desde Supabase y asegurar correo oficial pablosud52@gmail.com
+        const { data, error } = await supabase
+          .from('users_profiles')
+          .select('*')
+          .order('full_name', { ascending: true });
 
         if (!error && data && data.length > 0 && mounted) {
           const legacyRow = data.find(
             (d) => String(d.email || '').toLowerCase() === 'pablo.lamela@gmail.com'
           );
           if (legacyRow) {
-            await supabase
+            void supabase
               .from('users_profiles')
               .update({
                 email: SUPER_ADMIN_EMAIL,
@@ -408,22 +416,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setProfiles(mergedProfiles);
         }
 
-        // 3. Cargar directorio real desde Supabase (si hay sesión real o registros remotos, es fuente única de verdad)
-        if (dirError && mounted && (sessionEmail || AUTH_REQUIRED)) {
-          setDirectoryLoadError(
-            `No se pudo cargar el directorio desde la nube (${dirError.message}).`
-          );
-        } else if (
-          !dirError &&
-          Array.isArray(dirData) &&
-          mounted &&
-          (dirData.length > 0 || sessionEmail || AUTH_REQUIRED)
-        ) {
-          const mergedDir = mergeDirectoryFromRemote(dirData as StakeDirectoryEntry[]);
-          directoryEntriesRef.current = mergedDir;
-          setDirectoryEntries(mergedDir);
-          saveDirectoryLocal(mergedDir);
-          setDirectoryLoadError(null);
+        // 3. Resolver directorio en segundo plano (sin demorar el render del Dashboard)
+        if (directoryPromise) {
+          void Promise.resolve(directoryPromise)
+            .then(({ data: dirData, error: dirError }) => {
+              if (!mounted) return;
+              if (dirError && (sessionEmail || AUTH_REQUIRED)) {
+                setDirectoryLoadError(
+                  `No se pudo cargar el directorio desde la nube (${dirError.message}).`
+                );
+              } else if (
+                !dirError &&
+                Array.isArray(dirData) &&
+                (dirData.length > 0 || sessionEmail || AUTH_REQUIRED)
+              ) {
+                const mergedDir = mergeDirectoryFromRemote(dirData as StakeDirectoryEntry[]);
+                directoryEntriesRef.current = mergedDir;
+                setDirectoryEntries(mergedDir);
+                saveDirectoryLocal(mergedDir);
+                setDirectoryLoadError(null);
+              }
+            })
+            .catch((err) => {
+              if (mounted && (sessionEmail || AUTH_REQUIRED)) {
+                setDirectoryLoadError(
+                  err instanceof Error
+                    ? `Error de conexión al cargar el directorio (${err.message}).`
+                    : 'Error de conexión al cargar el directorio.'
+                );
+              }
+            })
+            .finally(() => {
+              if (mounted) {
+                setIsDirectoryLoading(false);
+              }
+            });
         }
       } catch (err) {
         if (mounted && (sessionEmail || AUTH_REQUIRED)) {
@@ -453,6 +480,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
+      const prevEmail = realAuthEmailRef.current;
       const email = session?.user?.email?.toLowerCase() || null;
       setRealAuthEmail(email);
       if (email) {
@@ -460,6 +488,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(resolved);
         setIsSimulating(false);
         setAuthStatus('authenticated');
+        if (!prevEmail || prevEmail !== email) {
+          void reloadDirectory();
+        }
       } else if (AUTH_REQUIRED) {
         setAuthStatus('unauthenticated');
       }
@@ -568,6 +599,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const reloadDirectory = async () => {
+    setIsDirectoryLoading(true);
     try {
       const { data: dirData, error: dirError } = await supabase
         .from('stake_directory_entries')
@@ -591,6 +623,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? `Error de conexión al cargar el directorio (${err.message}).`
           : 'Error de conexión al cargar el directorio.'
       );
+    } finally {
+      setIsDirectoryLoading(false);
     }
   };
 
@@ -1394,6 +1428,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profiles,
         directoryEntries,
         directoryLoadError,
+        isDirectoryLoading,
         reloadDirectory,
         incompleteContactsCount,
         authStatus,

@@ -18,8 +18,10 @@ export function useAutoLcrSync(options: {
   activities: ActivityRecord[];
   isSimulating: boolean;
   canPersistToDb?: boolean;
+  enabled?: boolean;
   onSynced: (syncedActivities: ActivityRecord[]) => void;
 }) {
+  const enabled = options.enabled ?? true;
   const activitiesRef = useRef<ActivityRecord[]>(options.activities);
   activitiesRef.current = options.activities;
 
@@ -36,6 +38,7 @@ export function useAutoLcrSync(options: {
   const lastCheckMsRef = useRef<number>(Date.now());
 
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
 
     const runAutoSync = async (respectThrottle: boolean) => {
@@ -91,5 +94,5 @@ export function useAutoLcrSync(options: {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleWindowFocus);
     };
-  }, []);
+  }, [enabled]);
 }

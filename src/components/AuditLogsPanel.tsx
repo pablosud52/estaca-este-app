@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, History, RefreshCw, Search, X } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { fetchAuditLogs } from '../services/auditLogService';
 import { AuditActionType, AuditLogRecord, AuditSection } from '../types/database';
 
@@ -57,6 +56,7 @@ function formatDateTimeUruguay(isoString: string): { date: string; time: string 
 export const AuditLogsPanel: React.FC = () => {
   const [logs, setLogs] = useState<AuditLogRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [selectedUser, setSelectedUser] = useState<string>('TODOS');
@@ -152,24 +152,33 @@ export const AuditLogsPanel: React.FC = () => {
     setDateTo(today);
   };
 
-  const handleExportExcel = () => {
-    const rows = filteredLogs.map((item) => {
-      const { date, time } = formatDateTimeUruguay(item.created_at);
-      return {
-        Fecha: date,
-        Hora: time,
-        Usuario: item.actor_name,
-        Correo: item.actor_email,
-        Llamamiento: item.actor_calling || item.actor_role,
-        Sección: SECTION_LABELS[item.section] || item.section,
-        Tipo: ACTION_LABELS[item.action_type] || item.action_type,
-        Detalle: item.summary,
-      };
-    });
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Historial');
-    XLSX.writeFile(workbook, `historial_actividad_${getUruguayDateStr(new Date())}.xlsx`);
+  const handleExportExcel = async () => {
+    if (isExporting || filteredLogs.length === 0) return;
+    setIsExporting(true);
+    try {
+      const XLSX = await import('xlsx');
+      const rows = filteredLogs.map((item) => {
+        const { date, time } = formatDateTimeUruguay(item.created_at);
+        return {
+          Fecha: date,
+          Hora: time,
+          Usuario: item.actor_name,
+          Correo: item.actor_email,
+          Llamamiento: item.actor_calling || item.actor_role,
+          Sección: SECTION_LABELS[item.section] || item.section,
+          Tipo: ACTION_LABELS[item.action_type] || item.action_type,
+          Detalle: item.summary,
+        };
+      });
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Historial');
+      XLSX.writeFile(workbook, `historial_actividad_${getUruguayDateStr(new Date())}.xlsx`);
+    } catch (err) {
+      console.error('Error exportando historial a Excel:', err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -207,11 +216,11 @@ export const AuditLogsPanel: React.FC = () => {
               type="button"
               data-testid="export-audit-logs-btn"
               onClick={handleExportExcel}
-              disabled={filteredLogs.length === 0}
+              disabled={filteredLogs.length === 0 || isExporting}
               className="pressable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 border border-slate-700 text-xs font-bold text-slate-100 transition"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Exportar</span>
+              <span>{isExporting ? 'Exportando...' : 'Exportar'}</span>
             </button>
 
             <button

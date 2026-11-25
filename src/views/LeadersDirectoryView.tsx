@@ -67,7 +67,13 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
   initialManageMode = false,
   initialFilterIncomplete = false,
 }) => {
-  const { directoryEntries, directoryLoadError, reloadDirectory, incompleteContactsCount } = useAuth();
+  const {
+    directoryEntries,
+    directoryLoadError,
+    isDirectoryLoading,
+    reloadDirectory,
+    incompleteContactsCount,
+  } = useAuth();
   const [isManageMode, setIsManageMode] = useState<boolean>(
     () => Boolean(canManage && (initialManageMode || initialFilterIncomplete))
   );
@@ -282,6 +288,19 @@ export const LeadersDirectoryView: React.FC<LeadersDirectoryViewProps> = ({
         initialFilterIncomplete={initialFilterIncomplete}
         onExitManageMode={() => setIsManageMode(false)}
       />
+    );
+  }
+
+  if (isDirectoryLoading && orgsWithLoadedEntries.length === 0) {
+    return (
+      <section
+        aria-label="Directorio"
+        data-testid="leaders-directory-view"
+        className="py-16 flex flex-col items-center justify-center gap-2.5 text-slate-500"
+      >
+        <div className="w-8 h-8 rounded-full border-4 border-sky-200 border-t-[#083563] animate-spin" />
+        <p className="text-xs font-bold">Cargando directorio...</p>
+      </section>
     );
   }
 

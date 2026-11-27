@@ -9,6 +9,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'favicon-32x32.png', 'apple-touch-icon.png', 'mask-icon.svg'],
+      workbox: {
+        // Excluir PDFs estáticos (/docs) y endpoints (/api) del fallback SPA hacia index.html
+        navigateFallbackDenylist: [/^\/docs\//, /^\/api\//, /\.pdf($|\?)/i],
+      },
       manifest: {
         name: 'Estaca Este App - Finanzas y Calendario',
         short_name: 'Estaca Este',

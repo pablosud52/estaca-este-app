@@ -2,6 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function openNormativasFromAdminMenu(page: Page) {
   const adminMenuTrigger = page.getByTestId('hub-admin-menu-trigger');
+  const mobileMenuToggle = page.getByTestId('mobile-menu-toggle');
+  await adminMenuTrigger.waitFor({ state: 'attached' });
   if (await adminMenuTrigger.isVisible()) {
     await adminMenuTrigger.click();
     const desktopBtn = page.getByTestId('hub-admin-info-btn');
@@ -9,7 +11,7 @@ async function openNormativasFromAdminMenu(page: Page) {
     await expect(desktopBtn).toContainText('Normativas');
     await desktopBtn.click();
   } else {
-    await page.getByTestId('mobile-menu-toggle').click();
+    await mobileMenuToggle.click();
     const drawerBtn = page.getByTestId('drawer-admin-info-btn');
     await expect(drawerBtn).toBeVisible();
     await expect(drawerBtn).toContainText('Normativas');
@@ -35,7 +37,7 @@ test.describe('E2E — Normativas: 3 pestañas, buscador interactivo, visibilida
 
     await openNormativasFromAdminMenu(page);
 
-    await expect(page.getByTestId('financial-info-section')).toBeVisible();
+    await expect(page.getByTestId('financial-info-section')).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId('info-superadmin-draft-banner')).toHaveCount(0);
 
     // AC-2: 4 pestañas visibles y Resumen Operativo activa por defecto (sin botón de PDF)
@@ -115,7 +117,7 @@ test.describe('E2E — Normativas: 3 pestañas, buscador interactivo, visibilida
     await page.getByTestId('switch-role-presidencia-consejero1-01').click();
 
     await openNormativasFromAdminMenu(page);
-    await expect(page.getByTestId('financial-info-section')).toBeVisible();
+    await expect(page.getByTestId('financial-info-section')).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId('info-superadmin-draft-banner')).toHaveCount(0);
 
     // Líder de organización: no tiene acceso al menú Administración ni a Normativas

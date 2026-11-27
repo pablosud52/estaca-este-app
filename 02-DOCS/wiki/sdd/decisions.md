@@ -33,3 +33,9 @@
 - **Decisión 3 (Consulta interactiva):** `Uso Apropiado de los Fondos` incluye buscador en tiempo real, filtros por las 5 categorías y las notas `(A)`–`(L)` integradas directamente dentro de cada uno de los 27 conceptos.
 - **Decisión 4 (Respaldo PDF):** Cada pestaña incluye en su cabecera el botón **`Ver PDF oficial`** que abre el PDF original en pestaña nueva.
 - **Artefacto:** [normativas-rediseno.md](specs/normativas-rediseno.md)
+
+## 2026-11-26 — bug: PDFs abren el panel en Vercel  (feature: fix-pdf-service-worker-vercel)
+Repro      — En build de producción (`npm run build` + `vite preview` con Service Worker activo), navegar a `/docs/normativas/uso-apropiado-fondos-2026.pdf` devolvió `200 text/html;charset=utf-8` (`#root` presente) en lugar de `application/pdf`.
+Cause      — `VitePWA` en `vite.config.ts` generaba `NavigationRoute(createHandlerBoundToURL("index.html"))` sin `navigateFallbackDenylist` y sin precachear `*.pdf`, interceptando navegaciones en `<iframe>` y pestañas nuevas hacia `index.html`.
+Fix        — Agregado `workbox.navigateFallbackDenylist: [/^\/docs\//, /^\/api\//, /\.pdf($|\?)/i]` en `vite.config.ts` + prueba de regresión `tests/normativas-sw.spec.ts` contra `vite preview`.
+Why missed — `tests/normativas.spec.ts` corre sobre `vite dev`, donde el Service Worker de `VitePWA` no se registra.
